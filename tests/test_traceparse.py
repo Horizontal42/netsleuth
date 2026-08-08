@@ -183,3 +183,66 @@ def test_darwin_partial_timeout_hop_keeps_positions(trace_fixture):
 
 def test_darwin_parser_tolerates_empty_input():
     assert parse_darwin("") == []
+
+
+from netcheck.traceparse import build_trace_result, parse_traceroute
+
+
+def test_dispatcher_routes_by_os_name(trace_fixture):
+    win = parse_traceroute(trace_fixture("windows", "tracert_en.txt"), "Windows")
+    lin = parse_traceroute(trace_fixture("linux", "gnu_basic.txt"), "Linux")
+    mac = parse_traceroute(trace_fixture("darwin", "bsd_basic.txt"), "Darwin")
+    assert win[0].probes[1] == 0.5
+    assert lin[0].probes == [1.234, 1.102, 1.045]
+    assert mac[0].probes == [2.145, 1.902, 1.87]
+
+
+def test_dispatcher_defaults_unknown_os_to_the_gnu_parser(trace_fixture):
+    hops = parse_traceroute(trace_fixture("linux", "gnu_basic.txt"), "SunOS")
+    assert [h.ttl for h in hops] == [1, 2, 3, 4, 5, 6]
+
+
+def test_build_trace_result_marks_completion_when_the_target_is_reached(trace_fixture):
+    result = build_trace_result(
+        trace_fixture("linux", "gnu_basic.txt"),
+        "Linux",
+        target="1.1.1.1",
+        resolved_ip="1.1.1.1",
+        max_hops=30,
+    )
+    assert result.completed is True
+    assert result.max_hops_reached is False
+    assert result.backend == "system_traceroute"
+    assert result.cycles == 1
+    assert len(result.hops) == 6
+
+
+def test_build_trace_result_flags_a_run_that_died_at_max_hops(trace_fixture):
+    result = build_trace_result(
+        trace_fixture("linux", "gnu_maxhops.txt"),
+        "Linux",
+        target="203.0.113.200",
+        resolved_ip="203.0.113.200",
+        max_hops=5,
+    )
+    assert result.completed is False
+    assert result.max_hops_reached is True
+
+
+def test_build_trace_result_is_not_complete_when_the_last_hop_is_a_different_host(trace_fixture):
+    result = build_trace_result(
+        trace_fixture("linux", "gnu_unreachable.txt"),
+        "Linux",
+        target="203.0.113.9",
+        resolved_ip="203.0.113.9",
+        max_hops=30,
+    )
+    assert result.completed is False
+    assert result.max_hops_reached is False
+
+
+def test_build_trace_result_on_empty_output_is_a_well_formed_empty_result():
+    result = build_trace_result("", "Linux", target="1.1.1.1", resolved_ip=None)
+    assert result.hops == []
+    assert result.completed is False
+    assert result.max_hops_reached is False

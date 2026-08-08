@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from netcheck.models import TraceHop
+from netcheck.models import TraceHop, TraceResult
 from netcheck.stats import rtt_stats
 
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -147,3 +147,33 @@ def parse_darwin(text: str) -> list[TraceHop]:
             if token not in hop.annotations:
                 hop.annotations.append(token)
     return [finalize_hop(hop) for hop in hops]
+
+
+def parse_traceroute(text: str, os_name: str) -> list[TraceHop]:
+    if os_name == "Windows":
+        return parse_windows(text)
+    if os_name == "Darwin":
+        return parse_darwin(text)
+    return parse_linux(text)
+
+
+def build_trace_result(
+    text: str,
+    os_name: str,
+    target: str,
+    resolved_ip: str | None,
+    backend: str = "system_traceroute",
+    max_hops: int = 30,
+) -> TraceResult:
+    hops = parse_traceroute(text, os_name)
+    completed = bool(hops and resolved_ip and hops[-1].ip == resolved_ip)
+    max_hops_reached = bool(hops) and not completed and hops[-1].ttl >= max_hops
+    return TraceResult(
+        target=target,
+        resolved_ip=resolved_ip,
+        backend=backend,
+        hops=hops,
+        cycles=1,
+        completed=completed,
+        max_hops_reached=max_hops_reached,
+    )
