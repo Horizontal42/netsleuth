@@ -526,3 +526,75 @@ def test_markdown_without_emoji_uses_text_badges():
     text = render_markdown(full_report(), emoji=False)
     assert "[warn]" in text
     assert "🟡" not in text
+
+
+from netcheck.exporter import unavailable
+
+
+def dead_modules() -> dict[str, ModuleResult]:
+    return {
+        section: ModuleResult(
+            name=section,
+            status="failed",
+            data=None,
+            errors=[ProbeError(source=section, kind="unavailable", message="network unreachable", retryable=True)],
+            duration_ms=8000,
+        )
+        for section in SECTION_ORDER
+    }
+
+
+def dead_report() -> dict:
+    return build_report(meta(), dead_modules(), [], {})
+
+
+def test_unavailable_describes_a_failed_module_and_stays_quiet_on_a_healthy_one():
+    assert unavailable(full_report(), "bgp") is None
+    note = unavailable(dead_report(), "bgp")
+    assert note is not None
+    assert "failed" in note
+    assert "network unreachable" in note
+
+
+def test_unavailable_explains_a_skipped_module_without_inventing_an_error():
+    report = build_report(meta(), {"speed": ModuleResult(name="speed", status="skipped")}, [], {})
+    note = unavailable(report, "speed")
+    assert note is not None
+    assert "skipped" in note
+
+
+def test_an_all_modules_failed_run_still_renders_every_section():
+    text = render_markdown(dead_report())
+    headings = [line for line in text.splitlines() if line.startswith("## ")]
+    assert len(headings) == 10
+    assert text.count("Not available") == 8
+
+
+def test_an_all_modules_failed_report_is_still_valid_strict_json():
+    report = dead_report()
+    back = json.loads(dump_json(report))
+    assert back["schema_version"] == SCHEMA_VERSION
+    assert len(back["errors"]) == len(SECTION_ORDER)
+    assert all(section in back for section in SECTION_ORDER)
+    assert back["interpretation"]["overall_status"] == "ok"
+    assert back["raw"] == {}
+
+
+def test_an_all_modules_failed_run_writes_both_artifacts(tmp_path: Path):
+    report = dead_report()
+    json_path, md_path = write_report(report, render_markdown(report), tmp_path)
+    assert json_path.name.startswith("report_unknown_")
+    assert md_path.name.startswith("report_unknown_")
+    assert "## Run diagnostics" in md_path.read_text(encoding="utf-8")
+
+
+def test_the_diagnostics_table_still_names_every_failed_module():
+    block = render_markdown(dead_report()).split("## Run diagnostics")[1]
+    assert block.count("failed") == len(SECTION_ORDER)
+    assert "unavailable" in block
+
+
+def test_a_partial_module_with_data_is_rendered_normally_not_as_a_placeholder():
+    report = build_report(meta(), modules(), [], {})
+    assert unavailable(report, "latency") is None
+    assert "cloudflare-dns" in render_markdown(report)

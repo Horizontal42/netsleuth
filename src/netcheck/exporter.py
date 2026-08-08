@@ -190,7 +190,34 @@ def _tldr(report: dict, emoji: bool) -> list[str]:
     ] + [""]
 
 
+_SECTION_TITLES = {
+    "connection": "## Connection & identity",
+    "ip_geo": "## Connection & identity",
+    "vpn_assessment": "## VPN / proxy assessment",
+    "bgp": "## ASN & BGP intelligence",
+    "reputation": "## Reputation",
+    "latency": "## Latency",
+    "path": "## Path",
+    "speed": "## Speed",
+}
+
+
+def unavailable(report: dict[str, Any], section: str) -> str | None:
+    module = _module(report, section)
+    if module.get("status") in ("ok", "partial") and module.get("data") is not None:
+        return None
+    detail = "; ".join(f"{e.get('source')}: {e.get('message')}" for e in module.get("errors") or [])
+    if not detail:
+        detail = "no data was collected for this section"
+    return f"_Not available — {module.get('status', 'skipped')}: {detail}._"
+
+
 def _connection(report: dict) -> list[str]:
+    conn_note = unavailable(report, "connection")
+    geo_note = unavailable(report, "ip_geo")
+    if conn_note or geo_note:
+        notes = [n for n in (conn_note, geo_note) if n]
+        return [_SECTION_TITLES["connection"], "", *notes, ""]
     local = _data(report, "connection") or {}
     geo_bundle = _data(report, "ip_geo") or {}
     geo = geo_bundle.get("egress_v4") or {}
@@ -214,6 +241,9 @@ def _connection(report: dict) -> list[str]:
 
 
 def _vpn(report: dict) -> list[str]:
+    note = unavailable(report, "vpn_assessment")
+    if note:
+        return [_SECTION_TITLES["vpn_assessment"], "", note, ""]
     vpn = _data(report, "vpn_assessment") or {}
     lines = [
         "## VPN / proxy assessment",
@@ -256,6 +286,9 @@ def _vpn(report: dict) -> list[str]:
 
 
 def _bgp(report: dict) -> list[str]:
+    note = unavailable(report, "bgp")
+    if note:
+        return [_SECTION_TITLES["bgp"], "", note, ""]
     bgp = _data(report, "bgp") or {}
     rows = [
         ["ASN", f"{bgp.get('asn') or '?'} — {bgp.get('holder') or '?'}"],
@@ -281,6 +314,9 @@ def _bgp(report: dict) -> list[str]:
 
 
 def _reputation(report: dict) -> list[str]:
+    note = unavailable(report, "reputation")
+    if note:
+        return [_SECTION_TITLES["reputation"], "", note, ""]
     rep = _data(report, "reputation") or {}
     idb = rep.get("internetdb") or {}
     rows = [
@@ -307,6 +343,9 @@ def _reputation(report: dict) -> list[str]:
 
 
 def _latency(report: dict) -> list[str]:
+    note = unavailable(report, "latency")
+    if note:
+        return [_SECTION_TITLES["latency"], "", note, ""]
     pings = _data(report, "latency") or []
     lines = ["## Latency", ""] + _table(
         ["Host", "Address", "Method", "Avg ms", "Min", "Max", "Jitter", "Loss"],
@@ -338,6 +377,9 @@ def _bar(value: Any) -> str:
 
 
 def _path(report: dict) -> list[str]:
+    note = unavailable(report, "path")
+    if note:
+        return [_SECTION_TITLES["path"], "", note, ""]
     traces = _data(report, "path") or []
     lines = ["## Path", ""]
     for trace in traces:
@@ -360,6 +402,9 @@ def _path(report: dict) -> list[str]:
 
 
 def _speed(report: dict) -> list[str]:
+    note = unavailable(report, "speed")
+    if note:
+        return [_SECTION_TITLES["speed"], "", note, ""]
     speed = _data(report, "speed") or {}
     grade = speed.get("bufferbloat_grade") or "?"
     rows = [
