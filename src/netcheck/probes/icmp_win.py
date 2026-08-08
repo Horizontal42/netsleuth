@@ -51,9 +51,12 @@ import ctypes
 import platform
 import socket
 import time
-from ctypes import wintypes
 
 _REPLY_BUFFER_SIZE = 4096
+_IS_WINDOWS = platform.system() == "Windows"
+
+if _IS_WINDOWS:
+    from ctypes import wintypes
 
 
 class _IpOptionInformation(ctypes.Structure):
@@ -77,6 +80,8 @@ def win_icmp_available() -> bool:
 
 
 def _handle():
+    if not _IS_WINDOWS:
+        raise OSError("icmp_win backend is only available on Windows")
     iphlpapi = ctypes.WinDLL("Iphlpapi.dll")
     iphlpapi.IcmpCreateFile.restype = wintypes.HANDLE
     # argtypes must be declared for HANDLE-typed args: ctypes otherwise
