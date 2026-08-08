@@ -110,3 +110,40 @@ def parse_windows(text: str) -> list[TraceHop]:
             rdns = None
         hops.append(finalize_hop(TraceHop(ttl=ttl, ip=ip, reverse_dns=rdns, probes=probes)))
     return hops
+
+
+_BSD_CONTINUATION_RE = re.compile(r"^\s+\S")
+
+
+def parse_darwin(text: str) -> list[TraceHop]:
+    hops: list[TraceHop] = []
+    for line in text.splitlines():
+        match = _HOP_LINE_RE.match(line)
+        if match:
+            ttl, body = int(match.group(1)), match.group(2)
+            rdns, ip = _unix_host_and_ip(body)
+            hops.append(
+                TraceHop(
+                    ttl=ttl,
+                    ip=ip,
+                    reverse_dns=rdns,
+                    probes=_unix_probes(body),
+                    annotations=_unix_annotations(body),
+                )
+            )
+            continue
+        if not hops or not _BSD_CONTINUATION_RE.match(line):
+            continue
+        # BSD prints one continuation line per probe that came back from a
+        # different router than the hop's first probe.
+        hop = hops[-1]
+        _, extra_ip = _unix_host_and_ip(line)
+        hop.probes.extend(_unix_probes(line))
+        if extra_ip and extra_ip != hop.ip:
+            marker = f"alt:{extra_ip}"
+            if marker not in hop.annotations:
+                hop.annotations.append(marker)
+        for token in _unix_annotations(line):
+            if token not in hop.annotations:
+                hop.annotations.append(token)
+    return [finalize_hop(hop) for hop in hops]

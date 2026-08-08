@@ -141,3 +141,45 @@ def test_windows_destination_unreachable_hop_keeps_its_ip(trace_fixture):
 
 def test_windows_parser_tolerates_empty_input():
     assert parse_windows("") == []
+
+
+from netcheck.traceparse import parse_darwin
+
+
+def test_darwin_basic_hops_match_the_gnu_shape(trace_fixture):
+    hops = parse_darwin(trace_fixture("darwin", "bsd_basic.txt"))
+    assert [h.ttl for h in hops] == [1, 2, 3, 4, 5]
+    assert hops[0].ip == "192.168.1.1"
+    assert hops[0].reverse_dns is None
+    assert hops[3].reverse_dns == "ae-1.r01.ams.example.net"
+    assert hops[2].probes == [None, None, None]
+
+
+def test_darwin_merges_continuation_lines_into_one_hop(trace_fixture):
+    hops = parse_darwin(trace_fixture("darwin", "bsd_multipath.txt"))
+    assert [h.ttl for h in hops] == [1, 2, 3, 4, 5]
+    hop = hops[1]
+    assert hop.probes == [9.001, 9.22, 8.87]
+    assert hop.ip == "10.64.0.1"
+
+
+def test_darwin_records_alternate_addresses_for_a_multipath_hop(trace_fixture):
+    hops = parse_darwin(trace_fixture("darwin", "bsd_multipath.txt"))
+    assert "alt:10.64.0.5" in hops[1].annotations
+    assert "alt:10.64.0.1" not in hops[1].annotations
+
+
+def test_darwin_keeps_bsd_only_annotations(trace_fixture):
+    hops = parse_darwin(trace_fixture("darwin", "bsd_multipath.txt"))
+    assert hops[3].annotations == ["!H"]
+    assert hops[4].annotations == ["!X"]
+
+
+def test_darwin_partial_timeout_hop_keeps_positions(trace_fixture):
+    hops = parse_darwin(trace_fixture("darwin", "bsd_multipath.txt"))
+    assert hops[2].probes == [None, 11.2, None]
+    assert hops[2].loss_pct == pytest.approx(66.667)
+
+
+def test_darwin_parser_tolerates_empty_input():
+    assert parse_darwin("") == []
