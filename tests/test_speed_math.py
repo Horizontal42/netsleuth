@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+import pytest
+
+from netcheck.speed import bufferbloat_delta, mbps, parse_server_timing_cfl4, throughput_from_samples
+
+
+def test_mbps_converts_bytes_and_seconds():
+    assert mbps(1_000_000, 1.0) == pytest.approx(8.0)
+    assert mbps(12_500_000, 1.0) == pytest.approx(100.0)
+    assert mbps(25_000_000, 2.0) == pytest.approx(100.0)
+
+
+def test_mbps_of_a_zero_or_negative_interval_is_zero_not_infinity():
+    # Zero-duration timing math is exactly where inf leaks into the JSON report.
+    assert mbps(1_000_000, 0.0) == 0.0
+    assert mbps(1_000_000, -1.0) == 0.0
+
+
+def test_mbps_of_no_bytes_is_zero():
+    assert mbps(0, 1.5) == 0.0
+
+
+def test_throughput_uses_the_ninetieth_percentile_of_the_samples():
+    samples = [(1_000_000, 1.0), (1_000_000, 0.5), (1_000_000, 0.4), (1_000_000, 0.25)]
+    # Per-sample Mbps: 8, 16, 20, 32 -> p90 interpolates to 28.4
+    assert throughput_from_samples(samples) == pytest.approx(28.4)
+
+
+def test_throughput_of_a_single_sample_is_that_sample():
+    assert throughput_from_samples([(12_500_000, 1.0)]) == pytest.approx(100.0)
+
+
+def test_throughput_of_no_samples_is_zero():
+    assert throughput_from_samples([]) == 0.0
+
+
+def test_cfl4_header_is_parsed_into_typed_stats():
+    header = (
+        'cfL4;desc="?proto=tcp&rtt=12345&min_rtt=11000&rtt_var=1500&sent=100&recv=200'
+        '&lost=0&retrans=0&sent_bytes=1000&recv_bytes=1048576&delivery_rate=35000000'
+        '&cwnd=42&unsent_bytes=0&cid=abcdef&ts=1&x=0"'
+    )
+    stats = parse_server_timing_cfl4(header)
+    assert stats is not None
+    assert stats.rtt_ms == pytest.approx(12.345)
+    assert stats.min_rtt_ms == pytest.approx(11.0)
+    assert stats.rtt_var_ms == pytest.approx(1.5)
+    assert stats.delivery_rate_bps == 35000000
+    assert stats.cwnd == 42
+    assert stats.unsent_bytes == 0
+    assert stats.recv_bytes == 1048576
+
+
+def test_cfl4_parsing_picks_its_entry_out_of_a_multi_metric_header():
+    header = 'cfRequestDuration;dur=42.1, cfL4;desc="?proto=tcp&rtt=9000&cwnd=10", cfCacheStatus;desc="HIT"'
+    stats = parse_server_timing_cfl4(header)
+    assert stats is not None
+    assert stats.rtt_ms == pytest.approx(9.0)
+    assert stats.cwnd == 10
+    assert stats.delivery_rate_bps is None
+
+
+def test_cfl4_parsing_of_a_header_without_the_entry_is_none():
+    assert parse_server_timing_cfl4("cfCacheStatus;desc=HIT") is None
+    assert parse_server_timing_cfl4("") is None
+
+
+def test_cfl4_parsing_survives_unexpected_values():
+    stats = parse_server_timing_cfl4('cfL4;desc="?proto=tcp&rtt=notanumber&cwnd=7"')
+    assert stats is not None
+    assert stats.rtt_ms is None
+    assert stats.cwnd == 7
+
+
+def test_bufferbloat_delta_is_the_rise_over_the_idle_baseline():
+    assert bufferbloat_delta(12.0, [15.0, 60.0, 200.0, 210.0]) == pytest.approx(196.5)
+
+
+def test_bufferbloat_delta_never_goes_negative():
+    assert bufferbloat_delta(50.0, [10.0, 12.0, 11.0]) == 0.0
+
+
+def test_bufferbloat_delta_needs_both_a_baseline_and_samples():
+    assert bufferbloat_delta(None, [10.0]) is None
+    assert bufferbloat_delta(12.0, []) is None
