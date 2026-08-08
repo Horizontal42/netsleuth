@@ -211,3 +211,50 @@ async def tier_ndt7(client: httpx.AsyncClient, cfg: Speedtest, timeout: float) -
         upload_mbps=None,
         server=results[0].get("machine"),
     )
+
+
+from netcheck.config import BufferbloatBands
+from netcheck.interpret import grade_bufferbloat
+from netcheck.stats import rtt_stats
+
+
+async def probe_while(
+    coro: Awaitable[None],
+    probe: Callable[[], Awaitable[float | None]],
+    interval: float,
+) -> list[float]:
+    samples: list[float] = []
+    task = asyncio.ensure_future(coro)
+    while not task.done():
+        sample = await probe()
+        if sample is not None:
+            samples.append(sample)
+        await asyncio.sleep(interval)
+    await task
+    return samples
+
+
+async def measure_with_bufferbloat(
+    result: SpeedResult,
+    idle_rtt_ms: float | None,
+    bands: BufferbloatBands,
+    run_download: Callable[[], Awaitable[None]],
+    run_upload: Callable[[], Awaitable[None]],
+    probe: Callable[[], Awaitable[float | None]],
+    interval: float,
+) -> SpeedResult:
+    # This is the one place a measurement is allowed to overlap another: the
+    # whole point is to see what latency does while the link is saturated.
+    down_samples = await probe_while(run_download(), probe, interval)
+    up_samples = await probe_while(run_upload(), probe, interval)
+    result.idle_rtt_ms = idle_rtt_ms
+    result.loaded_rtt_down_ms = rtt_stats(list(down_samples)).avg_ms
+    result.loaded_rtt_up_ms = rtt_stats(list(up_samples)).avg_ms
+    result.bufferbloat_down_ms = bufferbloat_delta(idle_rtt_ms, down_samples)
+    result.bufferbloat_up_ms = bufferbloat_delta(idle_rtt_ms, up_samples)
+    worst_delta = max(
+        [d for d in (result.bufferbloat_down_ms, result.bufferbloat_up_ms) if d is not None],
+        default=None,
+    )
+    result.bufferbloat_grade = grade_bufferbloat(worst_delta, bands)
+    return result

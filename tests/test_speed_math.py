@@ -169,3 +169,85 @@ def test_the_ndt7_consent_notice_states_what_gets_published():
     assert "CC0" in NDT7_CONSENT_NOTICE
     assert "IP" in NDT7_CONSENT_NOTICE
     assert "public" in NDT7_CONSENT_NOTICE.lower()
+
+
+from netcheck.config import BufferbloatBands
+from netcheck.speed import measure_with_bufferbloat, probe_while
+
+
+async def test_probe_while_collects_samples_for_the_whole_duration_of_the_work():
+    import asyncio
+
+    async def work() -> None:
+        await asyncio.sleep(0.25)
+
+    async def probe() -> float | None:
+        return 42.0
+
+    samples = await probe_while(work(), probe, interval=0.05)
+    assert len(samples) >= 3
+    assert all(s == 42.0 for s in samples)
+
+
+async def test_probe_while_drops_failed_probes_instead_of_recording_none():
+    import asyncio
+
+    async def work() -> None:
+        await asyncio.sleep(0.15)
+
+    async def probe() -> float | None:
+        return None
+
+    assert await probe_while(work(), probe, interval=0.05) == []
+
+
+async def test_measure_with_bufferbloat_fills_in_both_directions_and_the_grade():
+    import asyncio
+
+    loaded = iter([80.0, 90.0, 100.0] * 20)
+
+    async def run_download() -> None:
+        await asyncio.sleep(0.15)
+
+    async def run_upload() -> None:
+        await asyncio.sleep(0.15)
+
+    async def probe() -> float | None:
+        return next(loaded)
+
+    result = await measure_with_bufferbloat(
+        SpeedResult(method="cloudflare", download_mbps=300.0, upload_mbps=40.0),
+        idle_rtt_ms=12.0,
+        bands=BufferbloatBands(),
+        run_download=run_download,
+        run_upload=run_upload,
+        probe=probe,
+        interval=0.05,
+    )
+    assert result.idle_rtt_ms == 12.0
+    assert result.loaded_rtt_down_ms is not None
+    assert result.loaded_rtt_up_ms is not None
+    assert result.bufferbloat_down_ms is not None and result.bufferbloat_down_ms > 60
+    assert result.bufferbloat_grade in ("D", "E", "F")
+
+
+async def test_measure_with_bufferbloat_without_an_idle_baseline_grades_unknown():
+    import asyncio
+
+    async def work() -> None:
+        await asyncio.sleep(0.05)
+
+    async def probe() -> float | None:
+        return 80.0
+
+    result = await measure_with_bufferbloat(
+        SpeedResult(method="cloudflare", download_mbps=300.0),
+        idle_rtt_ms=None,
+        bands=BufferbloatBands(),
+        run_download=work,
+        run_upload=work,
+        probe=probe,
+        interval=0.02,
+    )
+    assert result.bufferbloat_down_ms is None
+    assert result.bufferbloat_grade == "?"
