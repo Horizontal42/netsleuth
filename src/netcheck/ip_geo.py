@@ -166,3 +166,111 @@ def parse_cf_trace(text: str) -> CfTrace:
         rbi=raw.get("rbi"),
         raw=raw,
     )
+
+
+from dataclasses import fields as dataclass_fields
+
+_MERGE_SKIP = {"sources", "ip_type"}
+
+
+def merge_geo(candidates: list[tuple[str, IpGeo]]) -> IpGeo:
+    merged = IpGeo()
+    sources: dict[str, str] = {}
+    for name, geo in candidates:
+        for f in dataclass_fields(IpGeo):
+            if f.name in _MERGE_SKIP:
+                continue
+            if getattr(merged, f.name) is not None:
+                continue
+            value = getattr(geo, f.name)
+            if value in (None, ""):
+                continue
+            setattr(merged, f.name, value)
+            sources[f.name] = name
+        if merged.ip_type == "unknown" and geo.ip_type != "unknown":
+            merged.ip_type = geo.ip_type
+            sources["ip_type"] = name
+    merged.sources = sources
+    return merged
+
+
+def dual_stack_mismatch(v4: IpGeo | None, v6: IpGeo | None) -> str | None:
+    if v4 is None or v6 is None or not v4.asn or not v6.asn:
+        return None
+    if v4.asn == v6.asn and (v4.country_code or "") == (v6.country_code or ""):
+        return None
+    return (
+        f"IPv4 egress {v4.ip} is {v4.asn} ({v4.country_code}) but IPv6 egress {v6.ip} "
+        f"is {v6.asn} ({v6.country_code}); the two stacks leave through different networks."
+    )
+
+
+import asyncio
+
+import httpx
+
+from netcheck.config import Providers
+
+
+async def _json(client: httpx.AsyncClient, url: str, **kwargs) -> dict:
+    response = await client.get(url, **kwargs)
+    response.raise_for_status()
+    return response.json()
+
+
+async def _text(client: httpx.AsyncClient, url: str) -> str:
+    response = await client.get(url)
+    response.raise_for_status()
+    return response.text
+
+
+async def gather_identity(
+    client: httpx.AsyncClient,
+    providers: Providers,
+    ip: str | None = None,
+    ipinfo_token: str | None = None,
+) -> tuple[IpGeo, CfTrace | None, dict[str, bool], dict[str, object]]:
+    suffix = ip or ""
+    headers = {"Authorization": f"Bearer {ipinfo_token}"} if ipinfo_token else {}
+    calls = {
+        "cf-trace": _text(client, providers.cf_trace_url),
+        "ip-api": _json(client, f"{providers.ip_api_url}{suffix}"),
+        "freeipapi": _json(client, f"{providers.freeipapi_url}{suffix}"),
+        "ipinfo": _json(client, f"{providers.ipinfo_url}{suffix}json", headers=headers),
+        "ipwho.is": _json(client, f"{providers.ipwhois_url}{suffix}"),
+    }
+    settled = await asyncio.gather(*calls.values(), return_exceptions=True)
+    payloads = dict(zip(calls.keys(), settled))
+
+    raw: dict[str, object] = {k: v for k, v in payloads.items() if not isinstance(v, BaseException)}
+    cf = parse_cf_trace(payloads["cf-trace"]) if isinstance(payloads["cf-trace"], str) else None
+    flags = provider_flags(payloads["ip-api"]) if isinstance(payloads["ip-api"], dict) else {}
+
+    candidates: list[tuple[str, IpGeo]] = []
+    if cf:
+        candidates.append(("cf-trace", IpGeo(ip=cf.ip, country_code=cf.loc, sources={})))
+    for name, normalizer in (
+        ("ip-api", normalize_ip_api),
+        ("freeipapi", normalize_freeipapi),
+        ("ipinfo", normalize_ipinfo),
+        ("ipwho.is", normalize_ipwhois),
+    ):
+        payload = payloads[name]
+        if isinstance(payload, dict):
+            candidates.append((name, normalizer(payload)))
+
+    merged = merge_geo(candidates)
+    if merged.ip:
+        try:
+            network_info = await _json(
+                client, f"{providers.ripestat_base_url}/network-info/data.json", params={"resource": merged.ip}
+            )
+        except (httpx.HTTPError, ValueError):
+            network_info = None
+        if network_info:
+            raw["ripestat-network-info"] = network_info
+            authoritative = normalize_ripestat_network_info(network_info)
+            if authoritative.asn:
+                merged.asn = authoritative.asn
+                merged.sources["asn"] = "ripestat"
+    return merged, cf, flags, raw

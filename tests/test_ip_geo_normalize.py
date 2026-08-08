@@ -125,3 +125,73 @@ def test_provider_flags_of_a_failed_payload_is_empty(api_fixture):
 )
 def test_ip_type_classification(mobile, proxy, hosting, known, expected):
     assert classify_ip_type(mobile, proxy, hosting, known) == expected
+
+
+from netcheck.models import IpGeo
+from netcheck.ip_geo import dual_stack_mismatch, merge_geo
+
+
+def test_merge_takes_the_first_non_empty_value_in_priority_order():
+    merged = merge_geo(
+        [
+            ("cf-trace", IpGeo(ip="203.0.113.44")),
+            ("ip-api", IpGeo(asn="AS64500", city="Amsterdam", country_code="NL")),
+            ("ipwho.is", IpGeo(asn="AS64999", city="Rotterdam", timezone="Europe/Amsterdam")),
+        ]
+    )
+    assert merged.ip == "203.0.113.44"
+    assert merged.asn == "AS64500"
+    assert merged.city == "Amsterdam"
+    assert merged.timezone == "Europe/Amsterdam"
+
+
+def test_merge_records_which_provider_supplied_each_field():
+    merged = merge_geo(
+        [
+            ("cf-trace", IpGeo(ip="203.0.113.44")),
+            ("ip-api", IpGeo(asn="AS64500")),
+            ("ipwho.is", IpGeo(timezone="Europe/Amsterdam")),
+        ]
+    )
+    assert merged.sources["ip"] == "cf-trace"
+    assert merged.sources["asn"] == "ip-api"
+    assert merged.sources["timezone"] == "ipwho.is"
+
+
+def test_merge_prefers_a_known_ip_type_over_unknown():
+    merged = merge_geo([("a", IpGeo(ip_type="unknown")), ("b", IpGeo(ip_type="mobile"))])
+    assert merged.ip_type == "mobile"
+    assert merged.sources["ip_type"] == "b"
+
+
+def test_merge_of_nothing_is_an_empty_geo():
+    merged = merge_geo([])
+    assert merged.ip is None
+    assert merged.ip_type == "unknown"
+    assert merged.sources == {}
+
+
+def test_merge_ignores_a_provider_that_returned_nothing():
+    merged = merge_geo([("dead", IpGeo()), ("live", IpGeo(asn="AS64500"))])
+    assert merged.asn == "AS64500"
+    assert merged.sources["asn"] == "live"
+
+
+def test_dual_stack_mismatch_is_reported_not_resolved():
+    v4 = IpGeo(ip="203.0.113.44", asn="AS64500", country_code="NL")
+    v6 = IpGeo(ip="2001:db8::1", asn="AS64777", country_code="DE")
+    note = dual_stack_mismatch(v4, v6)
+    assert note is not None
+    assert "AS64500" in note
+    assert "AS64777" in note
+
+
+def test_dual_stack_agreement_produces_no_note():
+    v4 = IpGeo(ip="203.0.113.44", asn="AS64500", country_code="NL")
+    v6 = IpGeo(ip="2001:db8::1", asn="AS64500", country_code="NL")
+    assert dual_stack_mismatch(v4, v6) is None
+
+
+def test_dual_stack_comparison_needs_both_sides():
+    assert dual_stack_mismatch(IpGeo(asn="AS64500"), None) is None
+    assert dual_stack_mismatch(None, IpGeo(asn="AS64500")) is None
