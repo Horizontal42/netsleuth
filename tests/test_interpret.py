@@ -136,3 +136,150 @@ def test_path_findings_ignore_a_single_hop_that_rate_limits_icmp():
 def test_path_findings_report_an_incomplete_trace():
     trace = TraceResult(target="1.1.1.1", resolved_ip="1.1.1.1", backend="icmplib", hops=[], completed=False)
     assert [f.id for f in path_findings(trace)] == ["path.incomplete"]
+
+
+from netcheck.config import VpnBands
+from netcheck.models import AdapterLeakResult, CfTrace, DnsLeak, IpGeo, LocalNet, Signal
+from netcheck.interpret import SIGNAL_WEIGHTS, assess_vpn, gather_vpn_signals, score_vpn
+
+
+def sig(name: str, observed: bool = True) -> Signal:
+    return Signal(name=name, observed=observed, weight=SIGNAL_WEIGHTS[name], direction="vpn")
+
+
+def test_no_signals_means_no_vpn():
+    verdict, confidence = score_vpn([], VpnBands())
+    assert verdict == "none"
+    assert confidence == 0.0
+
+
+def test_unobserved_signals_contribute_nothing():
+    verdict, confidence = score_vpn(
+        [sig("tunnel_iface", observed=False), sig("cf_warp", observed=False)], VpnBands()
+    )
+    assert verdict == "none"
+    assert confidence == 0.0
+
+
+def test_cloudflare_warp_alone_is_enough_for_likely():
+    verdict, confidence = score_vpn([sig("cf_warp")], VpnBands())
+    assert verdict == "likely"
+    assert confidence == pytest.approx(0.50)
+
+
+def test_tunnel_interface_plus_hosting_egress_is_confirmed():
+    verdict, confidence = score_vpn([sig("tunnel_iface"), sig("provider_hosting")], VpnBands())
+    assert verdict == "confirmed"
+    assert confidence >= 0.75
+
+
+def test_a_mobile_flag_with_a_timezone_mismatch_does_not_fire():
+    # This combination is normal for anyone travelling on a phone hotspot and
+    # must not be reported as a VPN.
+    verdict, confidence = score_vpn([sig("provider_mobile"), sig("timezone_mismatch")], VpnBands())
+    assert verdict == "none"
+    assert confidence < 0.40
+
+
+def test_mtu_anomaly_alone_does_not_fire():
+    verdict, _ = score_vpn([sig("mtu_anomaly")], VpnBands())
+    assert verdict == "none"
+
+
+def test_dns_asn_mismatch_alone_does_not_fire():
+    verdict, _ = score_vpn([sig("dns_asn_mismatch")], VpnBands())
+    assert verdict == "none"
+
+
+def test_mtu_anomaly_plus_tunnel_iface_plus_dns_mismatch_is_confirmed():
+    verdict, confidence = score_vpn(
+        [sig("tunnel_iface"), sig("mtu_anomaly"), sig("dns_asn_mismatch")], VpnBands()
+    )
+    assert verdict == "confirmed"
+    assert confidence == pytest.approx(0.80)
+
+
+def test_confidence_is_capped_at_one():
+    _, confidence = score_vpn([sig(name) for name in SIGNAL_WEIGHTS], VpnBands())
+    assert confidence == 1.0
+
+
+def test_clean_direction_signals_reduce_confidence():
+    signals = [
+        sig("provider_hosting"),
+        Signal(name="pdb_eyeball_isp", observed=True, weight=0.2, direction="clean"),
+    ]
+    _, confidence = score_vpn(signals, VpnBands())
+    assert confidence == pytest.approx(0.20)
+
+
+def test_gather_signals_flags_a_wireguard_tunnel_with_a_hosting_egress():
+    local = LocalNet(iface_name="wg0", local_ipv4="10.7.0.2", iface_mtu=1420, default_gateway_v4="10.7.0.1")
+    geo = IpGeo(ip="203.0.113.44", asn="AS64500", country_code="NL", timezone="Europe/Amsterdam")
+    signals = {s.name: s for s in gather_vpn_signals(
+        local=local,
+        geo=geo,
+        cf=CfTrace(ip="203.0.113.44", warp="off"),
+        dns_leak=None,
+        pdb_info_type="NSP",
+        os_timezone="Europe/Amsterdam",
+        provider_flags={"hosting": True, "proxy": False, "mobile": False},
+    )}
+    assert signals["tunnel_iface"].observed is True
+    assert signals["tunnel_iface"].note == "wg0"
+    assert signals["mtu_anomaly"].observed is True
+    assert signals["mtu_anomaly"].note == "wireguard"
+    assert signals["provider_hosting"].observed is True
+    assert signals["cf_warp"].observed is False
+    assert signals["timezone_mismatch"].observed is False
+
+
+def test_gather_signals_detects_a_dns_resolver_in_another_asn():
+    leak = DnsLeak(
+        per_adapter=[
+            AdapterLeakResult(
+                adapter="Wi-Fi",
+                configured_resolvers=["192.168.1.1"],
+                echoed_ip="203.0.113.9",
+                echoed_asn="AS64501",
+                matches_egress_asn=False,
+            )
+        ]
+    )
+    signals = {s.name: s for s in gather_vpn_signals(
+        local=LocalNet(iface_name="eth0"),
+        geo=IpGeo(asn="AS64500"),
+        cf=None,
+        dns_leak=leak,
+        pdb_info_type=None,
+        os_timezone=None,
+        provider_flags={},
+    )}
+    assert signals["dns_asn_mismatch"].observed is True
+    assert "Wi-Fi" in signals["dns_asn_mismatch"].note
+
+
+def test_gather_signals_detects_cloudflare_warp():
+    signals = {s.name: s for s in gather_vpn_signals(
+        local=LocalNet(),
+        geo=IpGeo(),
+        cf=CfTrace(warp="on"),
+        dns_leak=None,
+        pdb_info_type=None,
+        os_timezone=None,
+        provider_flags={},
+    )}
+    assert signals["cf_warp"].observed is True
+
+
+def test_assess_vpn_returns_a_complete_assessment():
+    assessment = assess_vpn(
+        signals=[sig("tunnel_iface"), sig("provider_hosting")],
+        bands=VpnBands(),
+        tunnel_iface="wg0",
+        dns_leak=None,
+    )
+    assert assessment.verdict == "confirmed"
+    assert assessment.tunnel_iface == "wg0"
+    assert len(assessment.signals) == 2
+    assert assessment.confidence >= 0.75

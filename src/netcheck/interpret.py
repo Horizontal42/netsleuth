@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from netcheck.config import Band, Thresholds
-from netcheck.models import Finding, PingResult, TraceResult
+from netcheck.config import Band, Thresholds, VpnBands
+from netcheck.models import CfTrace, DnsLeak, Finding, IpGeo, LocalNet, PingResult, Signal, TraceResult, VpnAssessment
+from netcheck.netinfo import is_tunnel_iface, mtu_anomaly
 
 _SEVERITY_ORDER = {"ok": 0, "info": 1, "warn": 2, "crit": 3}
 
@@ -132,3 +133,104 @@ def path_findings(trace: TraceResult) -> list[Finding]:
             )
         )
     return findings
+
+
+SIGNAL_WEIGHTS: dict[str, float] = {
+    "tunnel_iface": 0.35,
+    "cf_warp": 0.50,
+    "provider_proxy": 0.35,
+    "provider_hosting": 0.40,
+    "provider_mobile": 0.10,
+    "mtu_anomaly": 0.20,
+    "dns_asn_mismatch": 0.25,
+    "gateway_egress_mismatch": 0.15,
+    "pdb_info_type_nsp": 0.15,
+    "timezone_mismatch": 0.15,
+}
+
+_TZ_COUNTRY_PREFIX = {
+    "Europe/Amsterdam": "NL",
+    "Europe/Moscow": "RU",
+    "Europe/London": "GB",
+    "Europe/Berlin": "DE",
+    "America/New_York": "US",
+    "America/Los_Angeles": "US",
+    "Asia/Tokyo": "JP",
+}
+
+
+def _signal(name: str, observed: bool, note: str = "") -> Signal:
+    return Signal(name=name, observed=observed, weight=SIGNAL_WEIGHTS[name], direction="vpn", note=note)
+
+
+def gather_vpn_signals(
+    local: LocalNet,
+    geo: IpGeo,
+    cf: CfTrace | None,
+    dns_leak: DnsLeak | None,
+    pdb_info_type: str | None,
+    os_timezone: str | None,
+    provider_flags: dict[str, bool],
+) -> list[Signal]:
+    iface = local.iface_name or ""
+    anomaly = mtu_anomaly(local.iface_mtu)
+    leaking = [
+        a
+        for a in (dns_leak.per_adapter if dns_leak else [])
+        if a.matches_egress_asn is False
+    ]
+    tz_country = _TZ_COUNTRY_PREFIX.get(os_timezone or "")
+    return [
+        _signal("tunnel_iface", is_tunnel_iface(iface), iface),
+        _signal("cf_warp", bool(cf and (cf.warp or "").lower() == "on"), (cf.warp if cf else "") or ""),
+        _signal("provider_proxy", bool(provider_flags.get("proxy"))),
+        _signal("provider_hosting", bool(provider_flags.get("hosting"))),
+        _signal("provider_mobile", bool(provider_flags.get("mobile"))),
+        _signal("mtu_anomaly", anomaly in ("wireguard", "ipsec"), anomaly or ""),
+        _signal(
+            "dns_asn_mismatch",
+            bool(leaking),
+            ", ".join(f"{a.adapter} -> {a.echoed_asn}" for a in leaking),
+        ),
+        _signal(
+            "gateway_egress_mismatch",
+            bool(local.default_gateway_v4 and is_tunnel_iface(iface)),
+            local.default_gateway_v4 or "",
+        ),
+        _signal("pdb_info_type_nsp", (pdb_info_type or "").upper() in ("NSP", "CONTENT", "ENTERPRISE"), pdb_info_type or ""),
+        _signal(
+            "timezone_mismatch",
+            bool(tz_country and geo.country_code and tz_country != geo.country_code),
+            f"{os_timezone} vs {geo.country_code}" if tz_country else "",
+        ),
+    ]
+
+
+def score_vpn(signals: list[Signal], bands: VpnBands) -> tuple[str, float]:
+    total = 0.0
+    for s in signals:
+        if not s.observed:
+            continue
+        total += s.weight if s.direction == "vpn" else -s.weight
+    confidence = round(max(0.0, min(1.0, total)), 3)
+    if confidence >= bands.confirmed:
+        return "confirmed", confidence
+    if confidence >= bands.likely:
+        return "likely", confidence
+    return "none", confidence
+
+
+def assess_vpn(
+    signals: list[Signal],
+    bands: VpnBands,
+    tunnel_iface: str | None,
+    dns_leak: DnsLeak | None,
+) -> VpnAssessment:
+    verdict, confidence = score_vpn(signals, bands)
+    return VpnAssessment(
+        verdict=verdict,
+        confidence=confidence,
+        signals=signals,
+        tunnel_iface=tunnel_iface,
+        dns_leak=dns_leak,
+    )
