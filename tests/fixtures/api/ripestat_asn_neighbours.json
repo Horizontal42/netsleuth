@@ -1,0 +1,13 @@
+{
+  "status": "ok",
+  "data_call_name": "asn-neighbours",
+  "data": {
+    "neighbours": [
+      { "asn": 3356, "type": "left", "power": 3, "v4_peers": 12, "v6_peers": 4 },
+      { "asn": 1299, "type": "left", "power": 2, "v4_peers": 8, "v6_peers": 3 },
+      { "asn": 6939, "type": "right", "power": 1, "v4_peers": 2, "v6_peers": 1 },
+      { "asn": 64501, "type": "right", "power": 1, "v4_peers": 1, "v6_peers": 0 },
+      { "asn": 8075, "type": "unknown", "power": 1, "v4_peers": 1, "v6_peers": 1 }
+    ]
+  }
+}

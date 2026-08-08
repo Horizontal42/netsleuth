@@ -1,0 +1,15 @@
+{
+  "status": "ok",
+  "data_call_name": "as-overview",
+  "data": {
+    "resource": "64500",
+    "holder": "EXAMPLE-AS Example Telecom BV",
+    "announced": true,
+    "block": {
+      "resource": "64496-64511",
+      "desc": "Reserved for use in documentation",
+      "name": "IANA 16-bit Autonomous System Number Block"
+    },
+    "type": "as"
+  }
+}
