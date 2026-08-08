@@ -1,0 +1,164 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import platform
+import shutil
+from typing import Awaitable, Callable
+
+from netcheck.models import Capabilities, TraceHop, TraceResult
+from netcheck.probes.icmp_win import IcmpReply, classify_status
+from netcheck.traceparse import build_trace_result, finalize_hop
+
+
+def tier_order(caps: Capabilities) -> list[str]:
+    order: list[str] = []
+    if caps.mtr_binary:
+        order.append("mtr_json")
+    if caps.icmp_win_api:
+        order.append("icmp_win")
+    elif caps.icmp_dgram or caps.icmp_raw:
+        order.append("icmplib")
+    if caps.traceroute_binary:
+        order.append("system_traceroute")
+    return order
+
+
+async def run_cascade(tiers: list[tuple[str, Callable[[], Awaitable[TraceResult]]]]) -> TraceResult:
+    for _name, tier in tiers:
+        try:
+            result = await tier()
+        except asyncio.CancelledError:
+            raise
+        except BaseException:  # noqa: BLE001 - a dead tier is data, the next tier gets its turn
+            continue
+        if result.hops:
+            return result
+    return TraceResult(backend="none", hops=[], completed=False)
+
+
+def hops_from_win_replies(replies: list[tuple[int, IcmpReply]]) -> list[TraceHop]:
+    hops: list[TraceHop] = []
+    for ttl, reply in replies:
+        kind = classify_status(reply.status)
+        rtt = reply.rtt_ms if kind in ("ok", "ttl_expired") else None
+        hops.append(finalize_hop(TraceHop(ttl=ttl, ip=reply.address, probes=[rtt])))
+    return hops
+
+
+async def _run(args: list[str], timeout: float) -> str:
+    process = await asyncio.create_subprocess_exec(
+        *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+    )
+    try:
+        stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        process.kill()
+        raise
+    return stdout.decode(_console_encoding(), errors="replace")
+
+
+def _console_encoding() -> str:
+    # Windows console tools emit the OEM code page (cp866 on Russian Windows),
+    # which is why every parser here works on decoded text and never on bytes.
+    if platform.system() != "Windows":
+        return "utf-8"
+    import ctypes
+
+    try:
+        return f"cp{ctypes.windll.kernel32.GetOEMCP()}"
+    except Exception:
+        return "utf-8"
+
+
+async def _tier_mtr(target: str, binary: str, cycles: int, max_hops: int, timeout: float) -> TraceResult:
+    text = await _run(
+        [binary, "--json", "--report-cycles", str(cycles), "--max-ttl", str(max_hops), target], timeout
+    )
+    payload = json.loads(text)
+    report = payload.get("report") or {}
+    hops = []
+    for entry in report.get("hubs") or []:
+        hop = TraceHop(
+            ttl=entry.get("count", 0),
+            ip=None if entry.get("host") in ("???", None) else entry.get("host"),
+            probes=[],
+            loss_pct=float(entry.get("Loss%", 0.0)),
+            min_ms=entry.get("Best"),
+            avg_ms=entry.get("Avg"),
+            max_ms=entry.get("Wrst"),
+            jitter_ms=entry.get("StDev"),
+        )
+        hops.append(hop)
+    return TraceResult(
+        target=target,
+        backend="mtr_json",
+        hops=hops,
+        cycles=cycles,
+        completed=bool(hops) and hops[-1].ip is not None,
+    )
+
+
+async def _tier_icmp_win(target: str, max_hops: int, timeout: float) -> TraceResult:
+    from netcheck.probes.icmp_win import trace_hops_win
+
+    replies = await asyncio.to_thread(trace_hops_win, target, max_hops, int(timeout * 1000))
+    hops = hops_from_win_replies(replies)
+    return TraceResult(
+        target=target,
+        backend="icmp_win",
+        hops=hops,
+        cycles=1,
+        completed=bool(hops) and classify_status(replies[-1][1].status) == "ok",
+        max_hops_reached=bool(hops) and hops[-1].ttl >= max_hops,
+    )
+
+
+async def _tier_icmplib(target: str, max_hops: int, timeout: float, privileged: bool) -> TraceResult:
+    from icmplib import async_traceroute
+
+    raw = await async_traceroute(target, max_hops=max_hops, timeout=timeout, privileged=privileged)
+    hops = [
+        finalize_hop(TraceHop(ttl=h.distance, ip=h.address, probes=list(h.rtts)))
+        for h in raw
+    ]
+    return TraceResult(
+        target=target,
+        backend="icmplib",
+        hops=hops,
+        cycles=1,
+        completed=bool(hops) and hops[-1].ip is not None,
+        max_hops_reached=bool(hops) and hops[-1].ttl >= max_hops,
+    )
+
+
+async def _tier_system(target: str, binary: str, max_hops: int, timeout: float) -> TraceResult:
+    os_name = platform.system()
+    args = (
+        [binary, "-h", str(max_hops), "-w", "2", target]
+        if os_name == "Windows"
+        else [binary, "-m", str(max_hops), "-w", "2", target]
+    )
+    text = await _run(args, timeout)
+    return build_trace_result(text, os_name, target=target, resolved_ip=None, max_hops=max_hops)
+
+
+async def traceroute(
+    target: str,
+    caps: Capabilities,
+    max_hops: int,
+    cycles: int,
+    timeout: float,
+    semaphore: asyncio.Semaphore | None = None,
+) -> TraceResult:
+    builders = {
+        "mtr_json": lambda: _tier_mtr(target, caps.mtr_binary or shutil.which("mtr") or "mtr", cycles, max_hops, timeout),
+        "icmp_win": lambda: _tier_icmp_win(target, max_hops, timeout),
+        "icmplib": lambda: _tier_icmplib(target, max_hops, timeout, privileged=not caps.icmp_dgram),
+        "system_traceroute": lambda: _tier_system(target, caps.traceroute_binary or "traceroute", max_hops, timeout),
+    }
+    tiers = [(name, builders[name]) for name in tier_order(caps)]
+    if semaphore is None:
+        return await run_cascade(tiers)
+    async with semaphore:
+        return await run_cascade(tiers)
