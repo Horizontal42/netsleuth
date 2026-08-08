@@ -4,11 +4,13 @@ import ipaddress
 import os
 import time
 from bisect import bisect_right
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
 
 from netcheck.config import Providers
+from netcheck.models import DnsblHit
 
 
 def parse_netset(text: str) -> list[str]:
@@ -91,3 +93,55 @@ async def refresh_netsets(
                     continue
         index.add(name, parse_netset(path.read_text(encoding="utf-8")))
     return index
+
+
+# Spamhaus (and its mirrors) return codes in 127.255.255.0/24 to signal a
+# problem with the QUERY, not a property of the queried IP. .254 means the
+# question arrived via a public resolver, which is the normal case for anyone
+# on 1.1.1.1 or 8.8.8.8; .255 means rate limited. Reading either as "listed"
+# red-flags most users, which is exactly the false positive this decoder exists
+# to prevent.
+DNSBL_ERROR_PREFIX = "127.255.255."
+_ERROR_REASONS = {
+    "127.255.255.254": "query_via_public_resolver",
+    "127.255.255.255": "rate_limited",
+}
+
+
+@dataclass
+class DnsblOutcome:
+    zone: str
+    listed: bool = False
+    codes: list[str] = field(default_factory=list)
+    unavailable_reason: str | None = None
+
+
+def reverse_ip(ip: str) -> str:
+    address = ipaddress.ip_address(ip)
+    if address.version != 4:
+        raise ValueError("classic DNSBL zones accept IPv4 only")
+    return ".".join(reversed(str(address).split(".")))
+
+
+def decode_dnsbl(zone: str, answers: list[str]) -> DnsblOutcome:
+    codes = list(answers)
+    errors = [code for code in codes if code.startswith(DNSBL_ERROR_PREFIX)]
+    if errors:
+        return DnsblOutcome(
+            zone=zone,
+            listed=False,
+            codes=codes,
+            unavailable_reason=_ERROR_REASONS.get(errors[0], "provider_error"),
+        )
+    listed = any(code.startswith("127.") for code in codes)
+    return DnsblOutcome(zone=zone, listed=listed, codes=codes, unavailable_reason=None)
+
+
+def summarize_dnsbl(outcomes: list[DnsblOutcome]) -> tuple[list[DnsblHit], bool]:
+    hits = [
+        DnsblHit(zone=o.zone, codes=o.codes, meaning="listed")
+        for o in outcomes
+        if o.listed
+    ]
+    blocked = any(o.unavailable_reason is not None for o in outcomes)
+    return hits, blocked
