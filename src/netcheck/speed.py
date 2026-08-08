@@ -56,3 +56,158 @@ def bufferbloat_delta(idle_rtt_ms: float | None, loaded_rtts_ms: list[float]) ->
         return None
     loaded = percentile(sorted(loaded_rtts_ms), 95.0)
     return round(max(0.0, loaded - idle_rtt_ms), 3)
+
+
+import asyncio
+import time
+from typing import Awaitable, Callable
+
+from netcheck.models import SpeedResult, TierAttempt
+
+NDT7_CONSENT_NOTICE = (
+    "M-Lab NDT7 publishes every measurement as public CC0 open data, including your "
+    "IP address. Pass --ndt7 only if that is acceptable to you."
+)
+
+
+async def run_speed_cascade(
+    tiers: list[tuple[str, Callable[[], Awaitable[SpeedResult]]]],
+) -> SpeedResult:
+    attempts: list[TierAttempt] = []
+    for name, tier in tiers:
+        began = time.perf_counter()
+        try:
+            result = await tier()
+        except asyncio.CancelledError:
+            raise
+        except BaseException as exc:  # noqa: BLE001 - a dead tier is data, not control flow
+            attempts.append(
+                TierAttempt(
+                    tier=name,
+                    ok=False,
+                    reason=str(exc) or exc.__class__.__name__,
+                    duration_ms=int((time.perf_counter() - began) * 1000),
+                )
+            )
+            continue
+        duration_ms = int((time.perf_counter() - began) * 1000)
+        if not result.download_mbps:
+            attempts.append(
+                TierAttempt(tier=name, ok=False, reason="no throughput measured", duration_ms=duration_ms)
+            )
+            continue
+        attempts.append(TierAttempt(tier=name, ok=True, reason=None, duration_ms=duration_ms))
+        result.tier_attempts = attempts
+        return result
+    return SpeedResult(method="none", tier_attempts=attempts)
+
+
+import json
+
+import httpx
+
+from netcheck.config import Speedtest
+
+
+async def tier_ookla(binary: str, server: str | None, timeout: float) -> SpeedResult:
+    args = [binary, "--format=json", "--accept-license", "--accept-gdpr"]
+    if server:
+        args += ["--server-id", server] if server.isdigit() else ["--host", server]
+    process = await asyncio.create_subprocess_exec(
+        *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+    )
+    stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
+    payload = json.loads(stdout.decode("utf-8", "replace"))
+    download = payload.get("download") or {}
+    upload = payload.get("upload") or {}
+    server_info = payload.get("server") or {}
+    return SpeedResult(
+        method="ookla_bin",
+        download_mbps=round(mbps(download.get("bytes", 0), (download.get("elapsed", 0) or 0) / 1000), 3),
+        upload_mbps=round(mbps(upload.get("bytes", 0), (upload.get("elapsed", 0) or 0) / 1000), 3),
+        server=f"{server_info.get('name', '')} ({server_info.get('location', '')})".strip(),
+        idle_rtt_ms=(payload.get("ping") or {}).get("latency"),
+    )
+
+
+async def tier_cloudflare(client: httpx.AsyncClient, cfg: Speedtest, timeout: float) -> SpeedResult:
+    down_samples: list[tuple[int, float]] = []
+    cfl4: CfL4Stats | None = None
+    for size in cfg.download_sizes_bytes:
+        began = time.perf_counter()
+        response = await client.get(
+            f"{cfg.cloudflare_base_url}/__down", params={"bytes": size}, timeout=timeout
+        )
+        response.raise_for_status()
+        down_samples.append((len(response.content), time.perf_counter() - began))
+        cfl4 = parse_server_timing_cfl4(response.headers.get("server-timing", "")) or cfl4
+    up_samples: list[tuple[int, float]] = []
+    for size in cfg.upload_sizes_bytes:
+        payload = b"\x00" * size
+        began = time.perf_counter()
+        response = await client.post(f"{cfg.cloudflare_base_url}/__up", content=payload, timeout=timeout)
+        response.raise_for_status()
+        up_samples.append((size, time.perf_counter() - began))
+    return SpeedResult(
+        method="cloudflare",
+        download_mbps=throughput_from_samples(down_samples),
+        upload_mbps=throughput_from_samples(up_samples),
+        server="speed.cloudflare.com",
+        cfL4_stats=cfl4,
+    )
+
+
+async def tier_fastcom(client: httpx.AsyncClient, cfg: Speedtest, timeout: float) -> SpeedResult:
+    response = await client.get(
+        cfg.fastcom_api_url,
+        params={"https": "true", "token": "YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm", "urlCount": "3"},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    targets = response.json().get("targets") or []
+    samples: list[tuple[int, float]] = []
+    on_net: bool | None = None
+    for target in targets:
+        url = target.get("url")
+        if not url:
+            continue
+        location = (target.get("location") or {}).get("country")
+        on_net = on_net or bool(location)
+        began = time.perf_counter()
+        body = await client.get(url, timeout=timeout)
+        body.raise_for_status()
+        samples.append((len(body.content), time.perf_counter() - began))
+    return SpeedResult(
+        method="fastcom",
+        download_mbps=throughput_from_samples(samples),
+        upload_mbps=None,
+        server=targets[0].get("url", "").split("/")[2] if targets else None,
+        netflix_oca_onnet=on_net,
+    )
+
+
+async def tier_ndt7(client: httpx.AsyncClient, cfg: Speedtest, timeout: float) -> SpeedResult:
+    import websockets
+
+    locate = await client.get(cfg.ndt7_locate_url, timeout=timeout)
+    locate.raise_for_status()
+    results = locate.json().get("results") or []
+    if not results:
+        raise RuntimeError("no ndt7 server offered by locate.measurementlab.net")
+    url = results[0]["urls"]["wss:///ndt/v7/download"]
+    total = 0
+    began = time.perf_counter()
+    async with websockets.connect(url, subprotocols=["net.measurementlab.ndt.v7"]) as socket:
+        while time.perf_counter() - began < 10:
+            try:
+                message = await asyncio.wait_for(socket.recv(), timeout=timeout)
+            except (asyncio.TimeoutError, Exception):
+                break
+            total += len(message) if isinstance(message, (bytes, bytearray)) else len(message.encode())
+    elapsed = time.perf_counter() - began
+    return SpeedResult(
+        method="ndt7",
+        download_mbps=round(mbps(total, elapsed), 3),
+        upload_mbps=None,
+        server=results[0].get("machine"),
+    )

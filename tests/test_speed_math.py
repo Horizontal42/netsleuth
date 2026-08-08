@@ -84,3 +84,88 @@ def test_bufferbloat_delta_never_goes_negative():
 def test_bufferbloat_delta_needs_both_a_baseline_and_samples():
     assert bufferbloat_delta(None, [10.0]) is None
     assert bufferbloat_delta(12.0, []) is None
+
+
+from netcheck.models import SpeedResult, TierAttempt
+from netcheck.speed import NDT7_CONSENT_NOTICE, run_speed_cascade
+
+
+async def test_cascade_stops_at_the_first_tier_that_returns_a_download_figure():
+    calls: list[str] = []
+
+    async def ookla() -> SpeedResult:
+        calls.append("ookla")
+        return SpeedResult(method="ookla_bin", download_mbps=312.4, upload_mbps=41.0)
+
+    async def cloudflare() -> SpeedResult:
+        calls.append("cloudflare")
+        return SpeedResult(method="cloudflare", download_mbps=280.0)
+
+    result = await run_speed_cascade([("ookla_bin", ookla), ("cloudflare", cloudflare)])
+    assert result.method == "ookla_bin"
+    assert result.download_mbps == 312.4
+    assert calls == ["ookla"]
+    assert [a.tier for a in result.tier_attempts] == ["ookla_bin"]
+    assert result.tier_attempts[0].ok is True
+
+
+async def test_cascade_records_a_failed_tier_and_moves_on():
+    async def ookla() -> SpeedResult:
+        raise FileNotFoundError("speedtest binary not on PATH")
+
+    async def cloudflare() -> SpeedResult:
+        return SpeedResult(method="cloudflare", download_mbps=280.0)
+
+    result = await run_speed_cascade([("ookla_bin", ookla), ("cloudflare", cloudflare)])
+    assert result.method == "cloudflare"
+    assert [a.tier for a in result.tier_attempts] == ["ookla_bin", "cloudflare"]
+    assert result.tier_attempts[0].ok is False
+    assert "not on PATH" in result.tier_attempts[0].reason
+    assert result.tier_attempts[1].ok is True
+
+
+async def test_a_tier_that_returns_zero_download_counts_as_a_failure():
+    async def dead() -> SpeedResult:
+        return SpeedResult(method="cloudflare", download_mbps=0.0)
+
+    async def alive() -> SpeedResult:
+        return SpeedResult(method="fastcom", download_mbps=95.0)
+
+    result = await run_speed_cascade([("cloudflare", dead), ("fastcom", alive)])
+    assert result.method == "fastcom"
+    assert result.tier_attempts[0].ok is False
+    assert result.tier_attempts[0].reason == "no throughput measured"
+
+
+async def test_cascade_exhaustion_is_a_failed_result_not_an_exception():
+    async def boom() -> SpeedResult:
+        raise OSError("network unreachable")
+
+    result = await run_speed_cascade([("ookla_bin", boom), ("cloudflare", boom), ("fastcom", boom)])
+    assert isinstance(result, SpeedResult)
+    assert result.method == "none"
+    assert result.download_mbps is None
+    assert [a.tier for a in result.tier_attempts] == ["ookla_bin", "cloudflare", "fastcom"]
+    assert all(a.ok is False for a in result.tier_attempts)
+
+
+async def test_an_empty_cascade_is_a_failed_result():
+    result = await run_speed_cascade([])
+    assert result.method == "none"
+    assert result.tier_attempts == []
+
+
+async def test_cascade_never_swallows_cancellation():
+    import asyncio
+
+    async def cancelled() -> SpeedResult:
+        raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        await run_speed_cascade([("ookla_bin", cancelled)])
+
+
+def test_the_ndt7_consent_notice_states_what_gets_published():
+    assert "CC0" in NDT7_CONSENT_NOTICE
+    assert "IP" in NDT7_CONSENT_NOTICE
+    assert "public" in NDT7_CONSENT_NOTICE.lower()
