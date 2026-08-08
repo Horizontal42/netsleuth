@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+import re
+
+from netcheck.models import TraceHop
+from netcheck.stats import rtt_stats
+
+IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+IPV6_RE = re.compile(r"\b(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}\b")
+ANNOTATION_RE = re.compile(r"!\w*")
+_HOP_LINE_RE = re.compile(r"^\s*(\d{1,3})\s+(.*)$")
+_UNIX_PROBE_RE = re.compile(r"(?P<rtt>\d+(?:\.\d+)?)\s*ms|(?P<star>\*)")
+_UNIX_HOSTIP_RE = re.compile(r"(?P<name>[A-Za-z0-9._-]+)\s+\((?P<ip>[0-9a-fA-F:.]+)\)")
+
+
+def finalize_hop(hop: TraceHop) -> TraceHop:
+    s = rtt_stats(hop.probes)
+    hop.loss_pct = s.loss_pct
+    hop.min_ms = s.min_ms
+    hop.avg_ms = s.avg_ms
+    hop.max_ms = s.max_ms
+    hop.jitter_ms = s.jitter_ms
+    return hop
+
+
+def _extract_ip(text: str) -> str | None:
+    v4 = IPV4_RE.search(text)
+    if v4:
+        return v4.group(0)
+    v6 = IPV6_RE.search(text)
+    return v6.group(0) if v6 else None
+
+
+def _unix_host_and_ip(body: str) -> tuple[str | None, str | None]:
+    match = _UNIX_HOSTIP_RE.search(body)
+    if match:
+        name, ip = match.group("name"), match.group("ip")
+        return (None if name == ip else name), ip
+    return None, _extract_ip(body)
+
+
+def _unix_probes(body: str) -> list[float | None]:
+    probes: list[float | None] = []
+    for match in _UNIX_PROBE_RE.finditer(body):
+        probes.append(None if match.group("star") else float(match.group("rtt")))
+    return probes
+
+
+def _unix_annotations(body: str) -> list[str]:
+    seen: list[str] = []
+    for token in ANNOTATION_RE.findall(body):
+        if token not in seen:
+            seen.append(token)
+    return seen
+
+
+def parse_linux(text: str) -> list[TraceHop]:
+    hops: list[TraceHop] = []
+    for line in text.splitlines():
+        match = _HOP_LINE_RE.match(line)
+        if not match:
+            continue
+        ttl, body = int(match.group(1)), match.group(2)
+        rdns, ip = _unix_host_and_ip(body)
+        hop = TraceHop(
+            ttl=ttl,
+            ip=ip,
+            reverse_dns=rdns,
+            probes=_unix_probes(body),
+            annotations=_unix_annotations(body),
+        )
+        hops.append(finalize_hop(hop))
+    return hops

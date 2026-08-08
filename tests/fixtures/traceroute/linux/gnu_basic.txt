@@ -1,0 +1,7 @@
+traceroute to 1.1.1.1 (1.1.1.1), 30 hops max, 60 byte packets
+ 1  _gateway (192.168.1.1)  1.234 ms  1.102 ms  1.045 ms
+ 2  10.64.0.1 (10.64.0.1)  8.421 ms  8.502 ms  8.377 ms
+ 3  * * *
+ 4  ae-1.r01.ams.example.net (77.88.1.5)  12.004 ms  11.883 ms  12.111 ms
+ 5  * 13.402 ms *
+ 6  one.one.one.one (1.1.1.1)  13.552 ms  13.401 ms  13.298 ms

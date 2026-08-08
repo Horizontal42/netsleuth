@@ -1,0 +1,6 @@
+traceroute to 203.0.113.200 (203.0.113.200), 5 hops max, 60 byte packets
+ 1  _gateway (192.168.1.1)  1.100 ms  1.050 ms  1.030 ms
+ 2  * * *
+ 3  * * *
+ 4  * * *
+ 5  * * *

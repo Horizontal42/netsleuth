@@ -1,0 +1,4 @@
+traceroute to 203.0.113.9 (203.0.113.9), 30 hops max, 60 byte packets
+ 1  _gateway (192.168.1.1)  1.100 ms  1.050 ms  1.030 ms
+ 2  10.64.0.1 (10.64.0.1)  8.200 ms !N  8.300 ms !N  8.250 ms !N
+ 3  border.example.net (198.51.100.7)  15.100 ms !H  15.200 ms  15.050 ms
