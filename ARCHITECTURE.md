@@ -20,7 +20,8 @@ src/netcheck/
   traceparse.py   Pure text -> TraceHop parsers for Windows, Linux and BSD/macOS output.
   interpret.py    Pure verdict engine: thresholds -> Finding[], VPN scoring, bufferbloat grade.
   speed.py        Cascading speedtest, throughput math, cfL4 header parsing, bufferbloat probe.
-  exporter.py     JSON and Markdown rendering, atomic writes into ./logs/.
+  exporter.py     JSON and Markdown rendering, atomic writes into ./logs/. Deliberately over
+                  the file-size guideline to keep both output formats in one place.
   compare.py      --compare: diff two saved JSON reports.
   watch.py        --watch: periodic re-run loop with a live Rich dashboard.
   probes/

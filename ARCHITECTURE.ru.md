@@ -20,7 +20,8 @@ src/netcheck/
   traceparse.py   Чистые парсеры текста в TraceHop для Windows, Linux и BSD/macOS.
   interpret.py    Чистый движок вердиктов: пороги -> Finding[], скоринг VPN, оценка bufferbloat.
   speed.py        Каскадный замер скорости, математика пропускной способности, разбор cfL4, bufferbloat.
-  exporter.py     Рендер JSON и Markdown, атомарная запись в ./logs/.
+  exporter.py     Рендер JSON и Markdown, атомарная запись в ./logs/. Намеренно превышает
+                  лимит размера файла, чтобы оба формата вывода жили в одном месте.
   compare.py      --compare: сравнение двух сохранённых JSON-отчётов.
   watch.py        --watch: цикл периодических прогонов с живой панелью Rich.
   probes/
