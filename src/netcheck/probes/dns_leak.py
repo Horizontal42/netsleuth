@@ -76,3 +76,75 @@ def build_dns_leak(results: list[AdapterLeakResult], ecs_leaked: bool) -> DnsLea
         parts.append("The resolver forwards your EDNS Client Subnet, exposing your network to authoritative servers.")
     parts.append(_LEAK_NOTE)
     return DnsLeak(per_adapter=results, ecs_leaked=ecs_leaked, note=" ".join(parts))
+
+
+import asyncio
+
+import dns.asyncresolver
+import dns.exception
+
+from netcheck.bgp import parse_cymru_origin
+from netcheck.models import LocalNet
+
+MYADDR_NAME = "o-o.myaddr.l.google.com"
+AKAHELP_NAME = "whoami.ds.akahelp.net"
+
+
+async def _txt(resolver: dns.asyncresolver.Resolver, name: str) -> list[str]:
+    try:
+        answer = await resolver.resolve(name, "TXT")
+    except dns.exception.DNSException:
+        return []
+    return [b" ".join(record.strings).decode("utf-8", "replace") for record in answer]
+
+
+def _resolver_for(server: str, timeout: float) -> dns.asyncresolver.Resolver:
+    resolver = dns.asyncresolver.Resolver(configure=False)
+    resolver.nameservers = [server]
+    resolver.lifetime = timeout
+    return resolver
+
+
+async def echo_probe(resolver_ip: str, timeout: float) -> tuple[str | None, dict[str, str]]:
+    resolver = _resolver_for(resolver_ip, timeout)
+    myaddr, akahelp = await asyncio.gather(
+        _txt(resolver, MYADDR_NAME), _txt(resolver, AKAHELP_NAME)
+    )
+    parsed = parse_akahelp(akahelp)
+    return parse_myaddr(myaddr) or parsed.get("ns"), parsed
+
+
+async def asn_for_ip(ip: str, zone: str, timeout: float) -> str | None:
+    try:
+        reversed_ip = ".".join(reversed(ip.split(".")))
+    except AttributeError:
+        return None
+    resolver = dns.asyncresolver.Resolver()
+    resolver.lifetime = timeout
+    records = await _txt(resolver, f"{reversed_ip}.{zone}")
+    for record in records:
+        parsed = parse_cymru_origin(record)
+        if parsed.get("asn"):
+            return parsed["asn"]
+    return None
+
+
+async def collect_dns_leak(
+    local: LocalNet,
+    egress_asn: str | None,
+    cymru_zone: str,
+    timeout: float,
+) -> DnsLeak:
+    results: list[AdapterLeakResult] = []
+    ecs_leaked = False
+    for adapter, resolvers in local.dns_servers_per_adapter.items():
+        if not resolvers:
+            continue
+        try:
+            echoed_ip, akahelp = await echo_probe(resolvers[0], timeout)
+        except dns.exception.DNSException:
+            echoed_ip, akahelp = None, {}
+        ecs_leaked = ecs_leaked or detect_ecs_leak(akahelp)
+        echoed_asn = await asn_for_ip(echoed_ip, cymru_zone, timeout) if echoed_ip else None
+        results.append(build_adapter_result(adapter, resolvers, echoed_ip, echoed_asn, egress_asn))
+    return build_dns_leak(results, ecs_leaked)
