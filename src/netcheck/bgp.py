@@ -171,3 +171,135 @@ async def cached_json(
     tmp.write_text(json.dumps(payload), encoding="utf-8")
     os.replace(tmp, path)
     return payload
+
+
+from netcheck.models import BgpIntel
+
+
+def build_bgp_intel(
+    asn: str,
+    overview: dict,
+    neighbours: dict,
+    prefixes: dict,
+    updates: dict,
+    asrank: dict | None,
+    pdb_net: dict | None,
+    pdb_ixlan: dict | None,
+    timeframe_days: int,
+) -> BgpIntel:
+    info = parse_as_overview(overview)
+    upstreams, peers, downstreams = parse_asn_neighbours(neighbours)
+    announced, v4, v6 = parse_announced_prefixes(prefixes)
+    events = parse_bgp_updates(updates)
+    rank, cone_asns, cone_prefixes = parse_asrank(asrank) if asrank else (None, None, None)
+    info_type, traffic, _net_id = parse_peeringdb_net(pdb_net) if pdb_net else (None, None, None)
+    return BgpIntel(
+        asn=asn,
+        holder=info["holder"],
+        registry=info["registry"],
+        allocated_at=info["allocated_at"],
+        upstreams=upstreams,
+        peers=peers,
+        downstreams=downstreams,
+        announced_prefixes=announced,
+        prefix_count_v4=v4,
+        prefix_count_v6=v6,
+        flaps=events,
+        stability=classify_stability(events, timeframe_days),
+        ixps=parse_peeringdb_netixlan(pdb_ixlan) if pdb_ixlan else [],
+        pdb_info_type=info_type,
+        pdb_traffic=traffic,
+        asrank=rank,
+        cone_asns=cone_asns,
+        cone_prefixes=cone_prefixes,
+    )
+
+
+import asyncio
+
+_ASRANK_QUERY = """
+query ASN($asn: String!) {
+  asn(asn: $asn) {
+    asn
+    rank
+    asnName
+    organization { orgName }
+    cone { numberAsns numberPrefixes numberAddresses }
+    asnDegree { provider peer customer total }
+  }
+}
+"""
+
+
+async def collect_bgp(
+    client: httpx.AsyncClient,
+    providers: Providers,
+    cache_dir: Path,
+    asn: str,
+    peeringdb_key: str | None = None,
+) -> tuple[BgpIntel, dict[str, object]]:
+    number = asn.upper().removeprefix("AS")
+
+    async def _asrank() -> dict:
+        response = await client.post(
+            providers.asrank_url, json={"query": _ASRANK_QUERY, "variables": {"asn": number}}
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def _pdb(endpoint: str, **params) -> dict:
+        headers = {"Authorization": f"Api-Key {peeringdb_key}"} if peeringdb_key else {}
+        response = await client.get(
+            f"{providers.peeringdb_base_url}/{endpoint}", params=params, headers=headers
+        )
+        response.raise_for_status()
+        return response.json()
+
+    settled = await asyncio.gather(
+        ripestat(client, providers, "as-overview", asn),
+        ripestat(client, providers, "asn-neighbours", asn),
+        ripestat(client, providers, "announced-prefixes", asn),
+        ripestat(client, providers, "bgp-updates", asn),
+        _asrank(),
+        cached_json(cache_dir, f"pdb-net-{number}", providers.peeringdb_cache_hours, lambda: _pdb("net", asn=number)),
+        return_exceptions=True,
+    )
+    overview, neighbours, prefixes, updates, asrank, pdb_net = [
+        None if isinstance(item, BaseException) else item for item in settled
+    ]
+
+    pdb_ixlan = None
+    if pdb_net:
+        _, _, net_id = parse_peeringdb_net(pdb_net)
+        if net_id:
+            try:
+                pdb_ixlan = await cached_json(
+                    cache_dir,
+                    f"pdb-netixlan-{net_id}",
+                    providers.peeringdb_cache_hours,
+                    lambda: _pdb("netixlan", net_id=net_id),
+                )
+            except httpx.HTTPError:
+                pdb_ixlan = None
+
+    intel = build_bgp_intel(
+        asn=asn,
+        overview=overview or {},
+        neighbours=neighbours or {},
+        prefixes=prefixes or {},
+        updates=updates or {},
+        asrank=asrank,
+        pdb_net=pdb_net,
+        pdb_ixlan=pdb_ixlan,
+        timeframe_days=providers.ripestat_timeframe_days,
+    )
+    raw = {
+        "ripestat-as-overview": overview,
+        "ripestat-asn-neighbours": neighbours,
+        "ripestat-announced-prefixes": prefixes,
+        "ripestat-bgp-updates": updates,
+        "caida-asrank": asrank,
+        "peeringdb-net": pdb_net,
+        "peeringdb-netixlan": pdb_ixlan,
+    }
+    return intel, {k: v for k, v in raw.items() if v is not None}
