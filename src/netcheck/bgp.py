@@ -102,3 +102,72 @@ async def ripestat(
     response = await client.get(f"{providers.ripestat_base_url}/{call}/data.json", params=params)
     response.raise_for_status()
     return response.json()
+
+
+import json
+import os
+import time
+from pathlib import Path
+from typing import Awaitable, Callable
+
+from netcheck.models import IxpPresence
+
+
+def parse_asrank(payload: dict) -> tuple[int | None, int | None, int | None]:
+    asn = ((payload.get("data") or {}).get("asn")) or {}
+    cone = asn.get("cone") or {}
+    return asn.get("rank"), cone.get("numberAsns"), cone.get("numberPrefixes")
+
+
+def parse_cymru_origin(txt_record: str) -> dict[str, str]:
+    parts = [part.strip() for part in txt_record.split("|")]
+    if len(parts) < 5:
+        return {}
+    return {
+        "asn": _as_label(parts[0].split()[0]),
+        "prefix": parts[1],
+        "country": parts[2],
+        "registry": parts[3],
+        "allocated_at": parts[4],
+    }
+
+
+def parse_peeringdb_net(payload: dict) -> tuple[str | None, str | None, int | None]:
+    rows = payload.get("data") or []
+    if not rows:
+        return None, None, None
+    row = rows[0]
+    return row.get("info_type") or None, row.get("info_traffic") or None, row.get("id")
+
+
+def parse_peeringdb_netixlan(payload: dict) -> list[IxpPresence]:
+    return [
+        IxpPresence(
+            name=row.get("name", ""),
+            city=row.get("city"),
+            country=row.get("country"),
+            speed_mbps=row.get("speed"),
+        )
+        for row in payload.get("data") or []
+        if row.get("operational")
+    ]
+
+
+async def cached_json(
+    cache_dir: Path,
+    key: str,
+    ttl_hours: int,
+    fetch: Callable[[], Awaitable[dict]],
+) -> dict:
+    path = Path(cache_dir) / f"{key}.json"
+    if path.exists() and (time.time() - path.stat().st_mtime) < ttl_hours * 3600:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    payload = await fetch()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload), encoding="utf-8")
+    os.replace(tmp, path)
+    return payload

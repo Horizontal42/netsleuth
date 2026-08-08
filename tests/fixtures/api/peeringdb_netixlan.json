@@ -1,0 +1,7 @@
+{
+  "data": [
+    { "id": 1, "net_id": 4242, "name": "AMS-IX", "city": "Amsterdam", "country": "NL", "speed": 100000, "operational": true },
+    { "id": 2, "net_id": 4242, "name": "DE-CIX Frankfurt", "city": "Frankfurt", "country": "DE", "speed": 200000, "operational": true },
+    { "id": 3, "net_id": 4242, "name": "Dead-IX", "city": "Nowhere", "country": "NL", "speed": 1000, "operational": false }
+  ]
+}

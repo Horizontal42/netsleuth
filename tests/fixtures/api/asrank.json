@@ -1,0 +1,12 @@
+{
+  "data": {
+    "asn": {
+      "asn": "64500",
+      "rank": 1842,
+      "asnName": "EXAMPLE-AS",
+      "organization": { "orgName": "Example Telecom BV" },
+      "cone": { "numberAsns": 37, "numberPrefixes": 412, "numberAddresses": 1048576 },
+      "asnDegree": { "provider": 2, "peer": 1, "customer": 4, "total": 7 }
+    }
+  }
+}

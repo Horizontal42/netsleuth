@@ -1,0 +1,13 @@
+{
+  "data": [
+    {
+      "id": 4242,
+      "asn": 64500,
+      "name": "Example Telecom",
+      "info_type": "Cable/DSL/ISP",
+      "info_traffic": "100-200Gbps",
+      "info_scope": "Regional",
+      "policy_general": "Open"
+    }
+  ]
+}

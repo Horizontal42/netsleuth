@@ -94,3 +94,101 @@ async def test_ripestat_does_not_bound_non_bulk_calls(httpx_mock):
     request = httpx_mock.get_request()
     assert "max_rows" not in request.url.params
     assert "starttime" not in request.url.params
+
+
+import json
+from pathlib import Path
+
+from netcheck.bgp import (
+    cached_json,
+    parse_asrank,
+    parse_cymru_origin,
+    parse_peeringdb_net,
+    parse_peeringdb_netixlan,
+)
+
+
+def test_asrank_gives_rank_and_customer_cone(api_fixture):
+    rank, cone_asns, cone_prefixes = parse_asrank(api_fixture("asrank.json"))
+    assert rank == 1842
+    assert cone_asns == 37
+    assert cone_prefixes == 412
+
+
+def test_asrank_of_an_unknown_asn_is_all_none():
+    assert parse_asrank({"data": {"asn": None}}) == (None, None, None)
+
+
+def test_cymru_origin_txt_is_split_into_fields():
+    record = "64500 | 203.0.113.0/24 | NL | ripencc | 2001-05-21"
+    assert parse_cymru_origin(record) == {
+        "asn": "AS64500",
+        "prefix": "203.0.113.0/24",
+        "country": "NL",
+        "registry": "ripencc",
+        "allocated_at": "2001-05-21",
+    }
+
+
+def test_cymru_origin_with_multiple_origin_asns_takes_the_first():
+    record = "64500 64501 | 203.0.113.0/24 | NL | ripencc | 2001-05-21"
+    assert parse_cymru_origin(record)["asn"] == "AS64500"
+
+
+def test_cymru_origin_of_garbage_is_empty():
+    assert parse_cymru_origin("no such name") == {}
+
+
+def test_peeringdb_net_gives_info_type_traffic_and_id(api_fixture):
+    info_type, traffic, net_id = parse_peeringdb_net(api_fixture("peeringdb_net.json"))
+    assert info_type == "Cable/DSL/ISP"
+    assert traffic == "100-200Gbps"
+    assert net_id == 4242
+
+
+def test_peeringdb_net_of_an_unlisted_asn_is_all_none():
+    assert parse_peeringdb_net({"data": []}) == (None, None, None)
+
+
+def test_peeringdb_netixlan_lists_only_operational_exchanges(api_fixture):
+    ixps = parse_peeringdb_netixlan(api_fixture("peeringdb_netixlan.json"))
+    assert [i.name for i in ixps] == ["AMS-IX", "DE-CIX Frankfurt"]
+    assert ixps[0].country == "NL"
+    assert ixps[1].speed_mbps == 200000
+
+
+async def test_cached_json_writes_then_reuses_the_cache(tmp_path: Path):
+    calls = []
+
+    async def fetch() -> dict:
+        calls.append(1)
+        return {"value": len(calls)}
+
+    first = await cached_json(tmp_path, "peeringdb-net-64500", ttl_hours=24, fetch=fetch)
+    second = await cached_json(tmp_path, "peeringdb-net-64500", ttl_hours=24, fetch=fetch)
+    assert first == {"value": 1}
+    assert second == {"value": 1}
+    assert len(calls) == 1
+    assert json.loads((tmp_path / "peeringdb-net-64500.json").read_text(encoding="utf-8"))["value"] == 1
+
+
+async def test_cached_json_refetches_once_the_entry_expires(tmp_path: Path):
+    calls = []
+
+    async def fetch() -> dict:
+        calls.append(1)
+        return {"value": len(calls)}
+
+    await cached_json(tmp_path, "k", ttl_hours=24, fetch=fetch)
+    result = await cached_json(tmp_path, "k", ttl_hours=0, fetch=fetch)
+    assert result == {"value": 2}
+    assert len(calls) == 2
+
+
+async def test_cached_json_survives_a_corrupt_cache_file(tmp_path: Path):
+    (tmp_path / "k.json").write_text("{not json", encoding="utf-8")
+
+    async def fetch() -> dict:
+        return {"value": "fresh"}
+
+    assert await cached_json(tmp_path, "k", ttl_hours=24, fetch=fetch) == {"value": "fresh"}
