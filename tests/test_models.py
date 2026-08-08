@@ -4,7 +4,32 @@ import json
 
 import pytest
 
-from netcheck.models import Finding, ModuleResult, ProbeError, Signal, to_jsonable
+from netcheck.models import (
+    AdapterLeakResult,
+    BgpEvent,
+    BgpIntel,
+    Capabilities,
+    CfL4Stats,
+    CfTrace,
+    DnsLeak,
+    DnsblHit,
+    Finding,
+    InternetDbResult,
+    IpGeo,
+    IxpPresence,
+    LocalNet,
+    ModuleResult,
+    PingResult,
+    ProbeError,
+    Reputation,
+    Signal,
+    SpeedResult,
+    TierAttempt,
+    TraceHop,
+    TraceResult,
+    VpnAssessment,
+    to_jsonable,
+)
 
 
 def test_probe_error_rejects_unknown_kind():
@@ -97,3 +122,126 @@ def test_finding_rejects_unknown_severity():
             threshold=None,
             advice=None,
         )
+
+
+def test_every_domain_shape_defaults_to_constructible_with_no_arguments():
+    for cls in (
+        Capabilities,
+        LocalNet,
+        IpGeo,
+        CfTrace,
+        VpnAssessment,
+        DnsLeak,
+        BgpIntel,
+        Reputation,
+        SpeedResult,
+        TraceResult,
+    ):
+        instance = cls()
+        json.dumps(to_jsonable(instance), allow_nan=False)
+
+
+def test_ping_result_round_trips_through_json():
+    ping = PingResult(
+        label="cloudflare-dns",
+        host="1.1.1.1",
+        resolved_ip="1.1.1.1",
+        method="icmp_win",
+        sent=20,
+        received=20,
+        loss_pct=0.0,
+        min_ms=11.0,
+        avg_ms=12.4,
+        max_ms=15.1,
+        mdev_ms=0.9,
+        jitter_ms=1.9,
+        samples=[11.0, 12.0, None, 15.1],
+    )
+    out = json.loads(json.dumps(to_jsonable(ping), allow_nan=False))
+    assert out["method"] == "icmp_win"
+    assert out["samples"][2] is None
+
+
+def test_trace_result_nests_hops():
+    trace = TraceResult(
+        target="1.1.1.1",
+        resolved_ip="1.1.1.1",
+        backend="icmp_win",
+        hops=[TraceHop(ttl=1, ip="192.168.1.1", probes=[1.2, 1.1, None], annotations=["!H"])],
+        cycles=1,
+        completed=True,
+    )
+    out = to_jsonable(trace)
+    assert out["hops"][0]["ttl"] == 1
+    assert out["hops"][0]["annotations"] == ["!H"]
+    assert out["backend"] == "icmp_win"
+
+
+def test_reputation_composes_optional_sub_results():
+    rep = Reputation(
+        internetdb=InternetDbResult(ip="203.0.113.44", ports=[80, 443], tags=["cdn"]),
+        firehol_hits=["firehol_level1"],
+        dnsbl_hits=[DnsblHit(zone="zen.spamhaus.org", codes=["127.0.0.2"], meaning="listed")],
+        dnsbl_query_blocked=False,
+        captcha_risk="medium",
+        rationale="Listed on one blocklist.",
+    )
+    out = to_jsonable(rep)
+    assert out["internetdb"]["ports"] == [80, 443]
+    assert out["dnsbl_hits"][0]["zone"] == "zen.spamhaus.org"
+
+
+def test_bgp_intel_nests_events_and_ixps():
+    bgp = BgpIntel(
+        asn="AS64500",
+        holder="Example Telecom",
+        flaps=[BgpEvent(timestamp="2026-08-01T00:00:00Z", type="A", prefix="203.0.113.0/24")],
+        ixps=[IxpPresence(name="AMS-IX", city="Amsterdam", country="NL", speed_mbps=100000)],
+        stability="stable",
+    )
+    out = to_jsonable(bgp)
+    assert out["flaps"][0]["prefix"] == "203.0.113.0/24"
+    assert out["ixps"][0]["speed_mbps"] == 100000
+
+
+def test_speed_result_carries_tier_attempts_and_cfl4():
+    speed = SpeedResult(
+        method="cloudflare",
+        tier_attempts=[
+            TierAttempt(tier="ookla_bin", ok=False, reason="binary not on PATH"),
+            TierAttempt(tier="cloudflare", ok=True, reason=None),
+        ],
+        download_mbps=284.3,
+        upload_mbps=41.7,
+        cfL4_stats=CfL4Stats(rtt_ms=12.0, min_rtt_ms=11.0, rtt_var_ms=1.5, delivery_rate_bps=35000000, cwnd=42, unsent_bytes=0, recv_bytes=1048576),
+    )
+    out = to_jsonable(speed)
+    assert out["tier_attempts"][0]["ok"] is False
+    assert out["cfL4_stats"]["rtt_ms"] == 12.0
+
+
+def test_adapter_leak_result_and_dns_leak_compose():
+    leak = DnsLeak(
+        per_adapter=[
+            AdapterLeakResult(
+                adapter="Wi-Fi",
+                configured_resolvers=["192.168.1.1"],
+                echoed_ip="203.0.113.9",
+                echoed_asn="AS64501",
+                matches_egress_asn=False,
+            )
+        ],
+        ecs_leaked=True,
+        note="ISP resolver still active on Wi-Fi adapter.",
+    )
+    out = to_jsonable(leak)
+    assert out["per_adapter"][0]["matches_egress_asn"] is False
+    assert out["ecs_leaked"] is True
+
+
+def test_ip_geo_and_vpn_assessment_defaults_are_json_safe():
+    geo = IpGeo(ip="203.0.113.44", ip_version=4, asn="AS64500", sources={"asn": "ip-api"})
+    vpn = VpnAssessment(verdict="likely", confidence=0.55, signals=[Signal("warp", True, 0.5, "vpn")])
+    out = to_jsonable({"geo": geo, "vpn": vpn})
+    assert out["geo"]["ip_type"] == "unknown"
+    assert out["vpn"]["signals"][0]["name"] == "warp"

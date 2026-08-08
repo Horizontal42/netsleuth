@@ -78,6 +78,233 @@ class Signal:
             raise ValueError(f"unknown Signal direction: {self.direction!r}")
 
 
+@dataclass
+class Capabilities:
+    os_name: str = ""
+    is_elevated: bool = False
+    icmp_dgram: bool = False
+    icmp_raw: bool = False
+    icmp_win_api: bool = False
+    mtr_binary: str | None = None
+    traceroute_binary: str | None = None
+    chosen_latency_backend: str = "none"
+    chosen_trace_backend: str = "none"
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class LocalNet:
+    iface_name: str | None = None
+    local_ipv4: str | None = None
+    local_ipv6: str | None = None
+    iface_mtu: int | None = None
+    default_gateway_v4: str | None = None
+    default_gateway_v6: str | None = None
+    dns_servers_per_adapter: dict[str, list[str]] = field(default_factory=dict)
+    is_dual_stack: bool = False
+
+
+@dataclass
+class IpGeo:
+    ip: str | None = None
+    ip_version: int | None = None
+    reverse_dns: str | None = None
+    asn: str | None = None
+    as_name: str | None = None
+    org: str | None = None
+    country: str | None = None
+    country_code: str | None = None
+    city: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    timezone: str | None = None
+    ip_type: str = "unknown"
+    sources: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class CfTrace:
+    ip: str | None = None
+    colo: str | None = None
+    loc: str | None = None
+    warp: str | None = None
+    gateway: str | None = None
+    rbi: str | None = None
+    raw: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class AdapterLeakResult:
+    adapter: str
+    configured_resolvers: list[str] = field(default_factory=list)
+    echoed_ip: str | None = None
+    echoed_asn: str | None = None
+    matches_egress_asn: bool | None = None
+
+
+@dataclass
+class DnsLeak:
+    per_adapter: list[AdapterLeakResult] = field(default_factory=list)
+    ecs_leaked: bool = False
+    note: str = ""
+
+
+@dataclass
+class VpnAssessment:
+    verdict: str = "none"
+    confidence: float = 0.0
+    signals: list[Signal] = field(default_factory=list)
+    tunnel_iface: str | None = None
+    dns_leak: DnsLeak | None = None
+
+
+@dataclass
+class BgpEvent:
+    timestamp: str
+    type: str
+    prefix: str | None = None
+    path: list[int] = field(default_factory=list)
+
+
+@dataclass
+class IxpPresence:
+    name: str
+    city: str | None = None
+    country: str | None = None
+    speed_mbps: int | None = None
+
+
+@dataclass
+class BgpIntel:
+    asn: str | None = None
+    holder: str | None = None
+    registry: str | None = None
+    allocated_at: str | None = None
+    upstreams: list[str] = field(default_factory=list)
+    peers: list[str] = field(default_factory=list)
+    downstreams: list[str] = field(default_factory=list)
+    announced_prefixes: list[str] = field(default_factory=list)
+    prefix_count_v4: int = 0
+    prefix_count_v6: int = 0
+    flaps: list[BgpEvent] = field(default_factory=list)
+    stability: str = "unknown"
+    ixps: list[IxpPresence] = field(default_factory=list)
+    pdb_info_type: str | None = None
+    pdb_traffic: str | None = None
+    asrank: int | None = None
+    cone_asns: int | None = None
+    cone_prefixes: int | None = None
+
+
+@dataclass
+class InternetDbResult:
+    ip: str | None = None
+    ports: list[int] = field(default_factory=list)
+    hostnames: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    cpes: list[str] = field(default_factory=list)
+    vulns: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DnsblHit:
+    zone: str
+    codes: list[str] = field(default_factory=list)
+    meaning: str = "listed"
+
+
+@dataclass
+class Reputation:
+    internetdb: InternetDbResult | None = None
+    firehol_hits: list[str] = field(default_factory=list)
+    dnsbl_hits: list[DnsblHit] | None = None
+    dnsbl_query_blocked: bool = False
+    abuseipdb_score: int | None = None
+    abuseipdb_reports: int | None = None
+    captcha_risk: str = "low"
+    rationale: str = ""
+
+
+@dataclass
+class PingResult:
+    label: str
+    host: str
+    resolved_ip: str | None = None
+    method: str = "none"
+    sent: int = 0
+    received: int = 0
+    loss_pct: float = 0.0
+    min_ms: float | None = None
+    avg_ms: float | None = None
+    max_ms: float | None = None
+    mdev_ms: float | None = None
+    jitter_ms: float | None = None
+    samples: list[float | None] = field(default_factory=list)
+
+
+@dataclass
+class TraceHop:
+    ttl: int
+    ip: str | None = None
+    reverse_dns: str | None = None
+    asn: str | None = None
+    as_name: str | None = None
+    probes: list[float | None] = field(default_factory=list)
+    loss_pct: float = 0.0
+    min_ms: float | None = None
+    avg_ms: float | None = None
+    max_ms: float | None = None
+    jitter_ms: float | None = None
+    annotations: list[str] = field(default_factory=list)
+
+
+@dataclass
+class TraceResult:
+    target: str | None = None
+    resolved_ip: str | None = None
+    backend: str = "none"
+    hops: list[TraceHop] = field(default_factory=list)
+    cycles: int = 0
+    completed: bool = False
+    max_hops_reached: bool = False
+
+
+@dataclass
+class TierAttempt:
+    tier: str
+    ok: bool
+    reason: str | None = None
+    duration_ms: int = 0
+
+
+@dataclass
+class CfL4Stats:
+    rtt_ms: float | None = None
+    min_rtt_ms: float | None = None
+    rtt_var_ms: float | None = None
+    delivery_rate_bps: int | None = None
+    cwnd: int | None = None
+    unsent_bytes: int | None = None
+    recv_bytes: int | None = None
+
+
+@dataclass
+class SpeedResult:
+    method: str = "none"
+    tier_attempts: list[TierAttempt] = field(default_factory=list)
+    download_mbps: float | None = None
+    upload_mbps: float | None = None
+    server: str | None = None
+    idle_rtt_ms: float | None = None
+    loaded_rtt_down_ms: float | None = None
+    loaded_rtt_up_ms: float | None = None
+    bufferbloat_down_ms: float | None = None
+    bufferbloat_up_ms: float | None = None
+    bufferbloat_grade: str | None = None
+    cfL4_stats: CfL4Stats | None = None
+    netflix_oca_onnet: bool | None = None
+
+
 def to_jsonable(obj: Any) -> Any:
     if obj is None or isinstance(obj, (str, bool, int)):
         return obj
