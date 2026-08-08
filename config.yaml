@@ -1,0 +1,79 @@
+timeouts:
+  http_seconds: 8.0
+  module_seconds: 30.0
+  speedtest_seconds: 90.0
+  dns_seconds: 4.0
+  subprocess_seconds: 60.0
+
+probing:
+  reference_hosts:
+    - { label: "cloudflare-dns", host: "1.1.1.1" }
+    - { label: "google-dns", host: "8.8.8.8" }
+    - { label: "quad9-dns", host: "9.9.9.9" }
+  service_hosts:
+    - { label: "cloudflare", host: "cloudflare.com" }
+    - { label: "google", host: "google.com" }
+    - { label: "github", host: "github.com" }
+  ping_count: 20
+  quick_ping_count: 5
+  ping_interval_seconds: 0.25
+  ping_timeout_seconds: 2.0
+  mtr_cycles: 10
+  quick_mtr_cycles: 1
+  max_hops: 30
+  trace_concurrency: 2
+
+speedtest:
+  enabled_tiers: ["ookla_bin", "cloudflare", "fastcom"]
+  download_sizes_bytes: [1000000, 10000000, 25000000]
+  upload_sizes_bytes: [1000000, 5000000]
+  cloudflare_base_url: "https://speed.cloudflare.com"
+  fastcom_api_url: "https://api.fast.com/netflix/speedtest/v2"
+  ndt7_locate_url: "https://locate.measurementlab.net/v2/nearest/ndt/ndt7"
+  bufferbloat_probe_interval_seconds: 0.2
+
+providers:
+  cf_trace_url: "https://www.cloudflare.com/cdn-cgi/trace"
+  ip_api_url: "http://ip-api.com/json/"
+  freeipapi_url: "https://freeipapi.com/api/json/"
+  ipinfo_url: "https://ipinfo.io/"
+  ipwhois_url: "https://ipwho.is/"
+  ripestat_base_url: "https://stat.ripe.net/data"
+  asrank_url: "https://api.asrank.caida.org/v2/graphql"
+  peeringdb_base_url: "https://www.peeringdb.com/api"
+  internetdb_url: "https://internetdb.shodan.io/"
+  abuseipdb_url: "https://api.abuseipdb.com/api/v2/check"
+  cymru_origin_zone: "origin.asn.cymru.com"
+  cymru_asn_zone: "asn.cymru.com"
+  ripestat_max_rows: 200
+  ripestat_timeframe_days: 14
+  peeringdb_cache_hours: 24
+  firehol_refresh_hours: 24
+  firehol_netsets:
+    - "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset"
+    - "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level2.netset"
+    - "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_abusers_30d.netset"
+
+dnsbl:
+  zones:
+    - "zen.spamhaus.org"
+    - "bl.spamcop.net"
+    - "b.barracudacentral.org"
+    - "dnsbl.dronebl.org"
+
+thresholds:
+  latency_ms: { good: 40.0, warn: 100.0 }
+  jitter_ms: { good: 5.0, warn: 20.0 }
+  loss_pct: { good: 0.0, warn: 2.0 }
+  bufferbloat_ms: { a: 5.0, b: 30.0, c: 60.0, d: 200.0, e: 400.0 }
+  vpn_confidence: { likely: 0.40, confirmed: 0.75 }
+
+output:
+  logs_dir: "./logs"
+  cache_dir: "./.cache"
+  emoji: true
+
+watch:
+  interval_seconds: 60
+  speedtest_every_n_cycles: 10
+  dashboard_refresh_hz: 4

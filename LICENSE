@@ -1,0 +1,15 @@
+LICENSE NOT YET FINALIZED
+
+TODO(user): finalize MIT vs Polyform Noncommercial — see spec §18
+(docs/superpowers/specs/2026-08-08-netcheck-design.md).
+
+Context for the decision:
+  - netcheck's default reputation sources (Shodan InternetDB, Spamhaus free
+    mirrors) are licensed for non-commercial use only.
+  - Polyform Noncommercial keeps downstream forks inside those third-party
+    terms. MIT does not: a commercial fork would silently violate them.
+  - If MIT is chosen anyway, README must state that the default reputation
+    sources are non-commercial-use-only and that a commercial fork has to
+    swap them.
+
+Until this file is replaced with a real license text, no license is granted.

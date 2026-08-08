@@ -17,3 +17,11 @@ logs/
 .env
 
 .superpowers/
+
+# packaging
+dist/
+build/
+*.egg-info/
+
+# netcheck runtime caches
+.cache/
