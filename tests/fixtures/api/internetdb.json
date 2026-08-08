@@ -1,0 +1,8 @@
+{
+  "ip": "203.0.113.44",
+  "ports": [22, 80, 443, 7547],
+  "hostnames": ["host-203-0-113-44.example.net"],
+  "cpes": ["cpe:/a:nginx:nginx:1.24.0"],
+  "tags": ["cdn", "iot"],
+  "vulns": ["CVE-2024-1234"]
+}

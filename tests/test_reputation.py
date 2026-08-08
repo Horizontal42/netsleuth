@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from netcheck.reputation import NetsetIndex, parse_netset
+from netcheck.reputation import (
+    NetsetIndex,
+    build_reputation,
+    captcha_risk,
+    decode_dnsbl,
+    normalize_internetdb,
+    parse_netset,
+    summarize_dnsbl,
+)
 
 
 def test_parse_netset_strips_comments_and_blank_lines(fixtures_dir):
@@ -75,3 +83,76 @@ def test_index_built_from_the_real_fixture_matches_the_expected_entries(fixtures
     assert index.hits("10.1.2.3") == ["firehol_level1"]
     assert index.hits("192.0.2.10") == ["firehol_level1"]
     assert index.hits("192.0.2.200") == []
+
+
+def test_internetdb_normalizes_into_the_typed_result(api_fixture):
+    result = normalize_internetdb(api_fixture("internetdb.json"))
+    assert result.ip == "203.0.113.44"
+    assert result.ports == [22, 80, 443, 7547]
+    assert result.tags == ["cdn", "iot"]
+    assert result.vulns == ["CVE-2024-1234"]
+
+
+def test_internetdb_404_shape_becomes_an_empty_result():
+    result = normalize_internetdb({"detail": "No information available"})
+    assert result.ip is None
+    assert result.ports == []
+
+
+def test_captcha_risk_is_low_for_a_clean_residential_address():
+    risk, rationale = captcha_risk([], [], "residential", None)
+    assert risk == "low"
+    assert rationale
+
+
+def test_captcha_risk_is_medium_for_a_hosting_address_with_no_listings():
+    risk, rationale = captcha_risk([], [], "hosting", None)
+    assert risk == "medium"
+    assert "hosting" in rationale.lower()
+
+
+def test_captcha_risk_is_high_when_a_blocklist_matches():
+    risk, rationale = captcha_risk(["firehol_level1"], [], "residential", None)
+    assert risk == "high"
+    assert "firehol_level1" in rationale
+
+
+def test_captcha_risk_is_high_on_a_real_dnsbl_listing():
+    hits, _ = summarize_dnsbl([decode_dnsbl("zen.spamhaus.org", ["127.0.0.2"])])
+    risk, rationale = captcha_risk([], hits, "residential", None)
+    assert risk == "high"
+    assert "zen.spamhaus.org" in rationale
+
+
+def test_captcha_risk_escalates_on_a_high_abuseipdb_score():
+    assert captcha_risk([], [], "residential", 90)[0] == "high"
+    assert captcha_risk([], [], "residential", 30)[0] == "medium"
+    assert captcha_risk([], [], "residential", 5)[0] == "low"
+
+
+def test_build_reputation_marks_the_query_as_blocked_without_inventing_hits(api_fixture):
+    rep = build_reputation(
+        internetdb=normalize_internetdb(api_fixture("internetdb.json")),
+        firehol_hits=[],
+        dnsbl_outcomes=[decode_dnsbl("zen.spamhaus.org", ["127.255.255.254"])],
+        ip_type="residential",
+        abuseipdb_score=None,
+        abuseipdb_reports=None,
+    )
+    assert rep.dnsbl_hits == []
+    assert rep.dnsbl_query_blocked is True
+    assert rep.captcha_risk == "low"
+
+
+def test_build_reputation_without_dnsbl_leaves_the_field_none(api_fixture):
+    rep = build_reputation(
+        internetdb=normalize_internetdb(api_fixture("internetdb.json")),
+        firehol_hits=["firehol_level1"],
+        dnsbl_outcomes=None,
+        ip_type="residential",
+        abuseipdb_score=None,
+        abuseipdb_reports=None,
+    )
+    assert rep.dnsbl_hits is None
+    assert rep.dnsbl_query_blocked is False
+    assert rep.captcha_risk == "high"

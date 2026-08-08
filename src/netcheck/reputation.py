@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import os
 import time
@@ -7,10 +8,12 @@ from bisect import bisect_right
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import dns.asyncresolver
+import dns.exception
 import httpx
 
 from netcheck.config import Providers
-from netcheck.models import DnsblHit
+from netcheck.models import DnsblHit, InternetDbResult, Reputation
 
 
 def parse_netset(text: str) -> list[str]:
@@ -145,3 +148,104 @@ def summarize_dnsbl(outcomes: list[DnsblOutcome]) -> tuple[list[DnsblHit], bool]
     ]
     blocked = any(o.unavailable_reason is not None for o in outcomes)
     return hits, blocked
+
+
+def normalize_internetdb(payload: dict) -> InternetDbResult:
+    if "ip" not in payload:
+        return InternetDbResult()
+    return InternetDbResult(
+        ip=payload.get("ip"),
+        ports=list(payload.get("ports") or []),
+        hostnames=list(payload.get("hostnames") or []),
+        tags=list(payload.get("tags") or []),
+        cpes=list(payload.get("cpes") or []),
+        vulns=list(payload.get("vulns") or []),
+    )
+
+
+def captcha_risk(
+    firehol_hits: list[str],
+    dnsbl_hits: list[DnsblHit],
+    ip_type: str,
+    abuseipdb_score: int | None,
+) -> tuple[str, str]:
+    reasons: list[str] = []
+    risk = "low"
+    if firehol_hits:
+        risk = "high"
+        reasons.append(f"listed on {', '.join(firehol_hits)}")
+    if dnsbl_hits:
+        risk = "high"
+        reasons.append(f"listed on {', '.join(h.zone for h in dnsbl_hits)}")
+    if abuseipdb_score is not None and abuseipdb_score >= 50:
+        risk = "high"
+        reasons.append(f"AbuseIPDB confidence {abuseipdb_score}")
+    elif abuseipdb_score is not None and abuseipdb_score >= 25 and risk == "low":
+        risk = "medium"
+        reasons.append(f"AbuseIPDB confidence {abuseipdb_score}")
+    if risk == "low" and ip_type == "hosting":
+        risk = "medium"
+        reasons.append("egress looks like hosting/proxy space, which many sites challenge by default")
+    if not reasons:
+        reasons.append("no blocklist match and the address looks like ordinary end-user space")
+    return risk, "; ".join(reasons)
+
+
+def build_reputation(
+    internetdb: InternetDbResult | None,
+    firehol_hits: list[str],
+    dnsbl_outcomes: list[DnsblOutcome] | None,
+    ip_type: str,
+    abuseipdb_score: int | None,
+    abuseipdb_reports: int | None,
+) -> Reputation:
+    hits: list[DnsblHit] | None = None
+    blocked = False
+    if dnsbl_outcomes is not None:
+        hits, blocked = summarize_dnsbl(dnsbl_outcomes)
+    risk, rationale = captcha_risk(firehol_hits, hits or [], ip_type, abuseipdb_score)
+    return Reputation(
+        internetdb=internetdb,
+        firehol_hits=firehol_hits,
+        dnsbl_hits=hits,
+        dnsbl_query_blocked=blocked,
+        abuseipdb_score=abuseipdb_score,
+        abuseipdb_reports=abuseipdb_reports,
+        captcha_risk=risk,
+        rationale=rationale,
+    )
+
+
+async def query_dnsbl(ip: str, zones: list[str], timeout: float) -> list[DnsblOutcome]:
+    label = reverse_ip(ip)
+    resolver = dns.asyncresolver.Resolver()
+    resolver.lifetime = timeout
+
+    async def one(zone: str) -> DnsblOutcome:
+        try:
+            answer = await resolver.resolve(f"{label}.{zone}", "A")
+        except dns.exception.DNSException:
+            return DnsblOutcome(zone=zone, listed=False, codes=[])
+        return decode_dnsbl(zone, sorted(record.address for record in answer))
+
+    return list(await asyncio.gather(*(one(zone) for zone in zones)))
+
+
+async def fetch_internetdb(client: httpx.AsyncClient, providers: Providers, ip: str) -> dict:
+    response = await client.get(f"{providers.internetdb_url}{ip}")
+    if response.status_code == 404:
+        return {"detail": "No information available"}
+    response.raise_for_status()
+    return response.json()
+
+
+async def fetch_abuseipdb(
+    client: httpx.AsyncClient, providers: Providers, ip: str, key: str
+) -> dict:
+    response = await client.get(
+        providers.abuseipdb_url,
+        params={"ipAddress": ip, "maxAgeInDays": "90"},
+        headers={"Key": key, "Accept": "application/json"},
+    )
+    response.raise_for_status()
+    return response.json()
