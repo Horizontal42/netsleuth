@@ -71,3 +71,42 @@ def parse_linux(text: str) -> list[TraceHop]:
         )
         hops.append(finalize_hop(hop))
     return hops
+
+
+# tracert reports any sub-millisecond RTT as "<1 ms"; the midpoint of (0, 1) is
+# the least-wrong single value to record for it.
+WINDOWS_SUB_MS = 0.5
+
+_WIN_PROBE_RE = re.compile(r"(?P<lt><)?\s*(?P<rtt>\d+)\s*ms|(?P<star>\*)")
+_WIN_BRACKET_RE = re.compile(r"\[(?P<ip>[0-9a-fA-F:.%]+)\]")
+_WIN_NAME_RE = re.compile(r"(?P<name>[A-Za-z0-9._-]+)\s*\[")
+
+
+def parse_windows(text: str) -> list[TraceHop]:
+    hops: list[TraceHop] = []
+    for line in text.splitlines():
+        match = _HOP_LINE_RE.match(line)
+        if not match:
+            continue
+        ttl, body = int(match.group(1)), match.group(2)
+        probes: list[float | None] = []
+        tail_start = 0
+        for probe in _WIN_PROBE_RE.finditer(body):
+            if probe.group("star"):
+                probes.append(None)
+            else:
+                probes.append(WINDOWS_SUB_MS if probe.group("lt") else float(probe.group("rtt")))
+            tail_start = probe.end()
+        tail = body[tail_start:]
+        bracket = _WIN_BRACKET_RE.search(tail)
+        if bracket:
+            ip = bracket.group("ip")
+            name_match = _WIN_NAME_RE.search(tail)
+            rdns = name_match.group("name") if name_match else None
+        else:
+            ip = _extract_ip(tail)
+            rdns = None
+        if rdns == ip:
+            rdns = None
+        hops.append(finalize_hop(TraceHop(ttl=ttl, ip=ip, reverse_dns=rdns, probes=probes)))
+    return hops

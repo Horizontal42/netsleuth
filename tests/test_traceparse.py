@@ -71,3 +71,73 @@ def test_linux_max_hops_run_yields_trailing_dead_hops(trace_fixture):
 def test_linux_parser_tolerates_empty_and_garbage_input():
     assert parse_linux("") == []
     assert parse_linux("bash: traceroute: command not found\n") == []
+
+
+from netcheck.traceparse import WINDOWS_SUB_MS, parse_windows
+
+
+@pytest.fixture()
+def win_en(trace_fixture):
+    return parse_windows(trace_fixture("windows", "tracert_en.txt"))
+
+
+def test_windows_hop_numbers_and_count(win_en):
+    assert [hop.ttl for hop in win_en] == [1, 2, 3, 4, 5]
+
+
+def test_windows_sub_millisecond_probe_is_not_dropped(win_en):
+    assert win_en[0].probes == [1.0, WINDOWS_SUB_MS, 1.0]
+    assert 0.0 < WINDOWS_SUB_MS < 1.0
+
+
+def test_windows_bracketed_ip_and_hostname_are_split(win_en):
+    assert win_en[3].ip == "77.88.1.5"
+    assert win_en[3].reverse_dns == "ae-1.r01.ams.example.net"
+
+
+def test_windows_bare_ip_hop_has_no_reverse_dns(win_en):
+    assert win_en[1].ip == "10.64.0.1"
+    assert win_en[1].reverse_dns is None
+
+
+def test_windows_timed_out_hop_is_detected_by_shape_not_by_message(win_en):
+    hop = win_en[2]
+    assert hop.probes == [None, None, None]
+    assert hop.ip is None
+    assert hop.loss_pct == 100.0
+
+
+def test_windows_partial_timeout_keeps_probe_order(win_en):
+    assert win_en[4].probes == [14.0, None, 13.0]
+    assert win_en[4].ip == "1.1.1.1"
+
+
+def test_windows_headers_and_footer_are_not_parsed_as_hops(win_en):
+    assert all(hop.ttl <= 5 for hop in win_en)
+    assert len(win_en) == 5
+
+
+def test_windows_cp866_localized_output_parses_identically(trace_fixture):
+    ru = parse_windows(trace_fixture("windows", "tracert_ru_cp866.txt", encoding="cp866"))
+    en = parse_windows(trace_fixture("windows", "tracert_en.txt"))
+    assert [h.ttl for h in ru] == [h.ttl for h in en]
+    assert [h.ip for h in ru] == [h.ip for h in en]
+    assert [h.probes for h in ru] == [h.probes for h in en]
+
+
+def test_windows_cp866_timed_out_hop_has_no_spurious_ip(trace_fixture):
+    ru = parse_windows(trace_fixture("windows", "tracert_ru_cp866.txt", encoding="cp866"))
+    assert ru[2].ip is None
+    assert ru[2].probes == [None, None, None]
+
+
+def test_windows_destination_unreachable_hop_keeps_its_ip(trace_fixture):
+    hops = parse_windows(trace_fixture("windows", "tracert_unreachable_en.txt"))
+    assert hops[-1].ttl == 3
+    assert hops[-1].ip == "198.51.100.7"
+    assert hops[-1].probes == []
+    assert hops[-1].loss_pct == 0.0
+
+
+def test_windows_parser_tolerates_empty_input():
+    assert parse_windows("") == []
