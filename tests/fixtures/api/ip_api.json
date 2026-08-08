@@ -1,0 +1,21 @@
+{
+  "status": "success",
+  "country": "Netherlands",
+  "countryCode": "NL",
+  "region": "NH",
+  "regionName": "North Holland",
+  "city": "Amsterdam",
+  "zip": "1012",
+  "lat": 52.3759,
+  "lon": 4.8975,
+  "timezone": "Europe/Amsterdam",
+  "isp": "Example Telecom",
+  "org": "Example Telecom BV",
+  "as": "AS64500 Example Telecom",
+  "asname": "EXAMPLE-AS",
+  "reverse": "host-203-0-113-44.example.net",
+  "mobile": false,
+  "proxy": false,
+  "hosting": true,
+  "query": "203.0.113.44"
+}

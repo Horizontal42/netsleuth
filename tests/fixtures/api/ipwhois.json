@@ -1,0 +1,19 @@
+{
+  "ip": "203.0.113.44",
+  "success": true,
+  "type": "IPv4",
+  "continent": "Europe",
+  "country": "Netherlands",
+  "country_code": "NL",
+  "region": "North Holland",
+  "city": "Amsterdam",
+  "latitude": 52.3759,
+  "longitude": 4.8975,
+  "connection": {
+    "asn": 64500,
+    "org": "Example Telecom BV",
+    "isp": "Example Telecom",
+    "domain": "example.net"
+  },
+  "timezone": { "id": "Europe/Amsterdam", "utc": "+02:00" }
+}

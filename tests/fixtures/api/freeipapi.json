@@ -1,0 +1,16 @@
+{
+  "ipVersion": 4,
+  "ipAddress": "203.0.113.44",
+  "latitude": 52.3759,
+  "longitude": 4.8975,
+  "countryName": "Netherlands",
+  "countryCode": "NL",
+  "timeZone": "+02:00",
+  "zipCode": "1012",
+  "cityName": "Amsterdam",
+  "regionName": "North Holland",
+  "isProxy": false,
+  "continent": "Europe",
+  "asn": "64500",
+  "asnOrganization": "Example Telecom BV"
+}

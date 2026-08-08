@@ -1,0 +1,16 @@
+fl=123f45
+h=www.cloudflare.com
+ip=203.0.113.44
+ts=1786000000.123
+visit_scheme=https
+uag=netcheck/0.1.0
+colo=AMS
+sliver=none
+http=http/2
+loc=NL
+tls=TLSv1.3
+sni=plaintext
+warp=off
+gateway=off
+rbi=off
+kex=X25519
