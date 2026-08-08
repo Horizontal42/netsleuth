@@ -65,3 +65,49 @@ def test_degradation_note_on_windows_mentions_the_api_rather_than_sysctl():
     note = degradation_note(caps(os_name="Windows"))
     assert note is not None
     assert "Iphlpapi" in note
+
+
+import pytest
+
+from netcheck.netinfo import iface_for_ip, is_tunnel_iface, mtu_anomaly
+
+
+def test_iface_for_ip_matches_the_owning_adapter():
+    addrs = {
+        "lo": [(2, "127.0.0.1")],
+        "eth0": [(2, "192.168.1.34"), (23, "fe80::1")],
+        "wg0": [(2, "10.7.0.2")],
+    }
+    assert iface_for_ip("192.168.1.34", addrs) == "eth0"
+    assert iface_for_ip("10.7.0.2", addrs) == "wg0"
+    assert iface_for_ip("203.0.113.1", addrs) is None
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["tun0", "tap0", "wg0", "utun3", "ppp0", "WireGuard Tunnel", "TAP-Windows Adapter V9", "nordlynx"],
+)
+def test_tunnel_interfaces_are_recognised(name):
+    assert is_tunnel_iface(name) is True
+
+
+@pytest.mark.parametrize("name", ["eth0", "en0", "Wi-Fi", "Ethernet 2", "lo", "Loopback Pseudo-Interface 1"])
+def test_ordinary_interfaces_are_not_flagged_as_tunnels(name):
+    assert is_tunnel_iface(name) is False
+
+
+def test_mtu_anomaly_recognises_wireguard_and_ipsec_sizes():
+    assert mtu_anomaly(1420) == "wireguard"
+    assert mtu_anomaly(1412) == "wireguard"
+    assert mtu_anomaly(1400) == "ipsec"
+    assert mtu_anomaly(1380) == "ipsec"
+
+
+def test_mtu_anomaly_ignores_normal_and_unknown_values():
+    assert mtu_anomaly(1500) is None
+    assert mtu_anomaly(9000) is None
+    assert mtu_anomaly(None) is None
+
+
+def test_mtu_anomaly_flags_unusually_small_links_generically():
+    assert mtu_anomaly(1200) == "small"

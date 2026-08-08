@@ -3,10 +3,21 @@ from __future__ import annotations
 import ctypes
 import os
 import platform
+import re
 import shutil
 import socket
+import subprocess
 
-from netcheck.models import Capabilities
+import psutil
+
+from netcheck.models import Capabilities, LocalNet
+
+_TUNNEL_PATTERNS = (
+    re.compile(r"^(tun|tap|utun|ppp|wg|nordlynx|proton|ipsec|gpd)\d*", re.IGNORECASE),
+    re.compile(r"wireguard", re.IGNORECASE),
+    re.compile(r"tap-windows", re.IGNORECASE),
+    re.compile(r"openvpn", re.IGNORECASE),
+)
 
 _UNIX_REMEDY = (
     "ICMP is unavailable without privileges, so latency was measured by TCP connect timing "
@@ -94,3 +105,156 @@ def detect_capabilities() -> Capabilities:
     if note:
         caps.notes.append(note)
     return caps
+
+
+def is_tunnel_iface(name: str) -> bool:
+    return any(pattern.search(name) for pattern in _TUNNEL_PATTERNS)
+
+
+def iface_for_ip(ip: str, addrs_by_iface: dict[str, list[tuple[int, str]]]) -> str | None:
+    for iface, addrs in addrs_by_iface.items():
+        for _family, address in addrs:
+            if address == ip:
+                return iface
+    return None
+
+
+def mtu_anomaly(mtu: int | None) -> str | None:
+    if mtu is None or mtu >= 1500:
+        return None
+    if 1405 <= mtu <= 1440:
+        return "wireguard"
+    if 1350 <= mtu <= 1404:
+        return "ipsec"
+    return "small"
+
+
+def primary_interface_ip(target: str = "1.1.1.1", family: int = socket.AF_INET) -> str | None:
+    # Connecting a UDP socket sends nothing; it only asks the kernel which local
+    # address the route to `target` would use. This is the reliable way to pick
+    # the *active* interface when several are up.
+    probe = "2606:4700:4700::1111" if family == socket.AF_INET6 else target
+    sock = socket.socket(family, socket.SOCK_DGRAM)
+    try:
+        sock.connect((probe, 53))
+        return sock.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        sock.close()
+
+
+def _resolvers_per_adapter() -> dict[str, list[str]]:
+    if platform.system() == "Windows":
+        return _resolvers_windows()
+    return _resolvers_unix()
+
+
+def _resolvers_windows() -> dict[str, list[str]]:
+    script = (
+        "Get-DnsClientServerAddress -AddressFamily IPv4,IPv6 | "
+        "ForEach-Object { $_.InterfaceAlias + '|' + ($_.ServerAddresses -join ',') }"
+    )
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", script],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=15,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    adapters: dict[str, list[str]] = {}
+    for line in out.splitlines():
+        if "|" not in line:
+            continue
+        alias, _, servers = line.partition("|")
+        found = [s.strip() for s in servers.split(",") if s.strip()]
+        if found:
+            adapters.setdefault(alias.strip(), []).extend(found)
+    return adapters
+
+
+def _resolvers_unix() -> dict[str, list[str]]:
+    adapters: dict[str, list[str]] = {}
+    try:
+        text = open("/etc/resolv.conf", encoding="utf-8", errors="replace").read()
+    except OSError:
+        text = ""
+    servers = [line.split()[1] for line in text.splitlines() if line.startswith("nameserver") and len(line.split()) > 1]
+    if servers:
+        adapters["system"] = servers
+    try:
+        scutil = subprocess.run(
+            ["scutil", "--dns"], capture_output=True, text=True, errors="replace", timeout=15
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        scutil = ""
+    current = None
+    for line in scutil.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("if_index"):
+            current = stripped.split("(")[-1].rstrip(")") or None
+        elif stripped.startswith("nameserver[") and current:
+            adapters.setdefault(current, []).append(stripped.split(":", 1)[1].strip())
+    return adapters
+
+
+def collect_local_net() -> LocalNet:
+    v4 = primary_interface_ip()
+    v6 = primary_interface_ip(family=socket.AF_INET6)
+    addrs_by_iface = {
+        name: [(a.family, a.address.split("%")[0]) for a in addrs]
+        for name, addrs in psutil.net_if_addrs().items()
+    }
+    iface = iface_for_ip(v4, addrs_by_iface) if v4 else None
+    stats = psutil.net_if_stats()
+    return LocalNet(
+        iface_name=iface,
+        local_ipv4=v4,
+        local_ipv6=v6,
+        iface_mtu=stats[iface].mtu if iface and iface in stats else None,
+        default_gateway_v4=_default_gateway(socket.AF_INET),
+        default_gateway_v6=_default_gateway(socket.AF_INET6),
+        dns_servers_per_adapter=_resolvers_per_adapter(),
+        is_dual_stack=bool(v4 and v6),
+    )
+
+
+def _default_gateway(family: int) -> str | None:
+    if platform.system() == "Windows":
+        args = ["route", "print", "-6" if family == socket.AF_INET6 else "-4"]
+        needle = "::/0" if family == socket.AF_INET6 else "0.0.0.0"
+    else:
+        args = ["ip", "-6", "route", "show", "default"] if family == socket.AF_INET6 else ["ip", "route", "show", "default"]
+        needle = "via"
+    try:
+        out = subprocess.run(
+            args, capture_output=True, text=True, errors="replace", timeout=15
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in out.splitlines():
+        if needle not in line:
+            continue
+        tokens = line.split()
+        if needle == "via" and "via" in tokens:
+            return tokens[tokens.index("via") + 1]
+        candidates = [t for t in tokens if _looks_like_ip(t)]
+        if len(candidates) >= 3:
+            return candidates[2]
+    return None
+
+
+def _looks_like_ip(token: str) -> bool:
+    try:
+        socket.inet_pton(socket.AF_INET, token)
+        return True
+    except OSError:
+        pass
+    try:
+        socket.inet_pton(socket.AF_INET6, token)
+        return True
+    except OSError:
+        return False
