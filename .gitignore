@@ -1,0 +1,17 @@
+.claude/
+.aider*
+.cursorrules
+bugs.md
+*_ai_notes*
+llm_context*
+
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+logs/
+
+.env
