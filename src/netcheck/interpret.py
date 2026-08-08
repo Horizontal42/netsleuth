@@ -2,8 +2,19 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from netcheck.config import Band, Thresholds, VpnBands
-from netcheck.models import CfTrace, DnsLeak, Finding, IpGeo, LocalNet, PingResult, Signal, TraceResult, VpnAssessment
+from netcheck.config import Band, BufferbloatBands, Thresholds, VpnBands
+from netcheck.models import (
+    CfTrace,
+    DnsLeak,
+    Finding,
+    IpGeo,
+    LocalNet,
+    PingResult,
+    Signal,
+    SpeedResult,
+    TraceResult,
+    VpnAssessment,
+)
 from netcheck.netinfo import is_tunnel_iface, mtu_anomaly
 
 _SEVERITY_ORDER = {"ok": 0, "info": 1, "warn": 2, "crit": 3}
@@ -234,3 +245,78 @@ def assess_vpn(
         tunnel_iface=tunnel_iface,
         dns_leak=dns_leak,
     )
+
+
+_CONSEQUENCES = {
+    "A": "Video calls and games stay smooth while the line is fully loaded.",
+    "B": "Barely noticeable; a large upload may add a beat to a video call.",
+    "C": "Calls and games get choppy whenever something else is downloading.",
+    "D": "Any big transfer makes calls stutter and pages feel stuck.",
+    "E": "The connection feels broken while it is busy, even though bandwidth is fine.",
+    "F": "A single download makes a call unusable; this is queue bloat, not a slow line.",
+    "?": "Not measured — the speedtest tier that measures it did not run.",
+}
+_GRADE_SEVERITY = {"A": "ok", "B": "ok", "C": "warn", "D": "crit", "E": "crit", "F": "crit", "?": "info"}
+
+
+def grade_bufferbloat(delta_ms: float | None, bands: BufferbloatBands) -> str:
+    if delta_ms is None:
+        return "?"
+    delta = max(0.0, delta_ms)
+    for grade, ceiling in (("A", bands.a), ("B", bands.b), ("C", bands.c), ("D", bands.d), ("E", bands.e)):
+        if delta <= ceiling:
+            return grade
+    return "F"
+
+
+def bufferbloat_consequence(grade: str) -> str:
+    return _CONSEQUENCES.get(grade, _CONSEQUENCES["?"])
+
+
+def speed_findings(speed: SpeedResult, bands: BufferbloatBands) -> list[Finding]:
+    if speed.method == "none":
+        tried = ", ".join(a.tier for a in speed.tier_attempts) or "none"
+        return [
+            Finding(
+                id="speed.unavailable",
+                severity="info",
+                title="No bandwidth measurement",
+                detail=f"Every speedtest tier failed or was disabled (tried: {tried}).",
+                advice="Install the Ookla speedtest binary, or rerun without --quick.",
+            )
+        ]
+    findings: list[Finding] = []
+    for direction, delta in (("down", speed.bufferbloat_down_ms), ("up", speed.bufferbloat_up_ms)):
+        grade = grade_bufferbloat(delta, bands)
+        severity = _GRADE_SEVERITY[grade]
+        if severity in ("ok", "info"):
+            continue
+        findings.append(
+            Finding(
+                id=f"speed.bufferbloat_{direction}",
+                severity=severity,
+                title=f"Bufferbloat under load ({direction}stream): grade {grade}",
+                detail=f"Latency rose by {delta} ms while saturating the {direction}stream direction.",
+                metric=f"bufferbloat_{direction}_ms",
+                value=grade,
+                threshold=bands.c,
+                advice=bufferbloat_consequence(grade)
+                + " Enabling SQM/fq_codel on the router is the standard fix.",
+            )
+        )
+    return findings
+
+
+_SCORE_PENALTY = {"ok": 0, "info": 3, "warn": 10, "crit": 25}
+
+
+def overall_verdict(findings: list[Finding]) -> tuple[str, int, str]:
+    score = 100
+    for f in findings:
+        score -= _SCORE_PENALTY[f.severity]
+    score = max(0, score)
+    status = worst(f.severity for f in findings)
+    if status in ("ok", "info"):
+        return "ok", score, "No problems found on this connection."
+    headline = [f.title for f in findings if f.severity == status]
+    return status, score, "; ".join(headline[:3])

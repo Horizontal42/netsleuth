@@ -283,3 +283,93 @@ def test_assess_vpn_returns_a_complete_assessment():
     assert assessment.tunnel_iface == "wg0"
     assert len(assessment.signals) == 2
     assert assessment.confidence >= 0.75
+
+
+from netcheck.config import BufferbloatBands
+from netcheck.models import Finding, SpeedResult
+from netcheck.interpret import bufferbloat_consequence, grade_bufferbloat, overall_verdict, speed_findings
+
+
+def test_bufferbloat_grades_follow_the_configured_bands():
+    b = BufferbloatBands()
+    assert grade_bufferbloat(0.0, b) == "A"
+    assert grade_bufferbloat(5.0, b) == "A"
+    assert grade_bufferbloat(5.1, b) == "B"
+    assert grade_bufferbloat(30.0, b) == "B"
+    assert grade_bufferbloat(60.0, b) == "C"
+    assert grade_bufferbloat(200.0, b) == "D"
+    assert grade_bufferbloat(400.0, b) == "E"
+    assert grade_bufferbloat(400.1, b) == "F"
+
+
+def test_bufferbloat_grade_of_an_unmeasured_delta_is_unknown():
+    assert grade_bufferbloat(None, BufferbloatBands()) == "?"
+
+
+def test_negative_delta_is_graded_a_not_crashed():
+    assert grade_bufferbloat(-3.0, BufferbloatBands()) == "A"
+
+
+def test_each_grade_has_a_plain_language_consequence():
+    for grade in "ABCDEF?":
+        assert bufferbloat_consequence(grade)
+    assert "call" in bufferbloat_consequence("F").lower()
+
+
+def test_speed_findings_report_a_bad_bufferbloat_grade():
+    speed = SpeedResult(method="cloudflare", download_mbps=300.0, upload_mbps=40.0, bufferbloat_down_ms=150.0)
+    findings = speed_findings(speed, BufferbloatBands())
+    bloat = [f for f in findings if f.id == "speed.bufferbloat_down"][0]
+    assert bloat.severity == "crit"
+    assert bloat.value == "D"
+    assert "call" in bloat.advice.lower() or "queue" in bloat.advice.lower()
+
+
+def test_speed_findings_are_silent_on_a_clean_line():
+    speed = SpeedResult(
+        method="ookla_bin",
+        download_mbps=300.0,
+        upload_mbps=40.0,
+        bufferbloat_down_ms=3.0,
+        bufferbloat_up_ms=4.0,
+    )
+    assert speed_findings(speed, BufferbloatBands()) == []
+
+
+def test_speed_findings_report_an_exhausted_cascade():
+    speed = SpeedResult(method="none")
+    findings = speed_findings(speed, BufferbloatBands())
+    assert [f.id for f in findings] == ["speed.unavailable"]
+    assert findings[0].severity == "info"
+
+
+def test_overall_verdict_is_healthy_with_no_findings():
+    status, score, summary = overall_verdict([])
+    assert status == "ok"
+    assert score == 100
+    assert "no problems" in summary.lower()
+
+
+def test_overall_verdict_degrades_with_severity():
+    warn = Finding(id="a", severity="warn", title="Jitter high", detail="")
+    crit = Finding(id="b", severity="crit", title="Loss on path", detail="")
+    info = Finding(id="c", severity="info", title="No speed data", detail="")
+
+    status, score, summary = overall_verdict([info])
+    assert (status, score) == ("ok", 97)
+
+    status, score, summary = overall_verdict([warn])
+    assert status == "warn"
+    assert score == 90
+
+    status, score, summary = overall_verdict([warn, crit])
+    assert status == "crit"
+    assert score == 65
+    assert "Loss on path" in summary
+
+
+def test_overall_score_never_goes_below_zero():
+    findings = [Finding(id=f"f{i}", severity="crit", title="x", detail="") for i in range(20)]
+    status, score, _ = overall_verdict(findings)
+    assert status == "crit"
+    assert score == 0
