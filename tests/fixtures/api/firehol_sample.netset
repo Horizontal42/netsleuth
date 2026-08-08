@@ -1,0 +1,13 @@
+#
+# firehol_level1
+#
+# Source: example
+# Maintainer: FireHOL Team
+#
+0.0.0.0/8
+10.0.0.0/8
+198.51.100.0/24
+203.0.113.44
+2001:db8::/32
+
+192.0.2.0/25
