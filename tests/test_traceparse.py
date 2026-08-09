@@ -186,8 +186,34 @@ def test_darwin_parser_tolerates_empty_input():
     assert parse_darwin("") == []
 
 
+from unittest.mock import patch
+
 from netsleuth.models import TraceConfig
 from netsleuth.traceparse import build_trace_result, parse_traceroute
+
+
+def test_parse_traceroute_routes_to_windows():
+    with patch("netsleuth.traceparse.parse_windows") as mock_windows:
+        parse_traceroute("test text", "Windows")
+        mock_windows.assert_called_once_with("test text")
+
+
+def test_parse_traceroute_routes_to_darwin():
+    with patch("netsleuth.traceparse.parse_darwin") as mock_darwin:
+        parse_traceroute("test text", "Darwin")
+        mock_darwin.assert_called_once_with("test text")
+
+
+def test_parse_traceroute_routes_to_linux_for_linux():
+    with patch("netsleuth.traceparse.parse_linux") as mock_linux:
+        parse_traceroute("test text", "Linux")
+        mock_linux.assert_called_once_with("test text")
+
+
+def test_parse_traceroute_routes_to_linux_for_unknown_os():
+    with patch("netsleuth.traceparse.parse_linux") as mock_linux:
+        parse_traceroute("test text", "SunOS")
+        mock_linux.assert_called_once_with("test text")
 
 
 def test_dispatcher_routes_by_os_name(trace_fixture):
