@@ -108,6 +108,7 @@ import json
 import os
 import time
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Awaitable, Callable
 
 from netsleuth.models import IxpPresence
@@ -177,25 +178,28 @@ async def cached_json(
 from netsleuth.models import BgpIntel
 
 
-def build_bgp_intel(
-    asn: str,
-    overview: dict,
-    neighbours: dict,
-    prefixes: dict,
-    updates: dict,
-    asrank: dict | None,
-    pdb_net: dict | None,
-    pdb_ixlan: dict | None,
-    timeframe_days: int,
-) -> BgpIntel:
-    info = parse_as_overview(overview)
-    upstreams, peers, downstreams = parse_asn_neighbours(neighbours)
-    announced, v4, v6 = parse_announced_prefixes(prefixes)
-    events = parse_bgp_updates(updates)
-    rank, cone_asns, cone_prefixes = parse_asrank(asrank) if asrank else (None, None, None)
-    info_type, traffic, _net_id = parse_peeringdb_net(pdb_net) if pdb_net else (None, None, None)
+@dataclass
+class BgpContext:
+    asn: str
+    overview: dict
+    neighbours: dict
+    prefixes: dict
+    updates: dict
+    asrank: dict | None
+    pdb_net: dict | None
+    pdb_ixlan: dict | None
+    timeframe_days: int
+
+
+def build_bgp_intel(ctx: BgpContext) -> BgpIntel:
+    info = parse_as_overview(ctx.overview)
+    upstreams, peers, downstreams = parse_asn_neighbours(ctx.neighbours)
+    announced, v4, v6 = parse_announced_prefixes(ctx.prefixes)
+    events = parse_bgp_updates(ctx.updates)
+    rank, cone_asns, cone_prefixes = parse_asrank(ctx.asrank) if ctx.asrank else (None, None, None)
+    info_type, traffic, _net_id = parse_peeringdb_net(ctx.pdb_net) if ctx.pdb_net else (None, None, None)
     return BgpIntel(
-        asn=asn,
+        asn=ctx.asn,
         holder=info["holder"],
         registry=info["registry"],
         allocated_at=info["allocated_at"],
@@ -206,8 +210,8 @@ def build_bgp_intel(
         prefix_count_v4=v4,
         prefix_count_v6=v6,
         flaps=events,
-        stability=classify_stability(events, timeframe_days),
-        ixps=parse_peeringdb_netixlan(pdb_ixlan) if pdb_ixlan else [],
+        stability=classify_stability(events, ctx.timeframe_days),
+        ixps=parse_peeringdb_netixlan(ctx.pdb_ixlan) if ctx.pdb_ixlan else [],
         pdb_info_type=info_type,
         pdb_traffic=traffic,
         asrank=rank,
@@ -284,15 +288,17 @@ async def collect_bgp(
                 pdb_ixlan = None
 
     intel = build_bgp_intel(
-        asn=asn,
-        overview=overview or {},
-        neighbours=neighbours or {},
-        prefixes=prefixes or {},
-        updates=updates or {},
-        asrank=asrank,
-        pdb_net=pdb_net,
-        pdb_ixlan=pdb_ixlan,
-        timeframe_days=providers.ripestat_timeframe_days,
+        BgpContext(
+            asn=asn,
+            overview=overview or {},
+            neighbours=neighbours or {},
+            prefixes=prefixes or {},
+            updates=updates or {},
+            asrank=asrank,
+            pdb_net=pdb_net,
+            pdb_ixlan=pdb_ixlan,
+            timeframe_days=providers.ripestat_timeframe_days,
+        )
     )
     raw = {
         "ripestat-as-overview": overview,

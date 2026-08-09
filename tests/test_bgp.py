@@ -211,20 +211,22 @@ async def test_cached_json_survives_a_corrupt_cache_file(tmp_path: Path):
     assert await cached_json(tmp_path, "k", ttl_hours=24, fetch=fetch) == {"value": "fresh"}
 
 
-from netsleuth.bgp import build_bgp_intel
+from netsleuth.bgp import BgpContext, build_bgp_intel
 
 
 def test_build_bgp_intel_merges_every_source(api_fixture):
     intel = build_bgp_intel(
-        asn="AS64500",
-        overview=api_fixture("ripestat_as_overview.json"),
-        neighbours=api_fixture("ripestat_asn_neighbours.json"),
-        prefixes=api_fixture("ripestat_announced_prefixes.json"),
-        updates=api_fixture("ripestat_bgp_updates.json"),
-        asrank=api_fixture("asrank.json"),
-        pdb_net=api_fixture("peeringdb_net.json"),
-        pdb_ixlan=api_fixture("peeringdb_netixlan.json"),
-        timeframe_days=14,
+        BgpContext(
+            asn="AS64500",
+            overview=api_fixture("ripestat_as_overview.json"),
+            neighbours=api_fixture("ripestat_asn_neighbours.json"),
+            prefixes=api_fixture("ripestat_announced_prefixes.json"),
+            updates=api_fixture("ripestat_bgp_updates.json"),
+            asrank=api_fixture("asrank.json"),
+            pdb_net=api_fixture("peeringdb_net.json"),
+            pdb_ixlan=api_fixture("peeringdb_netixlan.json"),
+            timeframe_days=14,
+        )
     )
     assert intel.asn == "AS64500"
     assert intel.holder == "EXAMPLE-AS Example Telecom BV"
@@ -241,15 +243,17 @@ def test_build_bgp_intel_merges_every_source(api_fixture):
 
 def test_build_bgp_intel_tolerates_every_optional_source_being_absent(api_fixture):
     intel = build_bgp_intel(
-        asn="AS64500",
-        overview=api_fixture("ripestat_as_overview.json"),
-        neighbours={},
-        prefixes={},
-        updates={},
-        asrank=None,
-        pdb_net=None,
-        pdb_ixlan=None,
-        timeframe_days=14,
+        BgpContext(
+            asn="AS64500",
+            overview=api_fixture("ripestat_as_overview.json"),
+            neighbours={},
+            prefixes={},
+            updates={},
+            asrank=None,
+            pdb_net=None,
+            pdb_ixlan=None,
+            timeframe_days=14,
+        )
     )
     assert intel.asn == "AS64500"
     assert intel.upstreams == []
