@@ -193,6 +193,13 @@ def test_egress_asn_is_read_out_of_the_assembled_report():
     assert egress_asn({}) is None
 
 
+def test_write_report_names_the_file_after_the_target_in_target_mode(tmp_path: Path):
+    report = build_report({**meta(), "mode": "target", "target": "AS15169"}, modules(), [], {})
+    json_path, md_path = write_report(report, "# netcheck report\n", tmp_path)
+    assert json_path.name == "report_AS15169_20260808T191200Z.json"
+    assert md_path.name == "report_AS15169_20260808T191200Z.md"
+
+
 def test_atomic_write_creates_the_directory_and_leaves_no_temp_file(tmp_path: Path):
     target = tmp_path / "logs" / "report.json"
     atomic_write(target, '{"a": 1}')

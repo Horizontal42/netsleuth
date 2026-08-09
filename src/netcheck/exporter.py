@@ -89,8 +89,9 @@ def egress_asn(report: dict[str, Any]) -> str | None:
 
 
 def write_report(report: dict[str, Any], markdown: str, logs_dir: Path) -> tuple[Path, Path]:
-    started = (report.get("meta") or {}).get("started_at", "")
-    asn = egress_asn(report)
+    meta = report.get("meta") or {}
+    started = meta.get("started_at", "")
+    asn = meta.get("target") or egress_asn(report)
     base = Path(logs_dir)
     json_path = atomic_write(base / report_filename(asn, started, "json"), dump_json(report))
     md_path = atomic_write(base / report_filename(asn, started, "md"), markdown)
