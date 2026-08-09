@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import json
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from netsleuth.speed import bufferbloat_delta, mbps, ookla_interface_args, parse_server_timing_cfl4, throughput_from_samples
@@ -181,6 +185,67 @@ def test_the_ndt7_consent_notice_states_what_gets_published():
     assert "CC0" in NDT7_CONSENT_NOTICE
     assert "IP" in NDT7_CONSENT_NOTICE
     assert "public" in NDT7_CONSENT_NOTICE.lower()
+
+
+from netsleuth.speed import tier_ookla
+
+
+async def test_tier_ookla_success_parses_json():
+    mock_proc = AsyncMock()
+    mock_payload = {
+        "download": {"bytes": 12500000, "elapsed": 1000}, # 100 Mbps
+        "upload": {"bytes": 1250000, "elapsed": 1000}, # 10 Mbps
+        "server": {"name": "TestServer", "location": "TestCity"},
+        "ping": {"latency": 15.5}
+    }
+    mock_proc.communicate.return_value = (json.dumps(mock_payload).encode("utf-8"), b"")
+
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+        result = await tier_ookla("speedtest", None, 10.0)
+
+        mock_exec.assert_called_once_with(
+            "speedtest", "--format=json", "--accept-license", "--accept-gdpr",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+        )
+        assert result.method == "ookla_bin"
+        assert result.download_mbps == 100.0
+        assert result.upload_mbps == 10.0
+        assert result.server == "TestServer (TestCity)"
+        assert result.idle_rtt_ms == 15.5
+
+async def test_tier_ookla_server_args():
+    mock_proc = AsyncMock()
+    mock_payload = {}
+    mock_proc.communicate.return_value = (json.dumps(mock_payload).encode("utf-8"), b"")
+
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+        # Numeric server maps to --server-id
+        await tier_ookla("speedtest", "12345", 10.0)
+        mock_exec.assert_called_with(
+            "speedtest", "--format=json", "--accept-license", "--accept-gdpr", "--server-id", "12345",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+        )
+
+        # String server maps to --host
+        await tier_ookla("speedtest", "speed.example.com", 10.0)
+        mock_exec.assert_called_with(
+            "speedtest", "--format=json", "--accept-license", "--accept-gdpr", "--host", "speed.example.com",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+        )
+
+async def test_tier_ookla_missing_json_fields():
+    mock_proc = AsyncMock()
+    mock_payload = {} # Empty payload
+    mock_proc.communicate.return_value = (json.dumps(mock_payload).encode("utf-8"), b"")
+
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        result = await tier_ookla("speedtest", None, 10.0)
+
+        assert result.method == "ookla_bin"
+        assert result.download_mbps == 0.0
+        assert result.upload_mbps == 0.0
+        assert result.server == "()"
+        assert result.idle_rtt_ms is None
 
 
 from netsleuth.config import BufferbloatBands
