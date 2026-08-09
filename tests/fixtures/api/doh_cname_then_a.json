@@ -1,0 +1,8 @@
+{
+  "Status": 0,
+  "Question": [{"name": "www.example.com.", "type": 1}],
+  "Answer": [
+    {"name": "www.example.com.", "type": 5, "TTL": 300, "data": "example.com."},
+    {"name": "example.com.", "type": 1, "TTL": 300, "data": "93.184.216.34"}
+  ]
+}

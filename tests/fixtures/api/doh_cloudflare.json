@@ -1,0 +1,8 @@
+{
+  "Status": 0,
+  "Question": [{"name": "cloudflare.com.", "type": 1}],
+  "Answer": [
+    {"name": "cloudflare.com.", "type": 1, "TTL": 300, "data": "104.16.132.229"},
+    {"name": "cloudflare.com.", "type": 1, "TTL": 300, "data": "104.16.133.229"}
+  ]
+}
