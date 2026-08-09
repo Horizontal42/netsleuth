@@ -67,6 +67,53 @@ thresholds:
   loss_pct: { good: 0.0, warn: 2.0 }
   bufferbloat_ms: { a: 5.0, b: 30.0, c: 60.0, d: 200.0, e: 400.0 }
   vpn_confidence: { likely: 0.40, confirmed: 0.75 }
+  tls_handshake_ms: { good: 100.0, warn: 300.0 }
+  ttfb_ms: { good: 200.0, warn: 800.0 }
+  dns_resolve_ms: { good: 30.0, warn: 120.0 }
+  prefix_spread_ms: { good: 20.0, warn: 80.0 }
+  tls_cpu_bound_ratio: 2.0
+
+tls:
+  targets:
+    - { label: "cloudflare", host: "cloudflare.com" }
+    - { label: "google", host: "google.com" }
+  port: 443
+  concurrency: 4
+  ttfb_path: "/"
+
+# Opt-in via --prefix-bench. Pings the first host of a handful of your own AS's
+# announced prefixes to find the lowest-latency PoP. max_prefixes is capped at 256
+# in code: this benchmarks a sample of your own network, not a mass scan of it.
+prefix_bench:
+  max_prefixes: 32
+  ping_count: 3
+  concurrency: 8
+  host_offset: 1
+  family: 4
+
+# Opt-in via --my-server <host>. Single-host self-diagnostic for provider port
+# blocking/TCP RST injection. ports/concurrency are capped in code so this cannot
+# become a range scanner: never point it at infrastructure you don't own.
+dpi_check:
+  ports: [80, 443, 8443, 2083, 2096, 53]
+  connect_timeout_seconds: 3.0
+  delay_between_ports_seconds: 0.25
+  concurrency: 2
+
+dns_advanced:
+  control_names: ["cloudflare.com", "example.com"]
+  doh_endpoints:
+    - { name: "cloudflare", url: "https://cloudflare-dns.com/dns-query" }
+    - { name: "google", url: "https://dns.google/resolve" }
+    - { name: "quad9", url: "https://dns.quad9.net:5053/dns-query" }
+  bogus_resolver_ip: "192.0.2.1"
+  bogus_probe_name: "cloudflare.com"
+
+path_diversity:
+  targets:
+    - { label: "cloudflare", host: "cloudflare.com" }
+    - { label: "discord", host: "discord.com" }
+  max_targets: 3
 
 output:
   logs_dir: "./logs"

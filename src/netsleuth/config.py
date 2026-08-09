@@ -120,6 +120,93 @@ class Thresholds(BaseModel):
     loss_pct: Band = Band(good=0.0, warn=2.0)
     bufferbloat_ms: BufferbloatBands = BufferbloatBands()
     vpn_confidence: VpnBands = VpnBands()
+    tls_handshake_ms: Band = Band(good=100.0, warn=300.0)
+    ttfb_ms: Band = Band(good=200.0, warn=800.0)
+    dns_resolve_ms: Band = Band(good=30.0, warn=120.0)
+    prefix_spread_ms: Band = Band(good=20.0, warn=80.0)
+    tls_cpu_bound_ratio: float = 2.0
+
+
+class TlsConfig(BaseModel):
+    targets: list[HostSpec] = Field(
+        default_factory=lambda: [
+            HostSpec(label="cloudflare", host="cloudflare.com"),
+            HostSpec(label="google", host="google.com"),
+        ]
+    )
+    port: int = 443
+    concurrency: int = 4
+    ttfb_path: str = "/"
+
+
+class PrefixBenchConfig(BaseModel):
+    max_prefixes: int = 32
+    ping_count: int = 3
+    concurrency: int = 8
+    host_offset: int = 1
+    family: int = 4
+
+    @field_validator("max_prefixes")
+    @classmethod
+    def _cap_max_prefixes(cls, value: int) -> int:
+        if value > 256:
+            raise ValueError(
+                "prefix_bench.max_prefixes may not exceed 256 "
+                "(this benchmarks a handful of your own AS's PoPs, not a mass scan of the whole AS)"
+            )
+        return value
+
+
+class DpiCheckConfig(BaseModel):
+    ports: list[int] = Field(default_factory=lambda: [80, 443, 8443, 2083, 2096, 53])
+    connect_timeout_seconds: float = 3.0
+    delay_between_ports_seconds: float = 0.25
+    concurrency: int = 2
+
+    @field_validator("ports")
+    @classmethod
+    def _cap_ports(cls, value: list[int]) -> list[int]:
+        if len(value) > 16:
+            raise ValueError(
+                "dpi_check.ports may list at most 16 ports "
+                "(this is a single-host self-diagnostic, not a port-range scanner)"
+            )
+        return value
+
+    @field_validator("concurrency")
+    @classmethod
+    def _cap_concurrency(cls, value: int) -> int:
+        if value > 4:
+            raise ValueError("dpi_check.concurrency may not exceed 4 (keep the self-check rate-limited)")
+        return value
+
+
+class DohEndpoint(BaseModel):
+    name: str
+    url: str
+
+
+class DnsAdvancedConfig(BaseModel):
+    control_names: list[str] = Field(default_factory=lambda: ["cloudflare.com", "example.com"])
+    doh_endpoints: list[DohEndpoint] = Field(
+        default_factory=lambda: [
+            DohEndpoint(name="cloudflare", url="https://cloudflare-dns.com/dns-query"),
+            DohEndpoint(name="google", url="https://dns.google/resolve"),
+            DohEndpoint(name="quad9", url="https://dns.quad9.net:5053/dns-query"),
+        ]
+    )
+    bogus_resolver_ip: str = "192.0.2.1"
+    bogus_probe_name: str = "cloudflare.com"
+
+
+class PathDiversityConfig(BaseModel):
+    targets: list[HostSpec] = Field(
+        default_factory=lambda: [
+            HostSpec(label="cloudflare", host="cloudflare.com"),
+            HostSpec(label="discord", host="discord.com"),
+        ]
+    )
+    max_targets: int = 3
 
 
 class Output(BaseModel):
@@ -169,6 +256,11 @@ class Settings(BaseSettings):
     thresholds: Thresholds = Thresholds()
     output: Output = Output()
     watch: Watch = Watch()
+    tls: TlsConfig = TlsConfig()
+    prefix_bench: PrefixBenchConfig = PrefixBenchConfig()
+    dpi_check: DpiCheckConfig = DpiCheckConfig()
+    dns_advanced: DnsAdvancedConfig = DnsAdvancedConfig()
+    path_diversity: PathDiversityConfig = PathDiversityConfig()
 
     ipinfo_token: SecretStr | None = Field(default=None, alias="IPINFO_TOKEN")
     peeringdb_api_key: SecretStr | None = Field(default=None, alias="PEERINGDB_API_KEY")

@@ -7,6 +7,24 @@ from pydantic import ValidationError
 
 from netsleuth.config import load_settings
 
+L7_YAML = textwrap.dedent(
+    """
+    tls:
+      port: 8443
+      concurrency: 2
+    prefix_bench:
+      max_prefixes: 8
+    dpi_check:
+      delay_between_ports_seconds: 0.5
+    dns_advanced:
+      bogus_resolver_ip: "198.51.100.1"
+    path_diversity:
+      max_targets: 5
+    thresholds:
+      tls_handshake_ms: { good: 50.0, warn: 150.0 }
+    """
+).strip()
+
 
 @pytest.fixture()
 def yaml_file(tmp_path):
@@ -122,4 +140,59 @@ def test_output_formats_rejects_unknown_value(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text('output:\n  formats: ["pdf"]\n', encoding="utf-8")
     with pytest.raises(ValidationError):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
+def test_l7_sections_default_without_any_yaml(tmp_path):
+    s = load_settings(config_path=tmp_path / "nope.yaml", env_file=tmp_path / "nope.env")
+    assert s.tls.port == 443
+    assert s.tls.targets
+    assert s.prefix_bench.max_prefixes == 32
+    assert s.dpi_check.ports == [80, 443, 8443, 2083, 2096, 53]
+    assert s.dns_advanced.doh_endpoints
+    assert s.path_diversity.targets
+    assert s.thresholds.tls_handshake_ms.warn == 300.0
+    assert s.thresholds.tls_cpu_bound_ratio == 2.0
+
+
+def test_l7_sections_yaml_overrides(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(L7_YAML, encoding="utf-8")
+    s = load_settings(config_path=path, env_file=tmp_path / "nope.env")
+    assert s.tls.port == 8443
+    assert s.tls.concurrency == 2
+    assert s.prefix_bench.max_prefixes == 8
+    assert s.dpi_check.delay_between_ports_seconds == 0.5
+    assert s.dns_advanced.bogus_resolver_ip == "198.51.100.1"
+    assert s.path_diversity.max_targets == 5
+    assert s.thresholds.tls_handshake_ms.good == 50.0
+
+
+def test_env_overrides_an_l7_section_field(tmp_path, monkeypatch):
+    monkeypatch.setenv("NETSLEUTH_PREFIX_BENCH__MAX_PREFIXES", "16")
+    s = load_settings(config_path=tmp_path / "nope.yaml", env_file=tmp_path / "nope.env")
+    assert s.prefix_bench.max_prefixes == 16
+
+
+def test_dpi_check_ports_are_capped_so_it_cannot_become_a_range_scanner(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "dpi_check:\n  ports: [" + ", ".join(str(80 + i) for i in range(17)) + "]\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError, match="at most 16 ports"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
+def test_dpi_check_concurrency_is_capped_as_a_rate_limit(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("dpi_check:\n  concurrency: 10\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="concurrency"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
+def test_prefix_bench_max_prefixes_is_capped_so_it_cannot_scan_a_whole_as(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("prefix_bench:\n  max_prefixes: 1000\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="256"):
         load_settings(config_path=path, env_file=tmp_path / "nope.env")
