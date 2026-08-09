@@ -160,7 +160,8 @@ async def cached_json(
     fetch: Callable[[], Awaitable[dict]],
 ) -> dict:
     path = Path(cache_dir) / f"{key}.json"
-    if path.exists() and (time.time() - path.stat().st_mtime) < ttl_hours * 3600:
+    age = max(0.0, time.time() - path.stat().st_mtime) if path.exists() else None
+    if age is not None and age < ttl_hours * 3600:
         try:
             return json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):

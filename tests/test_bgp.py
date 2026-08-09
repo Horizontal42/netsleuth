@@ -185,6 +185,23 @@ async def test_cached_json_refetches_once_the_entry_expires(tmp_path: Path):
     assert len(calls) == 2
 
 
+async def test_cached_json_refetches_when_mtime_reads_ahead_of_now(tmp_path: Path):
+    import os
+
+    calls = []
+
+    async def fetch() -> dict:
+        calls.append(1)
+        return {"value": len(calls)}
+
+    await cached_json(tmp_path, "k", ttl_hours=24, fetch=fetch)
+    future = (tmp_path / "k.json").stat().st_mtime + 5
+    os.utime(tmp_path / "k.json", (future, future))
+    result = await cached_json(tmp_path, "k", ttl_hours=0, fetch=fetch)
+    assert result == {"value": 2}
+    assert len(calls) == 2
+
+
 async def test_cached_json_survives_a_corrupt_cache_file(tmp_path: Path):
     (tmp_path / "k.json").write_text("{not json", encoding="utf-8")
 
