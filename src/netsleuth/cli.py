@@ -493,6 +493,23 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
     return report, paths
 
 
+def _check_ndt7_consent(settings: Settings) -> bool:
+    consent_marker = Path(settings.output.cache_dir) / "ndt7_consent"
+    if consent_marker.exists():
+        return True
+
+    console.print(f"[yellow]{NDT7_CONSENT_NOTICE}[/yellow]")
+    if not sys.stdin.isatty():
+        return True
+
+    if typer.confirm("Continue with NDT7?", default=False):
+        consent_marker.parent.mkdir(parents=True, exist_ok=True)
+        consent_marker.write_text("consented\n", encoding="utf-8")
+        return True
+
+    return False
+
+
 @app.command()
 def run(
     full: bool = typer.Option(False, "--full", help="Full run: speedtest and full MTR cycles."),
@@ -569,15 +586,7 @@ def run(
             finally:
                 probe.close()
     if ndt7:
-        consent_marker = Path(settings.output.cache_dir) / "ndt7_consent"
-        if not consent_marker.exists():
-            console.print(f"[yellow]{NDT7_CONSENT_NOTICE}[/yellow]")
-            if sys.stdin.isatty():
-                if typer.confirm("Continue with NDT7?", default=False):
-                    consent_marker.parent.mkdir(parents=True, exist_ok=True)
-                    consent_marker.write_text("consented\n", encoding="utf-8")
-                else:
-                    options.ndt7 = False
+        options.ndt7 = _check_ndt7_consent(settings)
     if tcp_trace:
         console.print(
             "[yellow]--tcp-trace needs Npcap (Windows) or root (Unix) and the `tcptrace` extra; "

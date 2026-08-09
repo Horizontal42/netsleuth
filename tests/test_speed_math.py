@@ -98,7 +98,7 @@ def test_bufferbloat_delta_needs_both_a_baseline_and_samples():
     assert bufferbloat_delta(12.0, []) is None
 
 
-from netsleuth.models import SpeedResult, TierAttempt
+from netsleuth.models import SpeedResult
 from netsleuth.speed import NDT7_CONSENT_NOTICE, run_speed_cascade
 
 

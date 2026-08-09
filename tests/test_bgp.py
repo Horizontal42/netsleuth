@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import httpx
-import pytest
 
 from netsleuth.bgp import (
     classify_stability,
