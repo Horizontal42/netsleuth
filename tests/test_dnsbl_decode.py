@@ -85,3 +85,13 @@ def test_summarize_reports_not_blocked_when_every_zone_answered_cleanly():
     hits, blocked = summarize_dnsbl(outcomes)
     assert hits == []
     assert blocked is False
+
+def test_fallback_provider_error_with_unknown_error_code():
+    outcome = decode_dnsbl("zen.spamhaus.org", ["127.255.255.999"])
+    assert outcome.listed is False
+    assert outcome.unavailable_reason == "provider_error"
+
+def test_mixed_listing_and_normal_codes():
+    outcome = decode_dnsbl("zen.spamhaus.org", ["127.0.0.2", "192.168.1.1"])
+    assert outcome.listed is True
+    assert outcome.unavailable_reason is None
