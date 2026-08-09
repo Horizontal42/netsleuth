@@ -102,9 +102,27 @@ def _dedupe(findings: list[Finding]) -> list[Finding]:
 async def _identity(client: httpx.AsyncClient, settings: Settings, options: Options, raw: dict) -> dict:
     token = settings.ipinfo_token.get_secret_value() if settings.ipinfo_token else None
     lookup = options.target_value if options.target_kind in ("ip", "domain") else None
-    merged, cf, flags, payloads = await gather_identity(
-        client, settings.providers, ip=lookup, ipinfo_token=token
-    )
+    if options.target_kind is None:
+        # The shared client has no address family pinned, so on a dual-stack host it can
+        # silently connect over IPv6 (OS/happy-eyeballs preference) and hand back an IPv6
+        # literal mislabeled as egress_v4. Force IPv4 here the same way egress_v6 is forced
+        # below, so the two slots can never both resolve to the same protocol.
+        try:
+            transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+            async with httpx.AsyncClient(
+                transport=transport, timeout=settings.timeouts.http_seconds
+            ) as v4_client:
+                merged, cf, flags, payloads = await gather_identity(
+                    v4_client, settings.providers, ip=lookup, ipinfo_token=token
+                )
+        except (httpx.HTTPError, OSError):
+            merged, cf, flags, payloads = await gather_identity(
+                client, settings.providers, ip=lookup, ipinfo_token=token
+            )
+    else:
+        merged, cf, flags, payloads = await gather_identity(
+            client, settings.providers, ip=lookup, ipinfo_token=token
+        )
     raw.update(payloads)
     v6 = None
     if options.target_kind is None:
