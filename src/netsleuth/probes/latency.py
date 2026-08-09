@@ -6,7 +6,7 @@ import time
 
 from netsleuth.models import Capabilities, PingResult
 from netsleuth.netinfo import choose_latency_backend
-from netsleuth.stats import rtt_stats
+from netsleuth.stats import jitter_matrix, rtt_stats
 
 
 def summarize_ping(
@@ -17,6 +17,7 @@ def summarize_ping(
     samples: list[float | None],
 ) -> PingResult:
     s = rtt_stats(samples)
+    j = jitter_matrix(samples)
     return PingResult(
         label=label,
         host=host,
@@ -30,6 +31,9 @@ def summarize_ping(
         max_ms=s.max_ms,
         mdev_ms=s.mdev_ms,
         jitter_ms=s.jitter_ms,
+        p95_ms=j.p95_ms,
+        p99_ms=j.p99_ms,
+        cv=j.cv,
         samples=samples,
     )
 
@@ -88,7 +92,11 @@ async def ping_host(
     timeout: float,
     backend: str,
     source_ip: str | None = None,
+    semaphore: asyncio.Semaphore | None = None,
 ) -> PingResult:
+    if semaphore is not None:
+        async with semaphore:
+            return await ping_host(host, label, count, interval, timeout, backend, source_ip)
     resolved = await _resolve(host)
     if backend in ("icmp_win", "icmp_dgram", "icmp_raw"):
         try:
@@ -111,10 +119,14 @@ async def ping_fanout(
     interval: float,
     timeout: float,
     source_ip: str | None = None,
+    semaphore: asyncio.Semaphore | None = None,
 ) -> list[PingResult]:
     backend = choose_latency_backend(caps)
     return list(
         await asyncio.gather(
-            *(ping_host(host, label, count, interval, timeout, backend, source_ip) for label, host in hosts)
+            *(
+                ping_host(host, label, count, interval, timeout, backend, source_ip, semaphore)
+                for label, host in hosts
+            )
         )
     )

@@ -265,6 +265,9 @@ class PingResult:
     max_ms: float | None = None
     mdev_ms: float | None = None
     jitter_ms: float | None = None
+    p95_ms: float | None = None
+    p99_ms: float | None = None
+    cv: float | None = None
     samples: list[float | None] = field(default_factory=list)
 
 

@@ -62,3 +62,25 @@ def test_summarize_of_zero_probes_is_a_well_formed_empty_result():
 def test_the_method_tag_is_preserved_verbatim():
     for method in ("icmp_win", "icmp_dgram", "icmp_raw", "tcp", "cfL4"):
         assert summarize_ping("h", "x", None, method, [1.0]).method == method
+
+
+def test_summarize_fills_the_jitter_matrix_fields():
+    result = summarize_ping("h", "1.1.1.1", "1.1.1.1", "icmp_dgram", [10.0, 12.0, 14.0, 16.0, 40.0])
+    assert result.p95_ms is not None
+    assert result.p99_ms is not None
+    assert result.cv is not None
+    assert result.p99_ms >= result.p95_ms
+
+
+def test_summarize_of_an_all_timeout_run_has_no_jitter_matrix():
+    result = summarize_ping("h", "example.test", None, "icmp_win", [None, None, None])
+    assert result.p95_ms is None
+    assert result.p99_ms is None
+    assert result.cv is None
+
+
+def test_summarize_of_a_single_sample_has_zero_cv():
+    result = summarize_ping("h", "1.1.1.1", "1.1.1.1", "cfL4", [9.0])
+    assert result.p95_ms == 9.0
+    assert result.p99_ms == 9.0
+    assert result.cv == 0.0

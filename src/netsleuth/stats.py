@@ -51,3 +51,29 @@ def percentile(values: list[float], p: float) -> float:
     low = int(rank)
     high = min(low + 1, len(ordered) - 1)
     return ordered[low] + (ordered[high] - ordered[low]) * (rank - low)
+
+
+class JitterMatrix(NamedTuple):
+    p50_ms: float | None
+    p95_ms: float | None
+    p99_ms: float | None
+    stdev_ms: float | None
+    cv: float | None
+    outlier_pct: float
+
+
+def jitter_matrix(samples: list[float | None]) -> JitterMatrix:
+    got = [s for s in samples if s is not None]
+    if not got:
+        return JitterMatrix(None, None, None, None, None, 0.0)
+    p50 = round(percentile(got, 50.0), 3)
+    p95 = round(percentile(got, 95.0), 3)
+    p99 = round(percentile(got, 99.0), 3)
+    if len(got) == 1:
+        return JitterMatrix(p50, p95, p99, 0.0, 0.0, 0.0)
+    mean = sum(got) / len(got)
+    stdev = (sum((v - mean) ** 2 for v in got) / len(got)) ** 0.5
+    cv = 0.0 if mean == 0 else stdev / mean
+    outliers = sum(1 for v in got if v > p95)
+    outlier_pct = round(100.0 * outliers / len(got), 3)
+    return JitterMatrix(p50, p95, p99, round(stdev, 3), round(cv, 3), outlier_pct)
