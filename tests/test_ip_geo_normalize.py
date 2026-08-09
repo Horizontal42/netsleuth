@@ -180,6 +180,34 @@ def test_merge_ignores_a_provider_that_returned_nothing():
     assert merged.sources["asn"] == "live"
 
 
+def test_merge_skips_empty_string_values():
+    merged = merge_geo([("a", IpGeo(city="")), ("b", IpGeo(city="Amsterdam"))])
+    assert merged.city == "Amsterdam"
+    assert merged.sources["city"] == "b"
+
+
+def test_merge_keeps_first_known_ip_type():
+    merged = merge_geo([("a", IpGeo(ip_type="hosting")), ("b", IpGeo(ip_type="mobile"))])
+    assert merged.ip_type == "hosting"
+    assert merged.sources["ip_type"] == "a"
+
+
+def test_as_number_returns_none_on_invalid_string():
+    from netsleuth.ip_geo import _as_number
+    assert _as_number("invalid") is None
+
+
+def test_ip_version_returns_none_on_invalid_ip():
+    from netsleuth.ip_geo import _ip_version
+    assert _ip_version("not_an_ip") is None
+
+
+def test_normalize_ipinfo_tolerates_invalid_loc():
+    geo = normalize_ipinfo({"ip": "203.0.113.44", "loc": "bad,loc"})
+    assert geo.lat is None
+    assert geo.lon is None
+
+
 def test_dual_stack_mismatch_is_reported_not_resolved():
     v4 = IpGeo(ip="203.0.113.44", asn="AS64500", country_code="NL")
     v6 = IpGeo(ip="2001:db8::1", asn="AS64777", country_code="DE")
@@ -202,6 +230,54 @@ def test_dual_stack_agreement_produces_no_note():
 def test_dual_stack_comparison_needs_both_sides():
     assert dual_stack_mismatch(IpGeo(asn="AS64500"), None) is None
     assert dual_stack_mismatch(None, IpGeo(asn="AS64500")) is None
+
+
+async def test_gather_identity_for_self_reports_cf_trace_ip(httpx_mock):
+    httpx_mock.add_response(
+        url="https://www.cloudflare.com/cdn-cgi/trace",
+        text="ip=203.0.113.9\nloc=NL\nwarp=off\ngateway=off\nrbi=off\n",
+    )
+    httpx_mock.add_response(url="http://ip-api.com/json/", json={"status": "fail"})
+    httpx_mock.add_response(url="https://freeipapi.com/api/json/", json={})
+    httpx_mock.add_response(url="https://ipinfo.io/json", json={})
+    httpx_mock.add_response(url="https://ipwho.is/", json={"success": False})
+    httpx_mock.add_response(
+        url="https://stat.ripe.net/data/network-info/data.json?resource=203.0.113.9",
+        json={"status": "ok", "data": {"asns": []}},
+    )
+
+    async with httpx.AsyncClient() as client:
+        merged, cf, _flags, _raw = await gather_identity(client, Providers(), ip=None)
+
+    assert merged.ip == "203.0.113.9"
+    assert merged.country_code == "NL"
+    assert cf is not None and cf.ip == "203.0.113.9"
+
+
+async def test_gather_identity_tolerates_ripestat_http_error(httpx_mock):
+    httpx_mock.add_response(url="https://www.cloudflare.com/cdn-cgi/trace", text="")
+    httpx_mock.add_response(
+        url="http://ip-api.com/json/8.8.8.8",
+        json={
+            "status": "success",
+            "query": "8.8.8.8",
+            "as": "AS15169 GOOGLE",
+            "countryCode": "US",
+        },
+    )
+    httpx_mock.add_response(url="https://freeipapi.com/api/json/8.8.8.8", json={})
+    httpx_mock.add_response(url="https://ipinfo.io/8.8.8.8json", json={})
+    httpx_mock.add_response(url="https://ipwho.is/8.8.8.8", json={"success": False})
+    httpx_mock.add_response(
+        url="https://stat.ripe.net/data/network-info/data.json?resource=8.8.8.8",
+        status_code=500,
+    )
+
+    async with httpx.AsyncClient() as client:
+        merged, _, _, _ = await gather_identity(client, Providers(), ip="8.8.8.8")
+
+    assert merged.ip == "8.8.8.8"
+    assert merged.asn == "AS15169"
 
 
 async def test_gather_identity_for_a_target_never_reports_this_hosts_own_ip(httpx_mock):
