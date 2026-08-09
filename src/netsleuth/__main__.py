@@ -1,4 +1,4 @@
-from netcheck.cli import main
+from netsleuth.cli import main
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from netcheck.reputation import (
+from netsleuth.reputation import (
     NetsetIndex,
     build_reputation,
     captcha_risk,

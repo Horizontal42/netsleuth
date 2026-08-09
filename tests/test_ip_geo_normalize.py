@@ -3,8 +3,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from netcheck.config import Providers
-from netcheck.ip_geo import (
+from netsleuth.config import Providers
+from netsleuth.ip_geo import (
     classify_ip_type,
     gather_identity,
     normalize_freeipapi,
@@ -130,8 +130,8 @@ def test_ip_type_classification(mobile, proxy, hosting, known, expected):
     assert classify_ip_type(mobile, proxy, hosting, known) == expected
 
 
-from netcheck.models import IpGeo
-from netcheck.ip_geo import dual_stack_mismatch, merge_geo
+from netsleuth.models import IpGeo
+from netsleuth.ip_geo import dual_stack_mismatch, merge_geo
 
 
 def test_merge_takes_the_first_non_empty_value_in_priority_order():

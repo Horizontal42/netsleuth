@@ -5,9 +5,9 @@ import threading
 
 import pytest
 
-from netcheck.models import Capabilities, TraceHop, TraceResult
-from netcheck.probes.icmp_win import IP_REQ_TIMED_OUT, IP_SUCCESS, IP_TTL_EXPIRED_TRANSIT, IcmpReply
-from netcheck.probes.traceroute import _run_in_daemon_thread, hops_from_win_replies, run_cascade, tier_order
+from netsleuth.models import Capabilities, TraceHop, TraceResult
+from netsleuth.probes.icmp_win import IP_REQ_TIMED_OUT, IP_SUCCESS, IP_TTL_EXPIRED_TRANSIT, IcmpReply
+from netsleuth.probes.traceroute import _run_in_daemon_thread, hops_from_win_replies, run_cascade, tier_order
 
 
 def caps(**kw) -> Capabilities:

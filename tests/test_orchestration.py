@@ -5,8 +5,8 @@ import asyncio
 import httpx
 import pytest
 
-from netcheck.models import ModuleResult, ProbeError
-from netcheck.orchestration import classify_exception, gather_modules, run_module
+from netsleuth.models import ModuleResult, ProbeError
+from netsleuth.orchestration import classify_exception, gather_modules, run_module
 
 
 def test_classify_timeout_errors():

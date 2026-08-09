@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from netcheck.models import PingResult, SpeedResult
-from netcheck.watch import (
+from netsleuth.models import PingResult, SpeedResult
+from netsleuth.watch import (
     WATCH_SCHEMA_VERSION,
     WatchSession,
     is_speedtest_cycle,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 
-from netcheck.models import AdapterLeakResult, DnsLeak
+from netsleuth.models import AdapterLeakResult, DnsLeak
 
 _LEAK_NOTE = (
     "This test only sees resolvers configured at the OS level. A browser using DoH "
@@ -99,8 +99,8 @@ import asyncio
 import dns.asyncresolver
 import dns.exception
 
-from netcheck.bgp import parse_cymru_origin
-from netcheck.models import LocalNet
+from netsleuth.bgp import parse_cymru_origin
+from netsleuth.models import LocalNet
 
 MYADDR_NAME = "o-o.myaddr.l.google.com"
 AKAHELP_NAME = "whoami.ds.akahelp.net"

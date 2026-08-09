@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from netcheck.config import Band, Thresholds
-from netcheck.models import PingResult, TraceHop, TraceResult
-from netcheck.interpret import latency_findings, path_findings, severity_for, worst
+from netsleuth.config import Band, Thresholds
+from netsleuth.models import PingResult, TraceHop, TraceResult
+from netsleuth.interpret import latency_findings, path_findings, severity_for, worst
 
 
 @pytest.fixture()
@@ -156,9 +156,9 @@ def test_path_findings_report_an_incomplete_trace():
     assert [f.id for f in path_findings(trace)] == ["path.incomplete"]
 
 
-from netcheck.config import VpnBands
-from netcheck.models import AdapterLeakResult, CfTrace, DnsLeak, IpGeo, LocalNet, Signal
-from netcheck.interpret import SIGNAL_WEIGHTS, assess_vpn, gather_vpn_signals, score_vpn
+from netsleuth.config import VpnBands
+from netsleuth.models import AdapterLeakResult, CfTrace, DnsLeak, IpGeo, LocalNet, Signal
+from netsleuth.interpret import SIGNAL_WEIGHTS, assess_vpn, gather_vpn_signals, score_vpn
 
 
 def sig(name: str, observed: bool = True) -> Signal:
@@ -303,9 +303,9 @@ def test_assess_vpn_returns_a_complete_assessment():
     assert assessment.confidence >= 0.75
 
 
-from netcheck.config import BufferbloatBands
-from netcheck.models import Finding, SpeedResult
-from netcheck.interpret import bufferbloat_consequence, grade_bufferbloat, overall_verdict, speed_findings
+from netsleuth.config import BufferbloatBands
+from netsleuth.models import Finding, SpeedResult
+from netsleuth.interpret import bufferbloat_consequence, grade_bufferbloat, overall_verdict, speed_findings
 
 
 def test_bufferbloat_grades_follow_the_configured_bands():

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from netcheck.speed import bufferbloat_delta, mbps, parse_server_timing_cfl4, throughput_from_samples
+from netsleuth.speed import bufferbloat_delta, mbps, parse_server_timing_cfl4, throughput_from_samples
 
 
 def test_mbps_converts_bytes_and_seconds():
@@ -86,8 +86,8 @@ def test_bufferbloat_delta_needs_both_a_baseline_and_samples():
     assert bufferbloat_delta(12.0, []) is None
 
 
-from netcheck.models import SpeedResult, TierAttempt
-from netcheck.speed import NDT7_CONSENT_NOTICE, run_speed_cascade
+from netsleuth.models import SpeedResult, TierAttempt
+from netsleuth.speed import NDT7_CONSENT_NOTICE, run_speed_cascade
 
 
 async def test_cascade_stops_at_the_first_tier_that_returns_a_download_figure():
@@ -171,8 +171,8 @@ def test_the_ndt7_consent_notice_states_what_gets_published():
     assert "public" in NDT7_CONSENT_NOTICE.lower()
 
 
-from netcheck.config import BufferbloatBands
-from netcheck.speed import measure_with_bufferbloat, probe_while
+from netsleuth.config import BufferbloatBands
+from netsleuth.speed import measure_with_bufferbloat, probe_while
 
 
 async def test_probe_while_collects_samples_for_the_whole_duration_of_the_work():

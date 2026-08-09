@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from netcheck.stats import percentile, rtt_stats
+from netsleuth.stats import percentile, rtt_stats
 
 
 def test_all_samples_present():

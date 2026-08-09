@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 from urllib.parse import parse_qs
 
-from netcheck.models import CfL4Stats
-from netcheck.stats import percentile
+from netsleuth.models import CfL4Stats
+from netsleuth.stats import percentile
 
 _CFL4_RE = re.compile(r'cfL4\s*;\s*desc\s*=\s*"?\??(?P<query>[^",]*)"?')
 
@@ -62,7 +62,7 @@ import asyncio
 import time
 from typing import Awaitable, Callable
 
-from netcheck.models import SpeedResult, TierAttempt
+from netsleuth.models import SpeedResult, TierAttempt
 
 NDT7_CONSENT_NOTICE = (
     "M-Lab NDT7 publishes every measurement as public CC0 open data, including your "
@@ -106,7 +106,7 @@ import json
 
 import httpx
 
-from netcheck.config import Speedtest
+from netsleuth.config import Speedtest
 
 
 async def tier_ookla(binary: str, server: str | None, timeout: float) -> SpeedResult:
@@ -213,9 +213,9 @@ async def tier_ndt7(client: httpx.AsyncClient, cfg: Speedtest, timeout: float) -
     )
 
 
-from netcheck.config import BufferbloatBands
-from netcheck.interpret import grade_bufferbloat
-from netcheck.stats import rtt_stats
+from netsleuth.config import BufferbloatBands
+from netsleuth.interpret import grade_bufferbloat
+from netsleuth.stats import rtt_stats
 
 
 async def probe_while(

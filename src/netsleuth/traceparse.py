@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import re
 
-from netcheck.models import TraceHop, TraceResult
-from netcheck.stats import rtt_stats
+from netsleuth.models import TraceHop, TraceResult
+from netsleuth.stats import rtt_stats
 
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 IPV6_RE = re.compile(r"\b(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}\b")

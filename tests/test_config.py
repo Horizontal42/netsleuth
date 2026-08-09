@@ -4,7 +4,7 @@ import textwrap
 
 import pytest
 
-from netcheck.config import load_settings
+from netsleuth.config import load_settings
 
 
 @pytest.fixture()
@@ -48,15 +48,15 @@ def test_yaml_overrides_defaults(yaml_file, tmp_path):
 
 def test_dotenv_overrides_yaml(yaml_file, tmp_path):
     env_file = tmp_path / ".env"
-    env_file.write_text("NETCHECK_PROBING__PING_COUNT=13\n", encoding="utf-8")
+    env_file.write_text("NETSLEUTH_PROBING__PING_COUNT=13\n", encoding="utf-8")
     s = load_settings(config_path=yaml_file, env_file=env_file)
     assert s.probing.ping_count == 13
 
 
 def test_environment_overrides_dotenv(yaml_file, tmp_path, monkeypatch):
     env_file = tmp_path / ".env"
-    env_file.write_text("NETCHECK_PROBING__PING_COUNT=13\n", encoding="utf-8")
-    monkeypatch.setenv("NETCHECK_PROBING__PING_COUNT", "99")
+    env_file.write_text("NETSLEUTH_PROBING__PING_COUNT=13\n", encoding="utf-8")
+    monkeypatch.setenv("NETSLEUTH_PROBING__PING_COUNT", "99")
     s = load_settings(config_path=yaml_file, env_file=env_file)
     assert s.probing.ping_count == 99
 

@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from netcheck.probes.icmp_win import (
+from netsleuth.probes.icmp_win import (
     IP_DEST_HOST_UNREACHABLE,
     IP_REQ_TIMED_OUT,
     IP_SUCCESS,

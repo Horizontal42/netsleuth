@@ -4,9 +4,9 @@ import asyncio
 import socket
 import time
 
-from netcheck.models import Capabilities, PingResult
-from netcheck.netinfo import choose_latency_backend
-from netcheck.stats import rtt_stats
+from netsleuth.models import Capabilities, PingResult
+from netsleuth.netinfo import choose_latency_backend
+from netsleuth.stats import rtt_stats
 
 
 def summarize_ping(
@@ -57,7 +57,7 @@ def _resolve(host: str) -> str | None:
 
 async def _icmp_samples(host: str, count: int, interval: float, timeout: float, backend: str) -> list[float | None]:
     if backend == "icmp_win":
-        from netcheck.probes.icmp_win import ping_samples_win
+        from netsleuth.probes.icmp_win import ping_samples_win
 
         return await asyncio.to_thread(ping_samples_win, host, count, interval, timeout)
     from icmplib import async_ping

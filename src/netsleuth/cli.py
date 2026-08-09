@@ -13,25 +13,25 @@ import httpx
 import typer
 from rich.console import Console
 
-from netcheck import __version__
-from netcheck.compare import diff_reports, load_report, render_diff
-from netcheck.config import Settings, load_settings
-from netcheck.exporter import build_report, egress_asn, render_markdown, report_filename, write_report
-from netcheck.interpret import (
+from netsleuth import __version__
+from netsleuth.compare import diff_reports, load_report, render_diff
+from netsleuth.config import Settings, load_settings
+from netsleuth.exporter import build_report, egress_asn, render_markdown, report_filename, write_report
+from netsleuth.interpret import (
     assess_vpn,
     gather_vpn_signals,
     latency_findings,
     path_findings,
     speed_findings,
 )
-from netcheck.ip_geo import dual_stack_mismatch, gather_identity
-from netcheck.models import Finding, IpGeo, LocalNet, ModuleResult, SpeedResult
-from netcheck.netinfo import collect_local_net, detect_capabilities, is_tunnel_iface
-from netcheck.orchestration import gather_modules, run_module, utc_now_iso
-from netcheck.probes.dns_leak import collect_dns_leak
-from netcheck.probes.latency import ping_fanout, tcp_connect_rtt
-from netcheck.probes.traceroute import traceroute
-from netcheck.speed import NDT7_CONSENT_NOTICE
+from netsleuth.ip_geo import dual_stack_mismatch, gather_identity
+from netsleuth.models import Finding, IpGeo, LocalNet, ModuleResult, SpeedResult
+from netsleuth.netinfo import collect_local_net, detect_capabilities, is_tunnel_iface
+from netsleuth.orchestration import gather_modules, run_module, utc_now_iso
+from netsleuth.probes.dns_leak import collect_dns_leak
+from netsleuth.probes.latency import ping_fanout, tcp_connect_rtt
+from netsleuth.probes.traceroute import traceroute
+from netsleuth.speed import NDT7_CONSENT_NOTICE
 
 if sys.platform == "win32":
     # A legacy console codepage (e.g. cp1251) cannot encode the emoji badges and
@@ -150,7 +150,7 @@ async def _identity(client: httpx.AsyncClient, settings: Settings, options: Opti
 async def _bgp_section(client, settings: Settings, asn: str | None, raw: dict):
     if not asn:
         return ModuleResult(name="bgp", status="skipped", warnings=["no ASN was resolved for this target"])
-    from netcheck.bgp import collect_bgp
+    from netsleuth.bgp import collect_bgp
 
     key = settings.peeringdb_api_key.get_secret_value() if settings.peeringdb_api_key else None
     intel, payloads = await collect_bgp(
@@ -161,7 +161,7 @@ async def _bgp_section(client, settings: Settings, asn: str | None, raw: dict):
 
 
 async def _reputation_section(client, settings: Settings, options: Options, geo: IpGeo, raw: dict):
-    from netcheck.reputation import (
+    from netsleuth.reputation import (
         build_reputation,
         fetch_abuseipdb,
         fetch_internetdb,
@@ -225,7 +225,7 @@ async def _traces(hosts, caps, settings: Settings, cycles: int, options: Options
 async def _speed_section(client, settings: Settings, options: Options, idle_rtt_ms: float | None):
     import shutil
 
-    from netcheck.speed import (
+    from netsleuth.speed import (
         measure_with_bufferbloat,
         run_speed_cascade,
         tier_cloudflare,
@@ -285,7 +285,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, str, str
         timeout=timeouts.http_seconds,
         follow_redirects=True,
         http2=True,
-        headers={"User-Agent": f"netcheck/{__version__}"},
+        headers={"User-Agent": f"netsleuth/{__version__}"},
     ) as client:
         # Phase 1 — local facts and identity. Blocking: everything below needs the ASN.
         modules["connection"] = await run_module(
@@ -463,12 +463,12 @@ def run(
             "if it cannot run, the cascade falls through to the normal tiers.[/yellow]"
         )
     if watch:
-        from netcheck.watch import run_watch
+        from netsleuth.watch import run_watch
 
         asyncio.run(run_watch(settings, options))
         raise typer.Exit(0)
 
-    console.print(f"netcheck {__version__} · {options.mode} mode · {platform.system()}")
+    console.print(f"netsleuth {__version__} · {options.mode} mode · {platform.system()}")
     report, _markdown, _markdown_ru, json_path, md_path, ru_md_path = asyncio.run(diagnose(settings, options))
     interpretation = report["interpretation"]
     console.print(

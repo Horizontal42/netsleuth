@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from unittest.mock import patch
 
-from netcheck.probes.icmp_win import IP_REQ_TIMED_OUT, IcmpReply, trace_hops_win
+from netsleuth.probes.icmp_win import IP_REQ_TIMED_OUT, IcmpReply, trace_hops_win
 
 
 def _fake_gethostbyname(host: str) -> str:
@@ -19,14 +19,14 @@ def test_trace_hops_win_total_elapsed_is_bounded_by_the_total_budget_not_hops_ti
     # to the 100ms total budget.
     call_timeouts: list[int] = []
 
-    def fake_echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netcheck") -> IcmpReply:
+    def fake_echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth") -> IcmpReply:
         call_timeouts.append(timeout_ms)
         time.sleep(timeout_ms / 1000.0)
         return IcmpReply(address=None, status=IP_REQ_TIMED_OUT, rtt_ms=None, ttl=0)
 
     with (
-        patch("netcheck.probes.icmp_win.socket.gethostbyname", side_effect=_fake_gethostbyname),
-        patch("netcheck.probes.icmp_win.echo_once", side_effect=fake_echo_once),
+        patch("netsleuth.probes.icmp_win.socket.gethostbyname", side_effect=_fake_gethostbyname),
+        patch("netsleuth.probes.icmp_win.echo_once", side_effect=fake_echo_once),
     ):
         started = time.monotonic()
         trace_hops_win("example.invalid", max_hops=30, timeout_ms=100)
@@ -43,13 +43,13 @@ def test_trace_hops_win_total_elapsed_is_bounded_by_the_total_budget_not_hops_ti
 def test_trace_hops_win_per_hop_timeout_is_capped_even_for_a_huge_total_budget():
     call_timeouts: list[int] = []
 
-    def fake_echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netcheck") -> IcmpReply:
+    def fake_echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth") -> IcmpReply:
         call_timeouts.append(timeout_ms)
         return IcmpReply(address=None, status=IP_REQ_TIMED_OUT, rtt_ms=None, ttl=0)
 
     with (
-        patch("netcheck.probes.icmp_win.socket.gethostbyname", side_effect=_fake_gethostbyname),
-        patch("netcheck.probes.icmp_win.echo_once", side_effect=fake_echo_once),
+        patch("netsleuth.probes.icmp_win.socket.gethostbyname", side_effect=_fake_gethostbyname),
+        patch("netsleuth.probes.icmp_win.echo_once", side_effect=fake_echo_once),
     ):
         # A single-hop trace with a huge total budget (e.g. subprocess_seconds=60s
         # divided across a small max_hops) must still not hand the whole budget
@@ -60,16 +60,16 @@ def test_trace_hops_win_per_hop_timeout_is_capped_even_for_a_huge_total_budget()
 
 
 def test_trace_hops_win_happy_path_hop_count_and_ok_break_are_unchanged():
-    from netcheck.probes.icmp_win import IP_SUCCESS
+    from netsleuth.probes.icmp_win import IP_SUCCESS
 
-    def fake_echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netcheck") -> IcmpReply:
+    def fake_echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth") -> IcmpReply:
         if ttl < 3:
             return IcmpReply(address=f"10.0.0.{ttl}", status=IP_REQ_TIMED_OUT, rtt_ms=None, ttl=0)
         return IcmpReply(address="203.0.113.1", status=IP_SUCCESS, rtt_ms=5.0, ttl=64)
 
     with (
-        patch("netcheck.probes.icmp_win.socket.gethostbyname", side_effect=_fake_gethostbyname),
-        patch("netcheck.probes.icmp_win.echo_once", side_effect=fake_echo_once),
+        patch("netsleuth.probes.icmp_win.socket.gethostbyname", side_effect=_fake_gethostbyname),
+        patch("netsleuth.probes.icmp_win.echo_once", side_effect=fake_echo_once),
     ):
         hops = trace_hops_win("example.invalid", max_hops=30, timeout_ms=60_000)
 

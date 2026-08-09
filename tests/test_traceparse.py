@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from netcheck.traceparse import parse_linux
+from netsleuth.traceparse import parse_linux
 
 
 @pytest.fixture()
@@ -73,7 +73,7 @@ def test_linux_parser_tolerates_empty_and_garbage_input():
     assert parse_linux("bash: traceroute: command not found\n") == []
 
 
-from netcheck.traceparse import WINDOWS_SUB_MS, parse_windows
+from netsleuth.traceparse import WINDOWS_SUB_MS, parse_windows
 
 
 @pytest.fixture()
@@ -143,7 +143,7 @@ def test_windows_parser_tolerates_empty_input():
     assert parse_windows("") == []
 
 
-from netcheck.traceparse import parse_darwin
+from netsleuth.traceparse import parse_darwin
 
 
 def test_darwin_basic_hops_match_the_gnu_shape(trace_fixture):
@@ -185,7 +185,7 @@ def test_darwin_parser_tolerates_empty_input():
     assert parse_darwin("") == []
 
 
-from netcheck.traceparse import build_trace_result, parse_traceroute
+from netsleuth.traceparse import build_trace_result, parse_traceroute
 
 
 def test_dispatcher_routes_by_os_name(trace_fixture):

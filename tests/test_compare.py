@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from netcheck.compare import (
+from netsleuth.compare import (
     Change,
     diff_reports,
     finding_changes,
@@ -101,7 +101,7 @@ def test_diff_reports_assembles_every_part(before, after):
 
 def test_render_diff_shows_before_and_after_values(before, after):
     text = render_diff(diff_reports(before, after))
-    assert text.startswith("# netcheck compare")
+    assert text.startswith("# netsleuth compare")
     assert "203.0.113.44" in text
     assert "198.51.100.7" in text
     assert "-188.2" in text

@@ -12,8 +12,8 @@ import dns.asyncresolver
 import dns.exception
 import httpx
 
-from netcheck.config import Providers
-from netcheck.models import DnsblHit, InternetDbResult, Reputation
+from netsleuth.config import Providers
+from netsleuth.models import DnsblHit, InternetDbResult, Reputation
 
 
 def parse_netset(text: str) -> list[str]:

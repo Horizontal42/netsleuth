@@ -3,7 +3,7 @@ from __future__ import annotations
 import ipaddress
 import re
 
-from netcheck.models import CfTrace, IpGeo
+from netsleuth.models import CfTrace, IpGeo
 
 _AS_PREFIX_RE = re.compile(r"^AS(\d+)\s*(?P<name>.*)$", re.IGNORECASE)
 
@@ -214,7 +214,7 @@ import asyncio
 
 import httpx
 
-from netcheck.config import Providers
+from netsleuth.config import Providers
 
 
 async def _json(client: httpx.AsyncClient, url: str, **kwargs) -> dict:

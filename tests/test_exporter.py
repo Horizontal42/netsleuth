@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from netcheck.exporter import (
+from netsleuth.exporter import (
     SCHEMA_VERSION,
     SECTION_ORDER,
     atomic_write,
@@ -19,7 +19,7 @@ from netcheck.exporter import (
     sanitize_name,
     write_report,
 )
-from netcheck.models import (
+from netsleuth.models import (
     Finding,
     IpGeo,
     LocalNet,
@@ -196,7 +196,7 @@ def test_egress_asn_is_read_out_of_the_assembled_report():
 def test_write_report_names_the_file_after_the_target_in_target_mode(tmp_path: Path):
     report = build_report({**meta(), "mode": "target", "target": "AS15169"}, modules(), [], {})
     json_path, md_path, ru_md_path = write_report(
-        report, "# netcheck report\n", "# netcheck report\n", tmp_path
+        report, "# netsleuth report\n", "# netsleuth report\n", tmp_path
     )
     assert json_path.name == "report_AS15169_20260808T191200Z.json"
     assert md_path.name == "report_AS15169_20260808T191200Z.md"
@@ -221,18 +221,18 @@ def test_atomic_write_replaces_an_existing_file(tmp_path: Path):
 def test_write_report_emits_both_artifacts_with_matching_names(tmp_path: Path):
     report = build_report(meta(), modules(), [], {})
     json_path, md_path, ru_md_path = write_report(
-        report, "# netcheck report\n", "# netcheck report\n", tmp_path
+        report, "# netsleuth report\n", "# netsleuth report\n", tmp_path
     )
     assert json_path.name == "report_AS64500_20260808T191200Z.json"
     assert md_path.name == "report_AS64500_20260808T191200Z.md"
     assert ru_md_path.name == "report_AS64500_20260808T191200Z.ru.md"
     assert json.loads(json_path.read_text(encoding="utf-8"))["schema_version"] == SCHEMA_VERSION
-    assert md_path.read_text(encoding="utf-8").startswith("# netcheck report")
-    assert ru_md_path.read_text(encoding="utf-8").startswith("# netcheck report")
+    assert md_path.read_text(encoding="utf-8").startswith("# netsleuth report")
+    assert ru_md_path.read_text(encoding="utf-8").startswith("# netsleuth report")
 
 
-from netcheck.exporter import SPARK_CHARS, badge, first_loss_jump, render_markdown, sparkline
-from netcheck.models import (
+from netsleuth.exporter import SPARK_CHARS, badge, first_loss_jump, render_markdown, sparkline
+from netsleuth.models import (
     AdapterLeakResult,
     BgpIntel,
     CfTrace,
@@ -466,7 +466,7 @@ def test_markdown_has_every_section_from_the_spec_in_order():
         "## Problems & recommendations",
         "## Run diagnostics",
     ]
-    assert text.startswith("# netcheck report")
+    assert text.startswith("# netsleuth report")
 
 
 def test_markdown_header_states_mode_timestamp_and_verdict():
@@ -542,7 +542,7 @@ def test_markdown_without_emoji_uses_text_badges():
     assert "🟡" not in text
 
 
-from netcheck.exporter import unavailable
+from netsleuth.exporter import unavailable
 
 
 def dead_modules() -> dict[str, ModuleResult]:
@@ -603,7 +603,7 @@ def test_unavailable_translates_the_skip_reason_into_russian():
 
 
 def test_diagnostics_translates_module_warnings_into_russian():
-    from netcheck.exporter import _diagnostics
+    from netsleuth.exporter import _diagnostics
 
     report = build_report(
         meta(),
@@ -666,7 +666,7 @@ def test_russian_markdown_is_non_empty_and_contains_cyrillic():
     text = render_markdown(full_report(), lang="ru")
     assert text.strip()
     assert _has_cyrillic(text)
-    assert text.startswith("# netcheck report")
+    assert text.startswith("# netsleuth report")
 
 
 def _structural_shape(text: str) -> tuple[int, int, int]:
@@ -723,7 +723,7 @@ def test_render_markdown_default_call_is_byte_identical_to_before_the_lang_featu
         "## Problems & recommendations",
         "## Run diagnostics",
     ]
-    assert text.startswith("# netcheck report")
+    assert text.startswith("# netsleuth report")
     assert "[Русский]" not in text
     assert "[English]" not in text
     assert "cloudflare-dns" in text

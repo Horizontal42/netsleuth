@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from netcheck.interpret import overall_verdict
-from netcheck.models import Finding, ModuleResult, to_jsonable
+from netsleuth.interpret import overall_verdict
+from netsleuth.models import Finding, ModuleResult, to_jsonable
 
 SCHEMA_VERSION = 1
 SECTION_ORDER = (
@@ -101,7 +101,7 @@ def write_report(
     return json_path, md_path, ru_md_path
 
 
-from netcheck.interpret import bufferbloat_consequence
+from netsleuth.interpret import bufferbloat_consequence
 
 SPARK_CHARS = "▁▂▃▅▇"
 _BADGES = {"ok": "🟢", "info": "🟢", "warn": "🟡", "crit": "🔴"}
@@ -210,7 +210,7 @@ def _header(report: dict, emoji: bool, lang: str = "en") -> list[str]:
     summary = interp.get("summary_text", "") if lang == "en" else _ru_summary(report, status)
     status_word = status if lang == "en" else _SEVERITY_WORDS_RU.get(status, status)
     return [
-        "# netcheck report",
+        "# netsleuth report",
         "",
         f"- {_t(lang, 'Mode', 'Режим')}: `{meta.get('mode', 'auto')}`{target}",
         f"- {_t(lang, 'Started', 'Начало')}: {meta.get('started_at', '?')} · "

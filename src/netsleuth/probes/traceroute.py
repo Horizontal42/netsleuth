@@ -8,9 +8,9 @@ import shutil
 import threading
 from typing import Awaitable, Callable, TypeVar
 
-from netcheck.models import Capabilities, TraceHop, TraceResult
-from netcheck.probes.icmp_win import IcmpReply, classify_status
-from netcheck.traceparse import build_trace_result, finalize_hop
+from netsleuth.models import Capabilities, TraceHop, TraceResult
+from netsleuth.probes.icmp_win import IcmpReply, classify_status
+from netsleuth.traceparse import build_trace_result, finalize_hop
 
 _T = TypeVar("_T")
 
@@ -34,7 +34,7 @@ def _run_in_daemon_thread(func: Callable[..., _T], *args: object) -> "asyncio.Fu
         else:
             result.set_result(value)
 
-    threading.Thread(target=_target, name="netcheck-icmp-win", daemon=True).start()
+    threading.Thread(target=_target, name="netsleuth-icmp-win", daemon=True).start()
     return asyncio.wrap_future(result)
 
 
@@ -129,7 +129,7 @@ async def _tier_mtr(target: str, binary: str, cycles: int, max_hops: int, timeou
 
 
 async def _tier_icmp_win(target: str, max_hops: int, timeout: float) -> TraceResult:
-    from netcheck.probes.icmp_win import trace_hops_win
+    from netsleuth.probes.icmp_win import trace_hops_win
 
     replies = await _run_in_daemon_thread(trace_hops_win, target, max_hops, int(timeout * 1000))
     hops = hops_from_win_replies(replies)

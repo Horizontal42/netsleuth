@@ -7,7 +7,7 @@ from typing import Any, Awaitable
 
 import httpx
 
-from netcheck.models import ModuleResult, ProbeError
+from netsleuth.models import ModuleResult, ProbeError
 
 _BLOCKED_STATUS = {401, 403, 451}
 _RETRYABLE_STATUS_FLOOR = 500

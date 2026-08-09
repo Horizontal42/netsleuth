@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from netcheck.bgp import (
+from netsleuth.bgp import (
     classify_stability,
     parse_announced_prefixes,
     parse_as_overview,
@@ -11,8 +11,8 @@ from netcheck.bgp import (
     parse_bgp_updates,
     ripestat,
 )
-from netcheck.config import Providers
-from netcheck.models import BgpEvent
+from netsleuth.config import Providers
+from netsleuth.models import BgpEvent
 
 
 def test_as_overview_extracts_holder_and_block(api_fixture):
@@ -99,7 +99,7 @@ async def test_ripestat_does_not_bound_non_bulk_calls(httpx_mock):
 import json
 from pathlib import Path
 
-from netcheck.bgp import (
+from netsleuth.bgp import (
     cached_json,
     parse_asrank,
     parse_cymru_origin,
@@ -211,7 +211,7 @@ async def test_cached_json_survives_a_corrupt_cache_file(tmp_path: Path):
     assert await cached_json(tmp_path, "k", ttl_hours=24, fetch=fetch) == {"value": "fresh"}
 
 
-from netcheck.bgp import build_bgp_intel
+from netsleuth.bgp import build_bgp_intel
 
 
 def test_build_bgp_intel_merges_every_source(api_fixture):

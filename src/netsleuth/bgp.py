@@ -5,8 +5,8 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from netcheck.config import Providers
-from netcheck.models import BgpEvent
+from netsleuth.config import Providers
+from netsleuth.models import BgpEvent
 
 # These calls return the whole routing history of an ASN; on a large ISP that is
 # tens of megabytes unless the window and row count are pinned.
@@ -110,7 +110,7 @@ import time
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from netcheck.models import IxpPresence
+from netsleuth.models import IxpPresence
 
 
 def parse_asrank(payload: dict) -> tuple[int | None, int | None, int | None]:
@@ -174,7 +174,7 @@ async def cached_json(
     return payload
 
 
-from netcheck.models import BgpIntel
+from netsleuth.models import BgpIntel
 
 
 def build_bgp_intel(

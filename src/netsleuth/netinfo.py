@@ -12,7 +12,7 @@ import subprocess
 
 import psutil
 
-from netcheck.models import Capabilities, LocalNet
+from netsleuth.models import Capabilities, LocalNet
 
 _TUNNEL_PATTERNS = (
     re.compile(r"^(tun|tap|utun|ppp|wg|nordlynx|proton|ipsec|gpd)\d*", re.IGNORECASE),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from netcheck.models import Capabilities
-from netcheck.netinfo import choose_latency_backend, choose_trace_backend, degradation_note
+from netsleuth.models import Capabilities
+from netsleuth.netinfo import choose_latency_backend, choose_trace_backend, degradation_note
 
 
 def caps(**kw) -> Capabilities:
@@ -69,7 +69,7 @@ def test_degradation_note_on_windows_mentions_the_api_rather_than_sysctl():
 
 import pytest
 
-from netcheck.netinfo import iface_for_ip, is_tunnel_iface, mtu_anomaly
+from netsleuth.netinfo import iface_for_ip, is_tunnel_iface, mtu_anomaly
 
 
 def test_iface_for_ip_matches_the_owning_adapter():

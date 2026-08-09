@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from netcheck.probes.dns_leak import (
+from netsleuth.probes.dns_leak import (
     build_adapter_result,
     build_dns_leak,
     detect_ecs_leak,

@@ -107,7 +107,7 @@ def _handle():
     return iphlpapi, handle
 
 
-def echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netcheck") -> IcmpReply:
+def echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth") -> IcmpReply:
     iphlpapi, handle = _handle()
     try:
         options = _IpOptionInformation(Ttl=ttl, Tos=0, Flags=0, OptionsSize=0, OptionsData=None)

@@ -134,7 +134,7 @@ class Watch(BaseModel):
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="NETCHECK_",
+        env_prefix="NETSLEUTH_",
         env_nested_delimiter="__",
         env_file_encoding="utf-8",
         extra="ignore",

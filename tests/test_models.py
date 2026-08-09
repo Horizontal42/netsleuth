@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from netcheck.models import (
+from netsleuth.models import (
     AdapterLeakResult,
     BgpEvent,
     BgpIntel,

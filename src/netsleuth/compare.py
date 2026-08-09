@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from netcheck.exporter import badge
+from netsleuth.exporter import badge
 
 
 @dataclass
@@ -124,7 +124,7 @@ def _block(title: str, changes: list[Change]) -> list[str]:
 
 
 def render_diff(diff: ReportDiff, emoji: bool = True) -> str:
-    lines = ["# netcheck compare", ""]
+    lines = ["# netsleuth compare", ""]
     lines += _block("Identity", diff.identity)
     lines += _block("Latency", diff.latency)
     lines += _block("Speed", diff.speed)

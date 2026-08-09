@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from netcheck.config import Band, BufferbloatBands, Thresholds, VpnBands
-from netcheck.models import (
+from netsleuth.config import Band, BufferbloatBands, Thresholds, VpnBands
+from netsleuth.models import (
     CfTrace,
     DnsLeak,
     Finding,
@@ -15,7 +15,7 @@ from netcheck.models import (
     TraceResult,
     VpnAssessment,
 )
-from netcheck.netinfo import is_tunnel_iface, mtu_anomaly
+from netsleuth.netinfo import is_tunnel_iface, mtu_anomaly
 
 _SEVERITY_ORDER = {"ok": 0, "info": 1, "warn": 2, "crit": 3}
 

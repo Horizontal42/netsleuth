@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from netcheck.probes.latency import summarize_ping
+from netsleuth.probes.latency import summarize_ping
 
 
 def test_summarize_builds_a_complete_ping_result():

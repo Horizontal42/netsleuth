@@ -11,14 +11,14 @@ from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 
-from netcheck import __version__
-from netcheck.config import Settings
-from netcheck.exporter import atomic_write, compact_timestamp, dump_json, sanitize_name, sparkline
-from netcheck.ip_geo import gather_identity
-from netcheck.models import PingResult, SpeedResult, to_jsonable
-from netcheck.netinfo import detect_capabilities
-from netcheck.orchestration import run_module, utc_now_iso
-from netcheck.probes.latency import ping_fanout
+from netsleuth import __version__
+from netsleuth.config import Settings
+from netsleuth.exporter import atomic_write, compact_timestamp, dump_json, sanitize_name, sparkline
+from netsleuth.ip_geo import gather_identity
+from netsleuth.models import PingResult, SpeedResult, to_jsonable
+from netsleuth.netinfo import detect_capabilities
+from netsleuth.orchestration import run_module, utc_now_iso
+from netsleuth.probes.latency import ping_fanout
 
 WATCH_SCHEMA_VERSION = 1
 
@@ -112,7 +112,7 @@ def write_session(session: WatchSession, logs_dir: Path) -> Path:
 
 
 def render_dashboard(session: WatchSession) -> Table:
-    table = Table(title=f"netcheck --watch · {session.asn or 'unknown ASN'} · cycle {len(session.cycles)}")
+    table = Table(title=f"netsleuth --watch · {session.asn or 'unknown ASN'} · cycle {len(session.cycles)}")
     for column in ("Host", "Avg ms", "Jitter", "Loss", "Trend"):
         table.add_column(column)
     latest = session.cycles[-1]["hosts"] if session.cycles else {}
@@ -137,7 +137,7 @@ def render_dashboard(session: WatchSession) -> Table:
 async def run_watch(settings: Settings, options) -> Path:
     # Imported here, not at module import time: cli imports watch lazily for --watch,
     # and a module-level import back into cli would close the cycle.
-    from netcheck.cli import _speed_section
+    from netsleuth.cli import _speed_section
 
     caps = detect_capabilities()
     session = WatchSession(
@@ -149,12 +149,12 @@ async def run_watch(settings: Settings, options) -> Path:
     if options.extra_host:
         hosts.append(("target-host", options.extra_host))
     console = Console()
-    console.print(f"netcheck {__version__} · watching every {session.interval_seconds}s · Ctrl-C to stop")
+    console.print(f"netsleuth {__version__} · watching every {session.interval_seconds}s · Ctrl-C to stop")
 
     async with httpx.AsyncClient(
         timeout=settings.timeouts.http_seconds,
         follow_redirects=True,
-        headers={"User-Agent": f"netcheck/{__version__}"},
+        headers={"User-Agent": f"netsleuth/{__version__}"},
     ) as client:
         try:
             geo, _cf, _flags, _raw = await gather_identity(client, settings.providers)

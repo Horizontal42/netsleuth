@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from netcheck.reputation import decode_dnsbl, reverse_ip, summarize_dnsbl
+from netsleuth.reputation import decode_dnsbl, reverse_ip, summarize_dnsbl
 
 
 def test_reverse_ip_builds_the_dnsbl_query_label():

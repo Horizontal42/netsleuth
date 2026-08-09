@@ -18,7 +18,7 @@ colorama==0.4.6 ; sys_platform == 'win32'
     #   pytest
     #   typer
 dnspython==2.8.0
-    # via netcheck
+    # via netsleuth
 exceptiongroup==1.3.1 ; python_full_version < '3.11'
     # via
     #   anyio
@@ -33,12 +33,12 @@ httpcore==1.0.9
     # via httpx
 httpx==0.28.1
     # via
-    #   netcheck
+    #   netsleuth
     #   pytest-httpx
 hyperframe==6.1.0
     # via h2
 icmplib==3.0.4
-    # via netcheck
+    # via netsleuth
 idna==3.18
     # via
     #   anyio
@@ -54,15 +54,15 @@ packaging==26.3
 pluggy==1.6.0
     # via pytest
 psutil==7.2.2
-    # via netcheck
+    # via netsleuth
 pydantic==2.13.4
     # via
-    #   netcheck
+    #   netsleuth
     #   pydantic-settings
 pydantic-core==2.46.4
     # via pydantic
 pydantic-settings==2.15.0
-    # via netcheck
+    # via netsleuth
 pygments==2.20.0
     # via
     #   pytest
@@ -76,17 +76,17 @@ pytest-httpx==0.36.2
 python-dotenv==1.2.2
     # via pydantic-settings
 pyyaml==6.0.3
-    # via netcheck
+    # via netsleuth
 rich==15.0.0
     # via
-    #   netcheck
+    #   netsleuth
     #   typer
 shellingham==1.5.4
     # via typer
 tomli==2.4.1 ; python_full_version < '3.11'
     # via pytest
 typer==0.27.1
-    # via netcheck
+    # via netsleuth
 typing-extensions==4.16.0
     # via
     #   anyio
