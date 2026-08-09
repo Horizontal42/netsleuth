@@ -20,6 +20,10 @@ ERROR_KINDS = (
 STATUSES = ("ok", "partial", "failed", "skipped")
 SEVERITIES = ("ok", "info", "warn", "crit")
 DIRECTIONS = ("vpn", "clean")
+PORT_STATES = ("open", "closed", "filtered", "reset", "error")
+DPI_VERDICTS = ("clean", "partial_filtering", "reset_injection", "unreachable", "unknown")
+RESOLVER_KINDS = ("system", "doh")
+EDGE_SOURCES = ("cf_ray", "cf_trace", "server_timing", "none")
 
 
 @dataclass
@@ -340,6 +344,127 @@ class SpeedResult:
     bufferbloat_grade: str | None = None
     cfL4_stats: CfL4Stats | None = None
     netflix_oca_onnet: bool | None = None
+
+
+@dataclass
+class TlsResult:
+    label: str = ""
+    host: str = ""
+    port: int = 443
+    resolved_ip: str | None = None
+    tcp_rtt_ms: float | None = None
+    tls_handshake_ms: float | None = None
+    ttfb_ms: float | None = None
+    tls_version: str | None = None
+    cipher: str | None = None
+    alpn: str | None = None
+    cert_verified: bool | None = None
+    error: str | None = None
+
+
+@dataclass
+class PrefixProbe:
+    prefix: str
+    probe_ip: str | None = None
+    avg_ms: float | None = None
+    loss_pct: float = 100.0
+    reachable: bool = False
+    reverse_dns: str | None = None
+
+
+@dataclass
+class PrefixBenchmark:
+    asn: str | None = None
+    prefixes_announced: int = 0
+    prefixes_probed: int = 0
+    method: str = "none"
+    results: list[PrefixProbe] = field(default_factory=list)
+    best: str | None = None
+    worst: str | None = None
+    spread_ms: float | None = None
+    skipped_reason: str | None = None
+
+
+@dataclass
+class PortProbe:
+    port: int
+    state: str
+    rtt_ms: float | None = None
+    detail: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.state not in PORT_STATES:
+            raise ValueError(f"unknown PortProbe state: {self.state!r}")
+
+
+@dataclass
+class DpiCheckResult:
+    target: str | None = None
+    resolved_ip: str | None = None
+    consented: bool = False
+    ports: list[PortProbe] = field(default_factory=list)
+    verdict: str = "unknown"
+    rationale: str = ""
+    rationale_ru: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.verdict not in DPI_VERDICTS:
+            raise ValueError(f"unknown DpiCheckResult verdict: {self.verdict!r}")
+
+
+@dataclass
+class ResolverProbe:
+    name: str
+    kind: str
+    endpoint: str | None = None
+    query_name: str = ""
+    answers: list[str] = field(default_factory=list)
+    elapsed_ms: float | None = None
+    error: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind not in RESOLVER_KINDS:
+            raise ValueError(f"unknown ResolverProbe kind: {self.kind!r}")
+
+
+@dataclass
+class DnsAdvanced:
+    probes: list[ResolverProbe] = field(default_factory=list)
+    system_avg_ms: float | None = None
+    doh_avg_ms: float | None = None
+    divergences: list[str] = field(default_factory=list)
+    transparent_proxy: bool | None = None
+    transparent_proxy_detail: str | None = None
+    note: str = ""
+    note_ru: str | None = None
+
+
+@dataclass
+class AnycastHop:
+    target: str
+    resolved_ip: str | None = None
+    ip_country: str | None = None
+    ip_city: str | None = None
+    edge_colo: str | None = None
+    edge_city: str | None = None
+    edge_country: str | None = None
+    edge_rtt_ms: float | None = None
+    client_rtt_ms: float | None = None
+    source: str = "none"
+
+    def __post_init__(self) -> None:
+        if self.source not in EDGE_SOURCES:
+            raise ValueError(f"unknown AnycastHop source: {self.source!r}")
+
+
+@dataclass
+class PathDiversity:
+    client_country: str | None = None
+    hops: list[AnycastHop] = field(default_factory=list)
+    international_loop: bool = False
+    detour_countries: list[str] = field(default_factory=list)
+    note: str = ""
+    note_ru: str | None = None
 
 
 def to_jsonable(obj: Any) -> Any:

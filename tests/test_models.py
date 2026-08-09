@@ -6,25 +6,34 @@ import pytest
 
 from netsleuth.models import (
     AdapterLeakResult,
+    AnycastHop,
     BgpEvent,
     BgpIntel,
     Capabilities,
     CfL4Stats,
     CfTrace,
+    DnsAdvanced,
     DnsLeak,
     DnsblHit,
+    DpiCheckResult,
     Finding,
     InternetDbResult,
     IpGeo,
     IxpPresence,
     LocalNet,
     ModuleResult,
+    PathDiversity,
     PingResult,
+    PortProbe,
+    PrefixBenchmark,
+    PrefixProbe,
     ProbeError,
     Reputation,
+    ResolverProbe,
     Signal,
     SpeedResult,
     TierAttempt,
+    TlsResult,
     TraceHop,
     TraceResult,
     VpnAssessment,
@@ -245,3 +254,122 @@ def test_ip_geo_and_vpn_assessment_defaults_are_json_safe():
     out = to_jsonable({"geo": geo, "vpn": vpn})
     assert out["geo"]["ip_type"] == "unknown"
     assert out["vpn"]["signals"][0]["name"] == "warp"
+
+
+def test_every_l7_domain_shape_defaults_to_constructible_with_no_arguments():
+    for cls in (TlsResult, PrefixBenchmark, DpiCheckResult, DnsAdvanced, PathDiversity):
+        instance = cls()
+        json.dumps(to_jsonable(instance), allow_nan=False)
+
+
+def test_tls_result_round_trips_through_json():
+    tls = TlsResult(
+        label="cloudflare",
+        host="cloudflare.com",
+        port=443,
+        resolved_ip="104.16.132.229",
+        tcp_rtt_ms=12.0,
+        tls_handshake_ms=45.0,
+        ttfb_ms=60.0,
+        tls_version="TLSv1.3",
+        cipher="TLS_AES_256_GCM_SHA384",
+        alpn="h2",
+        cert_verified=True,
+    )
+    out = json.loads(json.dumps(to_jsonable(tls), allow_nan=False))
+    assert out["host"] == "cloudflare.com"
+    assert out["tls_handshake_ms"] == 45.0
+
+
+def test_port_probe_rejects_unknown_state():
+    with pytest.raises(ValueError, match="unknown PortProbe state"):
+        PortProbe(port=443, state="bogus")
+
+
+@pytest.mark.parametrize("state", ["open", "closed", "filtered", "reset", "error"])
+def test_port_probe_accepts_documented_states(state):
+    assert PortProbe(port=443, state=state).state == state
+
+
+def test_dpi_check_result_rejects_unknown_verdict():
+    with pytest.raises(ValueError, match="unknown DpiCheckResult verdict"):
+        DpiCheckResult(verdict="bogus")
+
+
+@pytest.mark.parametrize(
+    "verdict", ["clean", "partial_filtering", "reset_injection", "unreachable", "unknown"]
+)
+def test_dpi_check_result_accepts_documented_verdicts(verdict):
+    assert DpiCheckResult(verdict=verdict).verdict == verdict
+
+
+def test_dpi_check_result_nests_port_probes():
+    result = DpiCheckResult(
+        target="203.0.113.9",
+        resolved_ip="203.0.113.9",
+        consented=True,
+        ports=[PortProbe(port=443, state="open", rtt_ms=20.0)],
+        verdict="clean",
+        rationale="all probed ports behave normally",
+    )
+    out = to_jsonable(result)
+    assert out["ports"][0]["state"] == "open"
+    assert out["consented"] is True
+
+
+def test_resolver_probe_rejects_unknown_kind():
+    with pytest.raises(ValueError, match="unknown ResolverProbe kind"):
+        ResolverProbe(name="system", kind="bogus", query_name="example.com")
+
+
+@pytest.mark.parametrize("kind", ["system", "doh"])
+def test_resolver_probe_accepts_documented_kinds(kind):
+    assert ResolverProbe(name="n", kind=kind, query_name="example.com").kind == kind
+
+
+def test_dns_advanced_nests_resolver_probes():
+    adv = DnsAdvanced(
+        probes=[ResolverProbe(name="system", kind="system", query_name="example.com", answers=["1.2.3.4"])],
+        system_avg_ms=12.0,
+        doh_avg_ms=30.0,
+        transparent_proxy=False,
+        note="system resolver answered directly",
+    )
+    out = to_jsonable(adv)
+    assert out["probes"][0]["answers"] == ["1.2.3.4"]
+    assert out["transparent_proxy"] is False
+
+
+def test_anycast_hop_rejects_unknown_source():
+    with pytest.raises(ValueError, match="unknown AnycastHop source"):
+        AnycastHop(target="example.com", source="bogus")
+
+
+@pytest.mark.parametrize("source", ["cf_ray", "cf_trace", "server_timing", "none"])
+def test_anycast_hop_accepts_documented_sources(source):
+    assert AnycastHop(target="example.com", source=source).source == source
+
+
+def test_path_diversity_nests_anycast_hops():
+    pd = PathDiversity(
+        client_country="RU",
+        hops=[AnycastHop(target="cloudflare.com", edge_colo="DME", source="cf_ray")],
+        international_loop=False,
+    )
+    out = to_jsonable(pd)
+    assert out["hops"][0]["edge_colo"] == "DME"
+    assert out["international_loop"] is False
+
+
+def test_prefix_benchmark_nests_prefix_probes_and_ranks():
+    bench = PrefixBenchmark(
+        asn="AS64500",
+        prefixes_announced=120,
+        prefixes_probed=32,
+        method="icmp",
+        results=[PrefixProbe(prefix="203.0.113.0/24", probe_ip="203.0.113.1", avg_ms=15.0, reachable=True)],
+        best="203.0.113.0/24",
+    )
+    out = to_jsonable(bench)
+    assert out["results"][0]["avg_ms"] == 15.0
+    assert out["best"] == "203.0.113.0/24"
