@@ -176,8 +176,9 @@ _MERGE_SKIP = {"sources", "ip_type"}
 def merge_geo(candidates: list[tuple[str, IpGeo]]) -> IpGeo:
     merged = IpGeo()
     sources: dict[str, str] = {}
+    fields = dataclass_fields(IpGeo)
     for name, geo in candidates:
-        for f in dataclass_fields(IpGeo):
+        for f in fields:
             if f.name in _MERGE_SKIP:
                 continue
             if getattr(merged, f.name) is not None:
