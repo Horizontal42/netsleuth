@@ -86,8 +86,13 @@ def test_missing_modules_are_rendered_as_skipped_sections_not_dropped():
         "vpn_assessment",
         "bgp",
         "reputation",
+        "dns_advanced",
         "latency",
+        "tls",
         "path",
+        "path_diversity",
+        "prefix_benchmark",
+        "dpi_check",
         "speed",
     }
 
@@ -266,15 +271,24 @@ def test_format_extensions_covers_the_three_known_formats():
 from netsleuth.exporter import SPARK_CHARS, _forced_interface_rows, badge, first_loss_jump, render_markdown, sparkline
 from netsleuth.models import (
     AdapterLeakResult,
+    AnycastHop,
     BgpIntel,
     CfTrace,
+    DnsAdvanced,
     DnsLeak,
     DnsblHit,
+    DpiCheckResult,
     InternetDbResult,
     IxpPresence,
+    PathDiversity,
+    PortProbe,
+    PrefixBenchmark,
+    PrefixProbe,
     Reputation,
+    ResolverProbe,
     Signal,
     TierAttempt,
+    TlsResult,
     TraceHop,
     TraceResult,
     VpnAssessment,
@@ -364,6 +378,22 @@ def full_modules() -> dict[str, ModuleResult]:
                 rationale="listed on bl.spamcop.net",
             ),
         ),
+        "dns_advanced": ModuleResult(
+            name="dns_advanced",
+            status="ok",
+            data=DnsAdvanced(
+                probes=[
+                    ResolverProbe(name="system", kind="system", query_name="cloudflare.com", answers=["1.1.1.1"], elapsed_ms=18.0),
+                    ResolverProbe(name="cloudflare", kind="doh", query_name="cloudflare.com", answers=["104.16.132.229"], elapsed_ms=22.0),
+                ],
+                system_avg_ms=18.0,
+                doh_avg_ms=22.0,
+                transparent_proxy=False,
+                transparent_proxy_detail="No response from the bogus resolver IP (timeout): transparent DNS proxy not detected.",
+                note="System resolver and DoH agree within normal CDN variance.",
+                note_ru="Системный резолвер и DoH согласуются в пределах обычной вариации CDN.",
+            ),
+        ),
         "latency": ModuleResult(
             name="latency",
             status="ok",
@@ -384,6 +414,23 @@ def full_modules() -> dict[str, ModuleResult]:
             ],
             duration_ms=2400,
         ),
+        "tls": ModuleResult(
+            name="tls",
+            status="ok",
+            data=[
+                TlsResult(
+                    label="cloudflare",
+                    host="cloudflare.com",
+                    port=443,
+                    resolved_ip="104.16.132.229",
+                    tcp_rtt_ms=12.0,
+                    tls_handshake_ms=45.0,
+                    ttfb_ms=60.0,
+                    tls_version="TLSv1.3",
+                    cipher="TLS_AES_256_GCM_SHA384",
+                )
+            ],
+        ),
         "path": ModuleResult(
             name="path",
             status="ok",
@@ -399,6 +446,61 @@ def full_modules() -> dict[str, ModuleResult]:
                     ],
                 )
             ],
+        ),
+        "path_diversity": ModuleResult(
+            name="path_diversity",
+            status="ok",
+            data=PathDiversity(
+                client_country="RU",
+                hops=[
+                    AnycastHop(
+                        target="cloudflare.com",
+                        resolved_ip="104.16.132.229",
+                        edge_colo="FRA",
+                        edge_city="Frankfurt",
+                        edge_country="DE",
+                        edge_rtt_ms=15.0,
+                        client_rtt_ms=45.0,
+                        source="cf_ray",
+                    )
+                ],
+                international_loop=True,
+                detour_countries=["DE"],
+                note="Anycast routed traffic through DE even though the client is in RU.",
+                note_ru="Anycast завернул трафик через DE, хотя клиент находится в RU.",
+            ),
+        ),
+        "prefix_benchmark": ModuleResult(
+            name="prefix_benchmark",
+            status="ok",
+            data=PrefixBenchmark(
+                asn="AS64500",
+                prefixes_announced=50,
+                prefixes_probed=2,
+                method="icmp",
+                results=[
+                    PrefixProbe(prefix="203.0.113.0/24", probe_ip="203.0.113.1", avg_ms=12.0, loss_pct=0.0, reachable=True),
+                    PrefixProbe(prefix="198.51.100.0/24", probe_ip="198.51.100.1", avg_ms=None, loss_pct=100.0, reachable=False),
+                ],
+                best="203.0.113.0/24",
+                worst="203.0.113.0/24",
+            ),
+        ),
+        "dpi_check": ModuleResult(
+            name="dpi_check",
+            status="ok",
+            data=DpiCheckResult(
+                target="203.0.113.9",
+                resolved_ip="203.0.113.9",
+                consented=True,
+                ports=[
+                    PortProbe(port=443, state="open", rtt_ms=20.0),
+                    PortProbe(port=8443, state="filtered"),
+                ],
+                verdict="partial_filtering",
+                rationale="Some ports responded (open) while others were silently dropped (filtered).",
+                rationale_ru="Часть портов ответила (открыты), а часть тихо не ответила (отфильтрованы).",
+            ),
         ),
         "speed": ModuleResult(
             name="speed",
@@ -492,8 +594,13 @@ def test_markdown_has_every_section_from_the_spec_in_order():
         "## VPN / proxy assessment",
         "## ASN & BGP intelligence",
         "## Reputation",
+        "## DNS: system vs DoH",
         "## Latency",
+        "## TLS handshake",
         "## Path",
+        "## Path diversity (Anycast)",
+        "## AS prefix benchmark",
+        "## DPI / port check",
         "## Speed",
         "## Problems & recommendations",
         "## Run diagnostics",
@@ -693,8 +800,8 @@ def test_diagnostics_translates_module_warnings_into_russian():
 def test_an_all_modules_failed_run_still_renders_every_section():
     text = render_markdown(dead_report())
     headings = [line for line in text.splitlines() if line.startswith("## ")]
-    assert len(headings) == 10
-    assert text.count("Not available") == 8
+    assert len(headings) == 15
+    assert text.count("Not available") == len(SECTION_ORDER)
 
 
 def test_an_all_modules_failed_report_is_still_valid_strict_json():
@@ -794,8 +901,13 @@ def test_render_markdown_default_call_is_byte_identical_to_before_the_lang_featu
         "## VPN / proxy assessment",
         "## ASN & BGP intelligence",
         "## Reputation",
+        "## DNS: system vs DoH",
         "## Latency",
+        "## TLS handshake",
         "## Path",
+        "## Path diversity (Anycast)",
+        "## AS prefix benchmark",
+        "## DPI / port check",
         "## Speed",
         "## Problems & recommendations",
         "## Run diagnostics",

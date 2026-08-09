@@ -17,8 +17,13 @@ SECTION_ORDER = (
     "vpn_assessment",
     "bgp",
     "reputation",
+    "dns_advanced",
     "latency",
+    "tls",
     "path",
+    "path_diversity",
+    "prefix_benchmark",
+    "dpi_check",
     "speed",
 )
 
@@ -238,8 +243,13 @@ _SECTION_TITLES = {
     "vpn_assessment": "## VPN / proxy assessment",
     "bgp": "## ASN & BGP intelligence",
     "reputation": "## Reputation",
+    "dns_advanced": "## DNS: system vs DoH",
     "latency": "## Latency",
+    "tls": "## TLS handshake",
     "path": "## Path",
+    "path_diversity": "## Path diversity (Anycast)",
+    "prefix_benchmark": "## AS prefix benchmark",
+    "dpi_check": "## DPI / port check",
     "speed": "## Speed",
 }
 
@@ -249,8 +259,13 @@ _SECTION_TITLES_RU = {
     "vpn_assessment": "## Оценка VPN/прокси",
     "bgp": "## ASN и BGP-разведка",
     "reputation": "## Репутация",
+    "dns_advanced": "## DNS: системный резолвер vs DoH",
     "latency": "## Задержки",
+    "tls": "## TLS-рукопожатие",
     "path": "## Маршрут",
+    "path_diversity": "## Диверсификация маршрута (Anycast)",
+    "prefix_benchmark": "## Бенчмарк префиксов AS",
+    "dpi_check": "## Проверка DPI / портов",
     "speed": "## Скорость",
 }
 
@@ -653,6 +668,188 @@ def _speed(report: dict, lang: str = "en") -> list[str]:
     return lines + [""]
 
 
+def _tls(report: dict, lang: str = "en") -> list[str]:
+    title = _section_title("tls", lang)
+    note = unavailable(report, "tls", lang)
+    if note:
+        return [title, "", note, ""]
+    results = _data(report, "tls") or []
+    lines = [title, ""] + _table(
+        [
+            _t(lang, "Target", "Цель"),
+            _t(lang, "Address", "Адрес"),
+            _t(lang, "TCP RTT (ms)", "TCP RTT (мс)"),
+            _t(lang, "TLS handshake (ms)", "TLS-рукопожатие (мс)"),
+            _t(lang, "TTFB (ms)", "TTFB (мс)"),
+            _t(lang, "Version", "Версия"),
+            _t(lang, "Cipher", "Шифр"),
+        ],
+        [
+            [
+                r.get("label", ""),
+                r.get("resolved_ip") or r.get("host", ""),
+                _num(r.get("tcp_rtt_ms")),
+                _num(r.get("tls_handshake_ms")),
+                _num(r.get("ttfb_ms")),
+                r.get("tls_version") or "—",
+                r.get("cipher") or "—",
+            ]
+            for r in results
+        ],
+        lang,
+    )
+    errored = [r for r in results if r.get("error")]
+    if errored:
+        lines += [""] + [f"- {r.get('label')}: {r.get('error')}" for r in errored]
+    lines += [
+        "",
+        f"> {_t(lang, 'TLS handshake time is derived by subtracting a separate TCP-only baseline connection from a second, full TLS connection.', 'Время TLS-рукопожатия получено вычитанием отдельного базового TCP-соединения из времени второго, полного TLS-соединения.')}",
+    ]
+    return lines + [""]
+
+
+def _dns_advanced(report: dict, lang: str = "en") -> list[str]:
+    title = _section_title("dns_advanced", lang)
+    note = unavailable(report, "dns_advanced", lang)
+    if note:
+        return [title, "", note, ""]
+    adv = _data(report, "dns_advanced") or {}
+    probes = adv.get("probes") or []
+    lines = [title, ""] + _table(
+        [
+            _t(lang, "Resolver", "Резолвер"),
+            _t(lang, "Kind", "Тип"),
+            _t(lang, "Name", "Имя"),
+            _t(lang, "ms", "мс"),
+            _t(lang, "Answers", "Ответы"),
+        ],
+        [
+            [
+                p.get("name", ""),
+                p.get("kind", ""),
+                p.get("query_name", ""),
+                _num(p.get("elapsed_ms")),
+                ", ".join(p.get("answers") or []) or (p.get("error") or "—"),
+            ]
+            for p in probes
+        ],
+        lang,
+    )
+    proxy = adv.get("transparent_proxy")
+    proxy_word = {True: _t(lang, "yes", "да"), False: _t(lang, "no", "нет"), None: "—"}[proxy]
+    lines += [
+        "",
+        f"{_t(lang, 'Transparent DNS proxy', 'Прозрачный DNS-прокси')}: **{proxy_word}** — {adv.get('transparent_proxy_detail') or ''}",
+    ]
+    note_text = (adv.get("note_ru") or adv.get("note") or "") if lang == "ru" else (adv.get("note") or "")
+    if note_text:
+        lines += ["", note_text]
+    return lines + [""]
+
+
+def _path_diversity(report: dict, lang: str = "en") -> list[str]:
+    title = _section_title("path_diversity", lang)
+    note = unavailable(report, "path_diversity", lang)
+    if note:
+        return [title, "", note, ""]
+    pd = _data(report, "path_diversity") or {}
+    hops = pd.get("hops") or []
+    lines = [title, ""] + _table(
+        [
+            _t(lang, "Target", "Цель"),
+            _t(lang, "IP", "IP"),
+            _t(lang, "IP geo", "Гео IP"),
+            _t(lang, "Edge colo", "Точка edge"),
+            _t(lang, "Edge geo", "Гео edge"),
+            _t(lang, "Edge RTT (ms)", "RTT edge (мс)"),
+            _t(lang, "Client RTT (ms)", "RTT клиента (мс)"),
+        ],
+        [
+            [
+                h.get("target", ""),
+                h.get("resolved_ip") or "—",
+                f"{h.get('ip_city') or '?'}, {h.get('ip_country')}" if h.get("ip_country") else "—",
+                h.get("edge_colo") or "—",
+                f"{h.get('edge_city') or '?'}, {h.get('edge_country')}" if h.get("edge_country") else "—",
+                _num(h.get("edge_rtt_ms")),
+                _num(h.get("client_rtt_ms")),
+            ]
+            for h in hops
+        ],
+        lang,
+    )
+    loop_word = _t(lang, "yes", "да") if pd.get("international_loop") else _t(lang, "no", "нет")
+    lines += ["", f"{_t(lang, 'International routing loop', 'Международная петля маршрута')}: **{loop_word}**"]
+    note_text = (pd.get("note_ru") or pd.get("note") or "") if lang == "ru" else (pd.get("note") or "")
+    if note_text:
+        lines += ["", note_text]
+    return lines + [""]
+
+
+def _prefix_benchmark(report: dict, lang: str = "en") -> list[str]:
+    title = _section_title("prefix_benchmark", lang)
+    note = unavailable(report, "prefix_benchmark", lang)
+    if note:
+        return [title, "", note, ""]
+    bench = _data(report, "prefix_benchmark") or {}
+    results = bench.get("results") or []
+    lines = [title, ""] + _table(
+        [
+            _t(lang, "Prefix", "Префикс"),
+            _t(lang, "Probe IP", "IP пробы"),
+            _t(lang, "Avg ms", "Сред. мс"),
+            _t(lang, "Loss", "Потери"),
+        ],
+        [
+            [r.get("prefix", ""), r.get("probe_ip") or "—", _num(r.get("avg_ms")), f"{r.get('loss_pct', 0)}%"]
+            for r in results
+        ],
+        lang,
+    )
+    lines += [
+        "",
+        f"{_t(lang, 'Prefixes announced', 'Анонсировано префиксов')}: {bench.get('prefixes_announced', 0)} · "
+        f"{_t(lang, 'probed', 'проверено')}: {bench.get('prefixes_probed', 0)} · "
+        f"{_t(lang, 'best', 'лучший')}: {bench.get('best') or '—'} · "
+        f"{_t(lang, 'worst', 'худший')}: {bench.get('worst') or '—'} · "
+        f"{_t(lang, 'spread', 'разброс')}: {_num(bench.get('spread_ms'))} {_t(lang, 'ms', 'мс')}",
+    ]
+    return lines + [""]
+
+
+_DPI_VERDICT_RU = {
+    "clean": "чисто",
+    "partial_filtering": "частичная фильтрация",
+    "reset_injection": "инъекция RST",
+    "unreachable": "недоступен",
+    "unknown": "неизвестно",
+}
+
+
+def _dpi_check(report: dict, lang: str = "en") -> list[str]:
+    title = _section_title("dpi_check", lang)
+    note = unavailable(report, "dpi_check", lang)
+    if note:
+        return [title, "", note, ""]
+    dpi = _data(report, "dpi_check") or {}
+    ports = dpi.get("ports") or []
+    lines = [title, ""] + _table(
+        [
+            _t(lang, "Port", "Порт"),
+            _t(lang, "State", "Состояние"),
+            _t(lang, "RTT (ms)", "RTT (мс)"),
+            _t(lang, "Detail", "Детали"),
+        ],
+        [[str(p.get("port", "")), p.get("state", ""), _num(p.get("rtt_ms")), p.get("detail") or "—"] for p in ports],
+        lang,
+    )
+    verdict = dpi.get("verdict", "unknown")
+    verdict_word = verdict if lang == "en" else _DPI_VERDICT_RU.get(verdict, verdict)
+    rationale = (dpi.get("rationale_ru") or dpi.get("rationale") or "") if lang == "ru" else (dpi.get("rationale") or "")
+    lines += ["", f"{_t(lang, 'Verdict', 'Вердикт')}: **{verdict_word}** — {rationale}"]
+    return lines + [""]
+
+
 def _problems(report: dict, emoji: bool, lang: str = "en") -> list[str]:
     found = _findings(report)
     heading = _t(lang, "## Problems & recommendations", "## Проблемы и рекомендации")
@@ -699,8 +896,13 @@ def render_markdown(
     lines += _vpn(report, lang)
     lines += _bgp(report, lang)
     lines += _reputation(report, lang)
+    lines += _dns_advanced(report, lang)
     lines += _latency(report, lang)
+    lines += _tls(report, lang)
     lines += _path(report, lang)
+    lines += _path_diversity(report, lang)
+    lines += _prefix_benchmark(report, lang)
+    lines += _dpi_check(report, lang)
     lines += _speed(report, lang)
     lines += _problems(report, emoji, lang)
     lines += _diagnostics(report, lang)
