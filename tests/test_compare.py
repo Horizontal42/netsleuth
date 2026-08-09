@@ -50,6 +50,31 @@ def test_identity_reports_the_vpn_verdict_and_confidence_delta(before, after):
     assert changes["VPN confidence"].delta == pytest.approx(0.65)
 
 
+def test_identity_falls_back_from_as_name_to_org():
+    before = {"ip_geo": {"data": {"egress_v4": {"as_name": None, "org": "Fallback Org 1"}}}}
+    after = {"ip_geo": {"data": {"egress_v4": {"as_name": "", "org": "Fallback Org 2"}}}}
+    changes = by_label(identity_changes(before, after))
+    assert changes["Organisation"].before == "Fallback Org 1"
+    assert changes["Organisation"].after == "Fallback Org 2"
+
+
+def test_identity_handles_missing_sections():
+    before = {}
+    after = {"ip_geo": {"data": {"egress_v4": {"ip": "1.2.3.4"}}}, "vpn_assessment": {"data": {"verdict": "confirmed"}}}
+    changes = by_label(identity_changes(before, after))
+    assert changes["Egress IP"].before is None
+    assert changes["Egress IP"].after == "1.2.3.4"
+    assert changes["VPN verdict"].before is None
+    assert changes["VPN verdict"].after == "confirmed"
+
+    # Reverse direction
+    changes2 = by_label(identity_changes(after, before))
+    assert changes2["Egress IP"].before == "1.2.3.4"
+    assert changes2["Egress IP"].after is None
+    assert changes2["VPN verdict"].before == "confirmed"
+    assert changes2["VPN verdict"].after is None
+
+
 def test_identity_of_a_report_against_itself_is_empty(before):
     assert identity_changes(before, before) == []
 
