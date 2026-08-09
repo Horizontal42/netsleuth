@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, field_validator
+
+FORMAT_EXTENSIONS = {"md": "md", "ru-md": "ru.md", "json": "json"}
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -124,6 +126,24 @@ class Output(BaseModel):
     logs_dir: str = "./logs"
     cache_dir: str = "./.cache"
     emoji: bool = True
+    formats: list[str] = Field(default_factory=lambda: ["md"])
+
+    @field_validator("formats")
+    @classmethod
+    def _normalize_formats(cls, value: list[str]) -> list[str]:
+        tokens = [str(v).strip().lower() for v in value]
+        if "all" in tokens:
+            tokens = list(FORMAT_EXTENSIONS)
+        seen: list[str] = []
+        for token in tokens:
+            if token not in FORMAT_EXTENSIONS:
+                raise ValueError(
+                    f"unknown output format {token!r}; expected one of "
+                    f"{sorted(FORMAT_EXTENSIONS)} or 'all'"
+                )
+            if token not in seen:
+                seen.append(token)
+        return seen
 
 
 class Watch(BaseModel):

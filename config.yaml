@@ -72,6 +72,9 @@ output:
   logs_dir: "./logs"
   cache_dir: "./.cache"
   emoji: true
+  # Which report artifacts a run writes by default: md, ru-md, json, or all.
+  # Overridden per run by --format/--ru/--json.
+  formats: ["md"]
 
 watch:
   interval_seconds: 60

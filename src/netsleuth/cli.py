@@ -7,7 +7,7 @@ import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import httpx
 import typer
@@ -15,8 +15,8 @@ from rich.console import Console
 
 from netsleuth import __version__
 from netsleuth.compare import diff_reports, load_report, render_diff
-from netsleuth.config import Settings, load_settings
-from netsleuth.exporter import build_report, egress_asn, render_markdown, report_filename, write_report
+from netsleuth.config import FORMAT_EXTENSIONS, Settings, load_settings
+from netsleuth.exporter import build_report, dump_json, egress_asn, render_markdown, report_filename, write_report
 from netsleuth.interpret import (
     assess_vpn,
     gather_vpn_signals,
@@ -59,6 +59,39 @@ class Options:
     dnsbl: bool = False
     ndt7: bool = False
     tcp_trace: bool = False
+    formats: frozenset[str] = frozenset({"md"})
+
+
+def parse_formats(
+    values: list[str], ru: bool, json_flag: bool, default: frozenset[str]
+) -> frozenset[str]:
+    tokens = [t.strip().lower() for raw in values for t in raw.split(",") if t.strip()]
+    if ru:
+        tokens.append("ru-md")
+    if json_flag:
+        tokens.append("json")
+    if not tokens:
+        return default
+    if "none" in tokens:
+        if len(set(tokens)) > 1:
+            raise typer.BadParameter("'none' cannot be combined with other formats.")
+        return frozenset()
+    if "all" in tokens:
+        return frozenset(FORMAT_EXTENSIONS)
+    unknown = sorted(set(tokens) - set(FORMAT_EXTENSIONS))
+    if unknown:
+        raise typer.BadParameter(
+            f"unknown format(s) {unknown}; expected one of {sorted(FORMAT_EXTENSIONS)}, 'all' or 'none'"
+        )
+    return frozenset(tokens)
+
+
+def format_siblings(
+    formats: frozenset[str], md_name: str, ru_md_name: str
+) -> tuple[str | None, str | None]:
+    if "md" in formats and "ru-md" in formats:
+        return ru_md_name, md_name
+    return None, None
 
 
 def parse_target(value: str) -> tuple[str, str]:
@@ -274,7 +307,7 @@ async def _speed_section(client, settings: Settings, options: Options, idle_rtt_
     return ModuleResult(name="speed", status="ok", data=result)
 
 
-async def diagnose(settings: Settings, options: Options) -> tuple[dict, str, str, Path, Path, Path]:
+async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Path]]:
     started_at = utc_now_iso()
     caps = detect_capabilities()
     timeouts = settings.timeouts
@@ -400,6 +433,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, str, str
             "ndt7": options.ndt7,
             "tcp_trace": options.tcp_trace,
         },
+        "formats": sorted(options.formats),
         "host_os": f"{platform.system()} {platform.release()}",
         "capabilities": caps,
     }
@@ -407,12 +441,16 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, str, str
     asn = meta.get("target") or egress_asn(report)
     md_name = report_filename(asn, started_at, "md")
     ru_md_name = report_filename(asn, started_at, "ru.md")
-    markdown = render_markdown(report, emoji=settings.output.emoji, lang="en", sibling=ru_md_name)
-    markdown_ru = render_markdown(report, emoji=settings.output.emoji, lang="ru", sibling=md_name)
-    json_path, md_path, ru_md_path = write_report(
-        report, markdown, markdown_ru, Path(settings.output.logs_dir)
-    )
-    return report, markdown, markdown_ru, json_path, md_path, ru_md_path
+    sibling_for_md, sibling_for_ru = format_siblings(options.formats, md_name, ru_md_name)
+    artifacts: dict[str, str] = {}
+    if "md" in options.formats:
+        artifacts["md"] = render_markdown(report, emoji=settings.output.emoji, lang="en", sibling=sibling_for_md)
+    if "ru-md" in options.formats:
+        artifacts["ru-md"] = render_markdown(report, emoji=settings.output.emoji, lang="ru", sibling=sibling_for_ru)
+    if "json" in options.formats:
+        artifacts["json"] = dump_json(report)
+    paths = write_report(report, artifacts, Path(settings.output.logs_dir))
+    return report, paths
 
 
 @app.command()
@@ -423,10 +461,23 @@ def run(
     target_host: Optional[str] = typer.Option(None, "--target-host", help="Extra host for ping/traceroute."),
     speedtest_server: Optional[str] = typer.Option(None, "--speedtest-server", help="Pin the speedtest server."),
     watch: bool = typer.Option(False, "--watch", help="Continuous monitoring with a live dashboard."),
-    compare: Optional[Tuple[Path, Path]] = typer.Option(None, "--compare", help="Diff two saved JSON reports."),
+    compare: Optional[Tuple[Path, Path]] = typer.Option(
+        None, "--compare", help="Diff two saved JSON reports — reads reports produced with --format json."
+    ),
     dnsbl: bool = typer.Option(False, "--dnsbl", help="Also query classic DNSBL zones."),
     ndt7: bool = typer.Option(False, "--ndt7", help="Add the M-Lab NDT7 speedtest tier (publishes your IP)."),
     tcp_trace: bool = typer.Option(False, "--tcp-trace", help="Add a scapy TCP-SYN traceroute tier."),
+    format_: List[str] = typer.Option(
+        [],
+        "--format",
+        help=(
+            "Which report artifacts to write: md, ru-md, json, all, none. Repeatable and "
+            "comma-separated (--format md,json). Any --format replaces the default instead of "
+            "adding to it. Ignored with --watch and --compare."
+        ),
+    ),
+    ru: bool = typer.Option(False, "--ru", help="Shorthand for --format ru-md."),
+    json_flag: bool = typer.Option(False, "--json", help="Shorthand for --format json."),
 ) -> None:
     settings = load_settings()
     if compare:
@@ -435,6 +486,7 @@ def run(
         raise typer.Exit(0)
 
     kind, value = parse_target(target) if target else (None, None)
+    formats = parse_formats(format_, ru=ru, json_flag=json_flag, default=frozenset(settings.output.formats))
     options = Options(
         mode="target" if target else "auto",
         target_kind=kind,
@@ -446,6 +498,7 @@ def run(
         dnsbl=dnsbl,
         ndt7=ndt7,
         tcp_trace=tcp_trace,
+        formats=formats,
     )
     if ndt7:
         consent_marker = Path(settings.output.cache_dir) / "ndt7_consent"
@@ -469,13 +522,19 @@ def run(
         raise typer.Exit(0)
 
     console.print(f"netsleuth {__version__} · {options.mode} mode · {platform.system()}")
-    report, _markdown, _markdown_ru, json_path, md_path, ru_md_path = asyncio.run(diagnose(settings, options))
+    report, paths = asyncio.run(diagnose(settings, options))
     interpretation = report["interpretation"]
     console.print(
         f"Verdict: [bold]{interpretation['overall_status']}[/bold] "
         f"({interpretation['overall_score']}/100) — {interpretation['summary_text']}"
     )
-    console.print(f"Report written to {md_path}\n                 {ru_md_path}\n                 {json_path}")
+    if not paths:
+        console.print("No report written (--format none).")
+    else:
+        label = "Report written to"
+        for path in paths:
+            console.print(f"{label} {path}")
+            label = " " * len("Report written to")
 
 
 def main() -> None:

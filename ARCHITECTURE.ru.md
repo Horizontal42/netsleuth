@@ -20,7 +20,8 @@ src/netsleuth/
   traceparse.py   Чистые парсеры текста в TraceHop для Windows, Linux и BSD/macOS.
   interpret.py    Чистый движок вердиктов: пороги -> Finding[], скоринг VPN, оценка bufferbloat.
   speed.py        Каскадный замер скорости, математика пропускной способности, разбор cfL4, bufferbloat.
-  exporter.py     Рендер JSON и Markdown, атомарная запись в ./logs/.
+  exporter.py     Рендер JSON и Markdown, атомарная запись в ./logs/. Какие
+                  артефакты писать, решает вызывающий код (cli.py), не этот модуль.
   compare.py      --compare: сравнение двух сохранённых JSON-отчётов.
   watch.py        --watch: цикл периодических прогонов с живой панелью Rich.
   probes/
@@ -89,7 +90,7 @@ src/netsleuth/
 
 ## Хранение
 
-- `./logs/report_<ASN>_<YYYYMMDDTHHMMSSZ>.{md,ru.md,json}` — тройка файлов на прогон: английский Markdown, его полный перевод на русский с идентичной структурой и JSON-дамп (только английский, `.ru.json` нет). Оба Markdown-файла ссылаются друг на друга вверху, так же как `README.md`/`README.ru.md`. `<ASN>` — это цель в режиме target (ASN, IP или домен) и локальный ASN исходящего адреса в авто-режиме. Компактный ISO-таймстамп, потому что Windows запрещает `:` в именах файлов. При полном провале определения ASN — `report_unknown_…`. Запись через временный файл и `os.replace()`, всегда атомарно. В gitignore: отчёты содержат внешний IP, город, координаты и название провайдера.
+- `./logs/report_<ASN>_<YYYYMMDDTHHMMSSZ>.{md,ru.md,json}` — артефакты, выбранные `--format`/`output.formats` (по умолчанию: только английский Markdown; `all` пишет все три: английский Markdown, его полный перевод на русский с идентичной структурой и JSON-дамп — только английский, `.ru.json` нет). Когда пишутся оба языка Markdown, они ссылаются друг на друга вверху, так же как `README.md`/`README.ru.md`; если пишется только один — перекрёстная ссылка не ставится, чтобы не указывать на несуществующий файл. `<ASN>` — это цель в режиме target (ASN, IP или домен) и локальный ASN исходящего адреса в авто-режиме. Компактный ISO-таймстамп, потому что Windows запрещает `:` в именах файлов. При полном провале определения ASN — `report_unknown_…`. Запись через временный файл и `os.replace()`, всегда атомарно. В gitignore: отчёты содержат внешний IP, город, координаты и название провайдера.
 - `./logs/watch_<ASN>_<YYYYMMDDTHHMMSSZ>.json` — один тайм-ряд на сессию `--watch`, а не отдельный отчёт на каждый тик.
 - `./.cache/firehol/*.netset` — скачанные блоклисты, обновляются по `providers.firehol_refresh_hours`.
 - `./.cache/pdb-net-<asn>.json`, `./.cache/pdb-netixlan-<net_id>.json` — ответы PeeringDB, действительны `providers.peeringdb_cache_hours`.

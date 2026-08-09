@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from netsleuth.exporter import (
+    FORMAT_EXTENSIONS,
     SCHEMA_VERSION,
     SECTION_ORDER,
     atomic_write,
@@ -195,12 +196,15 @@ def test_egress_asn_is_read_out_of_the_assembled_report():
 
 def test_write_report_names_the_file_after_the_target_in_target_mode(tmp_path: Path):
     report = build_report({**meta(), "mode": "target", "target": "AS15169"}, modules(), [], {})
-    json_path, md_path, ru_md_path = write_report(
-        report, "# netsleuth report\n", "# netsleuth report\n", tmp_path
+    paths = write_report(
+        report,
+        {"json": "{}", "md": "# netsleuth report\n", "ru-md": "# netsleuth report\n"},
+        tmp_path,
     )
-    assert json_path.name == "report_AS15169_20260808T191200Z.json"
-    assert md_path.name == "report_AS15169_20260808T191200Z.md"
-    assert ru_md_path.name == "report_AS15169_20260808T191200Z.ru.md"
+    names = {p.name for p in paths}
+    assert "report_AS15169_20260808T191200Z.json" in names
+    assert "report_AS15169_20260808T191200Z.md" in names
+    assert "report_AS15169_20260808T191200Z.ru.md" in names
 
 
 def test_atomic_write_creates_the_directory_and_leaves_no_temp_file(tmp_path: Path):
@@ -218,17 +222,45 @@ def test_atomic_write_replaces_an_existing_file(tmp_path: Path):
     assert not list(tmp_path.glob("*.tmp"))
 
 
-def test_write_report_emits_both_artifacts_with_matching_names(tmp_path: Path):
+def test_write_report_emits_all_requested_artifacts_with_matching_names(tmp_path: Path):
     report = build_report(meta(), modules(), [], {})
-    json_path, md_path, ru_md_path = write_report(
-        report, "# netsleuth report\n", "# netsleuth report\n", tmp_path
+    paths = write_report(
+        report,
+        {"json": dump_json(report), "md": "# netsleuth report\n", "ru-md": "# netsleuth report\n"},
+        tmp_path,
     )
-    assert json_path.name == "report_AS64500_20260808T191200Z.json"
-    assert md_path.name == "report_AS64500_20260808T191200Z.md"
-    assert ru_md_path.name == "report_AS64500_20260808T191200Z.ru.md"
-    assert json.loads(json_path.read_text(encoding="utf-8"))["schema_version"] == SCHEMA_VERSION
-    assert md_path.read_text(encoding="utf-8").startswith("# netsleuth report")
-    assert ru_md_path.read_text(encoding="utf-8").startswith("# netsleuth report")
+    by_ext = {p.name.rsplit(".", 1)[-1] if not p.name.endswith(".ru.md") else "ru.md": p for p in paths}
+    assert by_ext["json"].name == "report_AS64500_20260808T191200Z.json"
+    assert by_ext["md"].name == "report_AS64500_20260808T191200Z.md"
+    assert by_ext["ru.md"].name == "report_AS64500_20260808T191200Z.ru.md"
+    assert json.loads(by_ext["json"].read_text(encoding="utf-8"))["schema_version"] == SCHEMA_VERSION
+    assert by_ext["md"].read_text(encoding="utf-8").startswith("# netsleuth report")
+    assert by_ext["ru.md"].read_text(encoding="utf-8").startswith("# netsleuth report")
+
+
+def test_write_report_writes_only_the_requested_formats(tmp_path: Path):
+    report = build_report(meta(), modules(), [], {})
+    paths = write_report(report, {"md": "# netsleuth report\n"}, tmp_path)
+    assert [p.name for p in paths] == ["report_AS64500_20260808T191200Z.md"]
+    assert list(tmp_path.iterdir()) == paths
+
+
+def test_write_report_with_empty_mapping_writes_nothing(tmp_path: Path):
+    report = build_report(meta(), modules(), [], {})
+    paths = write_report(report, {}, tmp_path)
+    assert paths == []
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_write_report_returns_paths_in_input_order(tmp_path: Path):
+    report = build_report(meta(), modules(), [], {})
+    paths = write_report(report, {"json": "{}", "md": "# x\n"}, tmp_path)
+    assert paths[0].name.endswith(".json")
+    assert paths[1].name.endswith(".md")
+
+
+def test_format_extensions_covers_the_three_known_formats():
+    assert FORMAT_EXTENSIONS == {"md": "md", "ru-md": "ru.md", "json": "json"}
 
 
 from netsleuth.exporter import SPARK_CHARS, badge, first_loss_jump, render_markdown, sparkline
@@ -636,10 +668,13 @@ def test_an_all_modules_failed_report_is_still_valid_strict_json():
 
 def test_an_all_modules_failed_run_writes_both_artifacts(tmp_path: Path):
     report = dead_report()
-    json_path, md_path, ru_md_path = write_report(
-        report, render_markdown(report), render_markdown(report, lang="ru"), tmp_path
+    paths = write_report(
+        report,
+        {"md": render_markdown(report), "ru-md": render_markdown(report, lang="ru")},
+        tmp_path,
     )
-    assert json_path.name.startswith("report_unknown_")
+    md_path = next(p for p in paths if p.name.endswith(".md") and not p.name.endswith(".ru.md"))
+    ru_md_path = next(p for p in paths if p.name.endswith(".ru.md"))
     assert md_path.name.startswith("report_unknown_")
     assert ru_md_path.name.startswith("report_unknown_")
     assert "## Run diagnostics" in md_path.read_text(encoding="utf-8")
@@ -694,10 +729,11 @@ def test_write_report_creates_three_files_with_the_right_extensions(tmp_path: Pa
     ru_name = "sibling.ru.md"
     markdown = render_markdown(report, lang="en", sibling=ru_name)
     markdown_ru = render_markdown(report, lang="ru", sibling=en_name)
-    json_path, md_path, ru_md_path = write_report(report, markdown, markdown_ru, tmp_path)
+    paths = write_report(report, {"json": dump_json(report), "md": markdown, "ru-md": markdown_ru}, tmp_path)
+    json_path = next(p for p in paths if p.suffix == ".json")
+    md_path = next(p for p in paths if p.name.endswith(".md") and not p.name.endswith(".ru.md"))
+    ru_md_path = next(p for p in paths if p.name.endswith(".ru.md"))
     assert json_path.suffix == ".json"
-    assert md_path.name.endswith(".md") and not md_path.name.endswith(".ru.md")
-    assert ru_md_path.name.endswith(".ru.md")
 
     ru_text = ru_md_path.read_text(encoding="utf-8")
     assert _has_cyrillic(ru_text)

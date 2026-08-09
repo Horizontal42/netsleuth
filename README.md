@@ -9,11 +9,9 @@ $ netsleuth --quick
 netsleuth 0.1.0 · auto mode · Windows
 Verdict: ok (100/100) — No problems found on this connection.
 Report written to logs/report_AS64500_20260808T191200Z.md
-                 logs/report_AS64500_20260808T191200Z.ru.md
-                 logs/report_AS64500_20260808T191200Z.json
 ```
 
-Everything else — egress ASN, VPN verdict, latency, path, speed — lives in the three files it just wrote, not on the console; the terminal only tells you the headline and where to look.
+Everything else — egress ASN, VPN verdict, latency, path, speed — lives in the report it just wrote, not on the console; the terminal only tells you the headline and where to look. By default that's a single English Markdown file; `--format` controls exactly which artifacts get written (see Handy things below).
 
 ## Install
 
@@ -68,12 +66,15 @@ No configuration is required. Copy `.env.example` to `.env` only if you have opt
 | `--target-host <ip\|domain>` | Add an extra host to the ping and traceroute fan-out |
 | `--speedtest-server <id\|url>` | Pin the speedtest to a specific server |
 | `--watch` | Continuous monitoring with a live dashboard — for catching intermittent drops. Writes one `logs/watch_*.json` time series per session, not one report per tick |
-| `--compare a.json b.json` | Diff two earlier reports: before/after a VPN switch, before/after an ISP call. Read-only — no probing, no network calls |
+| `--compare a.json b.json` | Diff two earlier reports: before/after a VPN switch, before/after an ISP call. Read-only — no probing, no network calls. Reads reports produced with `--format json` |
 | `--dnsbl` | Opt in to classic DNSBL reputation zones |
 | `--ndt7` | Opt in to M-Lab NDT7 (publishes your measurement, including your IP, as CC0 open data). On an interactive terminal it prints the consent notice and asks first; on a non-interactive one it proceeds without asking |
 | `--tcp-trace` | Opt in to a scapy TCP-SYN traceroute through ICMP-filtering middleboxes (needs the `tcptrace` extra plus Npcap on Windows or root on Unix). Falls through to the normal cascade when it cannot run |
+| `--format md,ru-md,json,all,none` | Choose which report artifacts to write (default: `md`). Repeatable and comma-separated (`--format md,json`); any use replaces the default instead of adding to it. `all` writes all three, `none` writes nothing. Ignored with `--watch`/`--compare` |
+| `--ru` | Shorthand for `--format ru-md` |
+| `--json` | Shorthand for `--format json` |
 
-Every run writes three files into `./logs/`: an English Markdown report, a full Russian translation of the same report (`.ru.md`, same sections, same tables, same numbers — cross-linked with the English one), and a JSON dump containing every raw provider response, untruncated. `./logs/` is gitignored — reports contain your external IP, city, coordinates and ISP name.
+Each run writes the selected artifacts into `./logs/`: an English Markdown report, a full Russian translation of the same report (`.ru.md`, same sections, same tables, same numbers — cross-linked with the English one when both are written), and/or a JSON dump containing every raw provider response, untruncated. Default is the English Markdown report only; set `output.formats` in `config.yaml` to change the default permanently, or pass `--format` per run. `./logs/` is gitignored — reports contain your external IP, city, coordinates and ISP name.
 
 netsleuth never requires administrator or root. Where privileges would give better data, it degrades to an unprivileged method and says so in the report.
 

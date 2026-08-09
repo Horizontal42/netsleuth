@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from netsleuth.config import FORMAT_EXTENSIONS
 from netsleuth.interpret import overall_verdict
 from netsleuth.models import Finding, ModuleResult, to_jsonable
 
@@ -88,17 +89,15 @@ def egress_asn(report: dict[str, Any]) -> str | None:
     return ((data.get("egress_v4") or {}) if isinstance(data, dict) else {}).get("asn")
 
 
-def write_report(
-    report: dict[str, Any], markdown: str, markdown_ru: str, logs_dir: Path
-) -> tuple[Path, Path, Path]:
+def write_report(report: dict[str, Any], artifacts: dict[str, str], logs_dir: Path) -> list[Path]:
     meta = report.get("meta") or {}
     started = meta.get("started_at", "")
     asn = meta.get("target") or egress_asn(report)
     base = Path(logs_dir)
-    json_path = atomic_write(base / report_filename(asn, started, "json"), dump_json(report))
-    md_path = atomic_write(base / report_filename(asn, started, "md"), markdown)
-    ru_md_path = atomic_write(base / report_filename(asn, started, "ru.md"), markdown_ru)
-    return json_path, md_path, ru_md_path
+    return [
+        atomic_write(base / report_filename(asn, started, FORMAT_EXTENSIONS[fmt]), text)
+        for fmt, text in artifacts.items()
+    ]
 
 
 from netsleuth.interpret import bufferbloat_consequence

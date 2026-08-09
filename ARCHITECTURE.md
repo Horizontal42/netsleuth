@@ -20,7 +20,8 @@ src/netsleuth/
   traceparse.py   Pure text -> TraceHop parsers for Windows, Linux and BSD/macOS output.
   interpret.py    Pure verdict engine: thresholds -> Finding[], VPN scoring, bufferbloat grade.
   speed.py        Cascading speedtest, throughput math, cfL4 header parsing, bufferbloat probe.
-  exporter.py     JSON and Markdown rendering, atomic writes into ./logs/.
+  exporter.py     JSON and Markdown rendering, atomic writes into ./logs/. Which
+                  artifacts get written is decided by the caller (cli.py), not here.
   compare.py      --compare: diff two saved JSON reports.
   watch.py        --watch: periodic re-run loop with a live Rich dashboard.
   probes/
@@ -89,7 +90,7 @@ Two hard concurrency constraints:
 
 ## Storage
 
-- `./logs/report_<ASN>_<YYYYMMDDTHHMMSSZ>.{md,ru.md,json}` — one triple per run: English Markdown, a full Russian translation with identical structure, and the JSON dump (English only — no `.ru.json`). The two Markdown files cross-link each other at the top, the same way `README.md`/`README.ru.md` do. `<ASN>` is the target's subject in target mode (an ASN, IP or domain) and the local egress ASN in auto mode. Compact ISO timestamps because Windows forbids `:` in filenames. Falls back to `report_unknown_…` when the ASN lookup fails entirely. Written temp-file-plus-`os.replace()`, always atomic. Gitignored: reports contain the external IP, city, coordinates and ISP name.
+- `./logs/report_<ASN>_<YYYYMMDDTHHMMSSZ>.{md,ru.md,json}` — the artifacts selected by `--format`/`output.formats` (default: English Markdown only; `all` writes all three: English Markdown, a full Russian translation with identical structure, and the JSON dump — English only, no `.ru.json`). When both Markdown languages are written they cross-link each other at the top, the same way `README.md`/`README.ru.md` do; writing only one skips the cross-link rather than pointing at a file that doesn't exist. `<ASN>` is the target's subject in target mode (an ASN, IP or domain) and the local egress ASN in auto mode. Compact ISO timestamps because Windows forbids `:` in filenames. Falls back to `report_unknown_…` when the ASN lookup fails entirely. Written temp-file-plus-`os.replace()`, always atomic. Gitignored: reports contain the external IP, city, coordinates and ISP name.
 - `./logs/watch_<ASN>_<YYYYMMDDTHHMMSSZ>.json` — one time-series artifact per `--watch` session, not one report per tick.
 - `./.cache/firehol/*.netset` — downloaded blocklists, refreshed per `providers.firehol_refresh_hours`.
 - `./.cache/pdb-net-<asn>.json`, `./.cache/pdb-netixlan-<net_id>.json` — PeeringDB responses, valid for `providers.peeringdb_cache_hours`.
