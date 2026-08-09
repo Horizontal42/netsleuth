@@ -32,8 +32,8 @@ src/netcheck/
 
 **File-size exceptions.** The ~200-line guideline (Global Constraints) held for most modules, but these grew past it during implementation and were kept as single files rather than split, because each one is a single cohesive responsibility that splitting would only scatter across more files with a thinner reason to draw the line anywhere in particular:
 
-- `exporter.py` (~475 lines) — JSON and Markdown are two renderers of the same report shape; keeping them together is what guarantees they can never drift on which sections exist.
-- `cli.py` (~465 lines) — the Typer app, every flag, and the full `diagnose()` phase pipeline; splitting flag parsing from what the flags toggle would just add an import hop.
+- `exporter.py` (~680 lines) — JSON and both Markdown languages are renderers of the same report shape; keeping them together is what guarantees the English and Russian reports can never drift on which sections or rows exist. `render_markdown(report, lang="en"|"ru")` and a handful of inline `_t(lang, en, ru)` calls at each string site render both languages from one code path, deliberately, instead of a second renderer file that could silently fall out of sync.
+- `cli.py` (~475 lines) — the Typer app, every flag, and the full `diagnose()` phase pipeline; splitting flag parsing from what the flags toggle would just add an import hop.
 - `models.py` (~330 lines) — every shared dataclass plus `to_jsonable()`; this is deliberately the one place that defines the report's vocabulary.
 - `interpret.py` (~320 lines) — threshold bands, the latency/path/speed finding generators, VPN scoring and bufferbloat grading all reason over the same `Finding[]` shape.
 - `bgp.py` (~305 lines) — four independent providers (RIPEstat, CAIDA ASRank, Team Cymru, PeeringDB) plus the disk cache they share.
@@ -57,7 +57,7 @@ src/netcheck/
                 |
                 +-- interpret  ---> Finding[] + overall verdict
                 |
-                +-- exporter   ---> logs/report_<ASN>_<ts>.md + .json
+                +-- exporter   ---> logs/report_<ASN>_<ts>.{md,ru.md,json}
 ```
 
 Two hard concurrency constraints:
@@ -89,7 +89,7 @@ Two hard concurrency constraints:
 
 ## Storage
 
-- `./logs/report_<ASN>_<YYYYMMDDTHHMMSSZ>.{md,json}` — one pair per run. `<ASN>` is the target's subject in target mode (an ASN, IP or domain) and the local egress ASN in auto mode. Compact ISO timestamps because Windows forbids `:` in filenames. Falls back to `report_unknown_…` when the ASN lookup fails entirely. Written temp-file-plus-`os.replace()`, always atomic. Gitignored: reports contain the external IP, city, coordinates and ISP name.
+- `./logs/report_<ASN>_<YYYYMMDDTHHMMSSZ>.{md,ru.md,json}` — one triple per run: English Markdown, a full Russian translation with identical structure, and the JSON dump (English only — no `.ru.json`). The two Markdown files cross-link each other at the top, the same way `README.md`/`README.ru.md` do. `<ASN>` is the target's subject in target mode (an ASN, IP or domain) and the local egress ASN in auto mode. Compact ISO timestamps because Windows forbids `:` in filenames. Falls back to `report_unknown_…` when the ASN lookup fails entirely. Written temp-file-plus-`os.replace()`, always atomic. Gitignored: reports contain the external IP, city, coordinates and ISP name.
 - `./logs/watch_<ASN>_<YYYYMMDDTHHMMSSZ>.json` — one time-series artifact per `--watch` session, not one report per tick.
 - `./.cache/firehol/*.netset` — downloaded blocklists, refreshed per `providers.firehol_refresh_hours`.
 - `./.cache/pdb-net-<asn>.json`, `./.cache/pdb-netixlan-<net_id>.json` — PeeringDB responses, valid for `providers.peeringdb_cache_hours`.

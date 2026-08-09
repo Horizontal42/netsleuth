@@ -9,10 +9,11 @@ $ netcheck --quick
 netcheck 0.1.0 · auto mode · Windows
 Verdict: ok (100/100) — No problems found on this connection.
 Report written to logs/report_AS64500_20260808T191200Z.md
+                 logs/report_AS64500_20260808T191200Z.ru.md
                  logs/report_AS64500_20260808T191200Z.json
 ```
 
-Everything else — egress ASN, VPN verdict, latency, path, speed — lives in the two files it just wrote, not on the console; the terminal only tells you the headline and where to look.
+Everything else — egress ASN, VPN verdict, latency, path, speed — lives in the three files it just wrote, not on the console; the terminal only tells you the headline and where to look.
 
 ## Install
 
@@ -72,7 +73,7 @@ No configuration is required. Copy `.env.example` to `.env` only if you have opt
 | `--ndt7` | Opt in to M-Lab NDT7 (publishes your measurement, including your IP, as CC0 open data). On an interactive terminal it prints the consent notice and asks first; on a non-interactive one it proceeds without asking |
 | `--tcp-trace` | Opt in to a scapy TCP-SYN traceroute through ICMP-filtering middleboxes (needs the `tcptrace` extra plus Npcap on Windows or root on Unix). Falls through to the normal cascade when it cannot run |
 
-Every run writes two files into `./logs/`: a Markdown report to read and a JSON dump containing every raw provider response, untruncated. `./logs/` is gitignored — reports contain your external IP, city, coordinates and ISP name.
+Every run writes three files into `./logs/`: an English Markdown report, a full Russian translation of the same report (`.ru.md`, same sections, same tables, same numbers — cross-linked with the English one), and a JSON dump containing every raw provider response, untruncated. `./logs/` is gitignored — reports contain your external IP, city, coordinates and ISP name.
 
 netcheck never requires administrator or root. Where privileges would give better data, it degrades to an unprivileged method and says so in the report.
 
