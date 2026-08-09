@@ -72,6 +72,60 @@ def test_latency_of_a_report_against_itself_is_empty(before):
     assert latency_changes(before, before) == []
 
 
+def test_latency_changes_handles_missing_sections():
+    assert latency_changes({}, {}) == []
+    assert latency_changes({"latency": None}, {"latency": {"data": None}}) == []
+
+
+def test_latency_changes_reports_all_metrics():
+    before = {
+        "latency": {
+            "data": [
+                {"label": "test-host", "avg_ms": 10.0, "jitter_ms": 2.0, "loss_pct": 0.0}
+            ]
+        }
+    }
+    after = {
+        "latency": {
+            "data": [
+                {"label": "test-host", "avg_ms": 15.0, "jitter_ms": 5.0, "loss_pct": 1.5}
+            ]
+        }
+    }
+    changes = latency_changes(before, after)
+    assert len(changes) == 3
+    changes_by_label = {c.label: c for c in changes}
+    assert changes_by_label["test-host avg_ms"].delta == 5.0
+    assert changes_by_label["test-host jitter_ms"].delta == 3.0
+    assert changes_by_label["test-host loss_pct"].delta == 1.5
+
+
+def test_latency_changes_maintains_sorted_order():
+    before = {
+        "latency": {
+            "data": [
+                {"label": "zebra", "avg_ms": 10.0},
+                {"label": "alpha", "avg_ms": 20.0},
+            ]
+        }
+    }
+    after = {
+        "latency": {
+            "data": [
+                {"label": "zebra", "avg_ms": 11.0},
+                {"label": "alpha", "avg_ms": 21.0},
+                {"label": "beta", "avg_ms": 30.0},
+            ]
+        }
+    }
+
+    # Ensure after doesn't have beta in before so it shows up as a change
+    changes = latency_changes(before, after)
+
+    labels = [c.label for c in changes]
+    assert labels == ["alpha avg_ms", "beta avg_ms", "zebra avg_ms"]
+
+
 def test_speed_deltas_cover_throughput_and_the_bufferbloat_grade(before, after):
     changes = by_label(speed_changes(before, after))
     assert changes["Download Mbps"].delta == pytest.approx(-188.2)
