@@ -139,6 +139,37 @@ def test_findings_are_split_into_new_and_resolved(before, after):
     assert [f["id"] for f in resolved] == ["speed.bufferbloat_down"]
 
 
+def test_finding_changes_empty_inputs():
+    assert finding_changes({}, {}) == ([], [])
+
+
+def test_finding_changes_missing_interpretation_or_findings():
+    assert finding_changes({"interpretation": {}}, {"interpretation": {"findings": None}}) == ([], [])
+    assert finding_changes({"interpretation": None}, {}) == ([], [])
+
+
+def test_finding_changes_new_and_resolved_logic():
+    before = {
+        "interpretation": {
+            "findings": [
+                {"id": "issue1", "desc": "old issue"},
+                {"id": "issue2", "desc": "persisting issue"}
+            ]
+        }
+    }
+    after = {
+        "interpretation": {
+            "findings": [
+                {"id": "issue2", "desc": "persisting issue updated"},
+                {"id": "issue3", "desc": "new issue"}
+            ]
+        }
+    }
+    new, resolved = finding_changes(before, after)
+    assert new == [{"id": "issue3", "desc": "new issue"}]
+    assert resolved == [{"id": "issue1", "desc": "old issue"}]
+
+
 def test_diff_reports_assembles_every_part(before, after):
     diff = diff_reports(before, after)
     assert diff.identity
