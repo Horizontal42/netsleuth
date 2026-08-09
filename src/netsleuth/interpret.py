@@ -127,8 +127,7 @@ def path_findings(trace: TraceResult) -> list[Finding]:
     # rate limiting on those routers, not a real problem, no matter how many hops
     # in a row stayed silent; only loss that persists all the way to the end is real.
     loss_persists_to_the_end = trace.hops[-1].loss_pct >= 20.0
-    for index, hop in enumerate(trace.hops[:-1]):
-        following = trace.hops[index + 1]
+    for hop, following in zip(trace.hops, trace.hops[1:]):
         if loss_persists_to_the_end and hop.loss_pct >= 20.0 and following.loss_pct >= 20.0:
             findings.append(
                 Finding(
