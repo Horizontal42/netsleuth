@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import httpx
 import pytest
 
+from netcheck.config import Providers
 from netcheck.ip_geo import (
     classify_ip_type,
+    gather_identity,
     normalize_freeipapi,
     normalize_ip_api,
     normalize_ipinfo,
@@ -195,3 +198,36 @@ def test_dual_stack_agreement_produces_no_note():
 def test_dual_stack_comparison_needs_both_sides():
     assert dual_stack_mismatch(IpGeo(asn="AS64500"), None) is None
     assert dual_stack_mismatch(None, IpGeo(asn="AS64500")) is None
+
+
+async def test_gather_identity_for_a_target_never_reports_this_hosts_own_ip(httpx_mock):
+    httpx_mock.add_response(
+        url="https://www.cloudflare.com/cdn-cgi/trace",
+        text="ip=203.0.113.9\nloc=NL\nwarp=off\ngateway=off\nrbi=off\n",
+    )
+    httpx_mock.add_response(
+        url="http://ip-api.com/json/8.8.8.8",
+        json={
+            "status": "success",
+            "query": "8.8.8.8",
+            "as": "AS15169 GOOGLE",
+            "org": "Google LLC",
+            "country": "United States",
+            "countryCode": "US",
+            "city": "Ashburn",
+        },
+    )
+    httpx_mock.add_response(url="https://freeipapi.com/api/json/8.8.8.8", json={})
+    httpx_mock.add_response(url="https://ipinfo.io/8.8.8.8json", json={})
+    httpx_mock.add_response(url="https://ipwho.is/8.8.8.8", json={"success": False})
+    httpx_mock.add_response(
+        url="https://stat.ripe.net/data/network-info/data.json?resource=8.8.8.8",
+        json={"status": "ok", "data": {"asns": ["15169"]}},
+    )
+
+    async with httpx.AsyncClient() as client:
+        merged, cf, _flags, _raw = await gather_identity(client, Providers(), ip="8.8.8.8")
+
+    assert merged.ip == "8.8.8.8"
+    assert merged.asn == "AS15169"
+    assert cf is not None and cf.ip == "203.0.113.9"

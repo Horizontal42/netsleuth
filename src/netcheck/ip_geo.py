@@ -247,7 +247,10 @@ async def gather_identity(
     flags = provider_flags(payloads["ip-api"]) if isinstance(payloads["ip-api"], dict) else {}
 
     candidates: list[tuple[str, IpGeo]] = []
-    if cf:
+    if cf and not ip:
+        # cf-trace can only ever describe the machine making the request, never an
+        # arbitrary target — folding it in during a target lookup would splice this
+        # host's own IP onto the target's asn/geo fields from the other providers.
         candidates.append(("cf-trace", IpGeo(ip=cf.ip, country_code=cf.loc, sources={})))
     for name, normalizer in (
         ("ip-api", normalize_ip_api),
