@@ -169,26 +169,43 @@ def captcha_risk(
     ip_type: str,
     abuseipdb_score: int | None,
 ) -> tuple[str, str]:
+    risk, rationale, _ = _captcha_risk_full(firehol_hits, dnsbl_hits, ip_type, abuseipdb_score)
+    return risk, rationale
+
+
+def _captcha_risk_full(
+    firehol_hits: list[str],
+    dnsbl_hits: list[DnsblHit],
+    ip_type: str,
+    abuseipdb_score: int | None,
+) -> tuple[str, str, str]:
     reasons: list[str] = []
+    reasons_ru: list[str] = []
     risk = "low"
     if firehol_hits:
         risk = "high"
         reasons.append(f"listed on {', '.join(firehol_hits)}")
+        reasons_ru.append(f"в блоклисте {', '.join(firehol_hits)}")
     if dnsbl_hits:
         risk = "high"
         reasons.append(f"listed on {', '.join(h.zone for h in dnsbl_hits)}")
+        reasons_ru.append(f"в блоклисте {', '.join(h.zone for h in dnsbl_hits)}")
     if abuseipdb_score is not None and abuseipdb_score >= 50:
         risk = "high"
         reasons.append(f"AbuseIPDB confidence {abuseipdb_score}")
+        reasons_ru.append(f"уверенность AbuseIPDB {abuseipdb_score}")
     elif abuseipdb_score is not None and abuseipdb_score >= 25 and risk == "low":
         risk = "medium"
         reasons.append(f"AbuseIPDB confidence {abuseipdb_score}")
+        reasons_ru.append(f"уверенность AbuseIPDB {abuseipdb_score}")
     if risk == "low" and ip_type == "hosting":
         risk = "medium"
         reasons.append("egress looks like hosting/proxy space, which many sites challenge by default")
+        reasons_ru.append("исходящий адрес похож на хостинг/прокси-пространство, которое многие сайты по умолчанию проверяют капчей")
     if not reasons:
         reasons.append("no blocklist match and the address looks like ordinary end-user space")
-    return risk, "; ".join(reasons)
+        reasons_ru.append("совпадений с блоклистами нет, адрес выглядит как обычное пользовательское пространство")
+    return risk, "; ".join(reasons), "; ".join(reasons_ru)
 
 
 def build_reputation(
@@ -203,7 +220,7 @@ def build_reputation(
     blocked = False
     if dnsbl_outcomes is not None:
         hits, blocked = summarize_dnsbl(dnsbl_outcomes)
-    risk, rationale = captcha_risk(firehol_hits, hits or [], ip_type, abuseipdb_score)
+    risk, rationale, rationale_ru = _captcha_risk_full(firehol_hits, hits or [], ip_type, abuseipdb_score)
     return Reputation(
         internetdb=internetdb,
         firehol_hits=firehol_hits,
@@ -213,6 +230,7 @@ def build_reputation(
         abuseipdb_reports=abuseipdb_reports,
         captcha_risk=risk,
         rationale=rationale,
+        rationale_ru=rationale_ru,
     )
 
 

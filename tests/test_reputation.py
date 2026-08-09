@@ -156,3 +156,46 @@ def test_build_reputation_without_dnsbl_leaves_the_field_none(api_fixture):
     assert rep.dnsbl_hits is None
     assert rep.dnsbl_query_blocked is False
     assert rep.captcha_risk == "high"
+
+
+_CYRILLIC = set("абвгдеёжзийклмнопрстуфхцчшщъыьэюя")
+
+
+def has_cyrillic(text: str) -> bool:
+    return any(ch in _CYRILLIC for ch in text.lower())
+
+
+def test_build_reputation_rationale_ru_is_populated_and_cyrillic_for_every_reason(api_fixture):
+    cases = [
+        dict(firehol_hits=["firehol_level1"], dnsbl_outcomes=None, ip_type="residential", abuseipdb_score=None),
+        dict(
+            firehol_hits=[],
+            dnsbl_outcomes=[decode_dnsbl("zen.spamhaus.org", ["127.0.0.2"])],
+            ip_type="residential",
+            abuseipdb_score=None,
+        ),
+        dict(firehol_hits=[], dnsbl_outcomes=None, ip_type="residential", abuseipdb_score=90),
+        dict(firehol_hits=[], dnsbl_outcomes=None, ip_type="residential", abuseipdb_score=30),
+        dict(firehol_hits=[], dnsbl_outcomes=None, ip_type="hosting", abuseipdb_score=None),
+        dict(firehol_hits=[], dnsbl_outcomes=None, ip_type="residential", abuseipdb_score=None),
+    ]
+    for case in cases:
+        rep = build_reputation(
+            internetdb=normalize_internetdb(api_fixture("internetdb.json")),
+            firehol_hits=case["firehol_hits"],
+            dnsbl_outcomes=case["dnsbl_outcomes"],
+            ip_type=case["ip_type"],
+            abuseipdb_score=case["abuseipdb_score"],
+            abuseipdb_reports=None,
+        )
+        assert rep.rationale
+        assert rep.rationale_ru
+        assert has_cyrillic(rep.rationale_ru)
+
+
+def test_captcha_risk_public_signature_still_returns_a_two_tuple():
+    result = captcha_risk([], [], "residential", None)
+    assert len(result) == 2
+    risk, rationale = result
+    assert risk == "low"
+    assert rationale
