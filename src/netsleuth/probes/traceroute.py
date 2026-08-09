@@ -183,12 +183,15 @@ async def _tier_icmp_win(
 
 
 async def _tier_icmplib(
-    target: str, max_hops: int, timeout: float, privileged: bool, source_ip: str | None = None
+    target: str, max_hops: int, timeout: float, source_ip: str | None = None
 ) -> TraceResult:
-    from icmplib import async_traceroute
+    # icmplib has no async traceroute (only async_ping) and traceroute() always
+    # needs a raw socket -- there is no unprivileged/"privileged=" variant for it,
+    # unlike ping. Run the sync call off the event loop thread.
+    from icmplib import traceroute as icmplib_traceroute
 
-    raw = await async_traceroute(
-        target, max_hops=max_hops, timeout=timeout, privileged=privileged, source=source_ip
+    raw = await asyncio.to_thread(
+        icmplib_traceroute, target, max_hops=max_hops, timeout=timeout, source=source_ip
     )
     hops = [
         finalize_hop(TraceHop(ttl=h.distance, ip=h.address, probes=list(h.rtts)))
@@ -265,7 +268,7 @@ async def traceroute(
             target, caps.mtr_binary or shutil.which("mtr") or "mtr", cycles, max_hops, timeout, source_ip
         ),
         "icmp_win": lambda: _tier_icmp_win(target, max_hops, timeout, source_ip),
-        "icmplib": lambda: _tier_icmplib(target, max_hops, timeout, privileged=not caps.icmp_dgram, source_ip=source_ip),
+        "icmplib": lambda: _tier_icmplib(target, max_hops, timeout, source_ip=source_ip),
         "system_traceroute": lambda: _tier_system(
             target, caps.traceroute_binary or "traceroute", max_hops, timeout, source_ip
         ),
