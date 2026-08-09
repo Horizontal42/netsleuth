@@ -125,7 +125,7 @@ def path_findings(trace: TraceResult) -> list[Finding]:
                     id="path.loss_jump",
                     severity="crit" if hop.loss_pct >= 50.0 else "warn",
                     title="Sustained loss starts mid-path",
-                    detail=f"Loss appears at hop {hop.ttl} ({hop.ip}) at {hop.loss_pct}% and persists downstream.",
+                    detail=f"Loss appears at hop {hop.ttl} ({hop.ip or 'no reply'}) at {hop.loss_pct}% and persists downstream.",
                     metric="loss_pct",
                     value=hop.loss_pct,
                     threshold=20.0,

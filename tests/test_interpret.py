@@ -118,6 +118,24 @@ def test_path_findings_highlight_the_first_sustained_loss_jump():
     assert "198.51.100.7" in loss.detail
 
 
+def test_path_findings_label_a_non_responding_hop_instead_of_printing_none():
+    trace = TraceResult(
+        target="1.1.1.1",
+        resolved_ip="1.1.1.1",
+        backend="mtr_json",
+        hops=[
+            TraceHop(ttl=1, ip="192.168.1.1", loss_pct=0.0, avg_ms=1.0),
+            TraceHop(ttl=2, ip=None, loss_pct=100.0, avg_ms=None),
+            TraceHop(ttl=3, ip="1.1.1.1", loss_pct=100.0, avg_ms=None),
+        ],
+        completed=True,
+    )
+    findings = path_findings(trace)
+    loss = [f for f in findings if f.id == "path.loss_jump"][0]
+    assert "None" not in loss.detail
+    assert "no reply" in loss.detail
+
+
 def test_path_findings_ignore_a_single_hop_that_rate_limits_icmp():
     trace = TraceResult(
         target="1.1.1.1",
