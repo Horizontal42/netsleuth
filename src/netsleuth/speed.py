@@ -196,7 +196,7 @@ async def tier_fastcom(client: httpx.AsyncClient, cfg: Speedtest, timeout: float
         method="fastcom",
         download_mbps=throughput_from_samples(samples),
         upload_mbps=None,
-        server=targets[0].get("url", "").split("/")[2] if targets else None,
+        server=targets[0].get("url").split("/")[2] if targets and targets[0].get("url") else None,
         netflix_oca_onnet=on_net,
     )
 
