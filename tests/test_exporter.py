@@ -570,6 +570,18 @@ def test_unavailable_explains_a_skipped_module_without_inventing_an_error():
     assert "skipped" in note
 
 
+def test_unavailable_surfaces_the_skip_reason_from_warnings():
+    report = build_report(
+        meta(),
+        {"speed": ModuleResult(name="speed", status="skipped", warnings=["speedtest skipped in target mode"])},
+        [],
+        {},
+    )
+    note = unavailable(report, "speed")
+    assert note is not None
+    assert "speedtest skipped in target mode" in note
+
+
 def test_an_all_modules_failed_run_still_renders_every_section():
     text = render_markdown(dead_report())
     headings = [line for line in text.splitlines() if line.startswith("## ")]

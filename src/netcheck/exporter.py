@@ -209,6 +209,8 @@ def unavailable(report: dict[str, Any], section: str) -> str | None:
         return None
     detail = "; ".join(f"{e.get('source')}: {e.get('message')}" for e in module.get("errors") or [])
     if not detail:
+        detail = "; ".join(module.get("warnings") or [])
+    if not detail:
         detail = "no data was collected for this section"
     return f"_Not available — {module.get('status', 'skipped')}: {detail}._"
 
