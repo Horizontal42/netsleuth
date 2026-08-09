@@ -26,7 +26,7 @@ Requirements:
 - Optional: `mtr` on `PATH` for the best path data
 
 ```bash
-git clone https://github.com/<owner>/netsleuth
+git clone https://github.com/Horizontal42/netsleuth
 cd netsleuth
 uv sync
 uv run netsleuth

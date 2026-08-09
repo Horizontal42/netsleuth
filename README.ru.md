@@ -26,7 +26,7 @@ Report written to logs/report_AS64500_20260808T191200Z.md
 - Опционально: `mtr` в `PATH` — лучшие данные по маршруту
 
 ```bash
-git clone https://github.com/<owner>/netsleuth
+git clone https://github.com/Horizontal42/netsleuth
 cd netsleuth
 uv sync
 uv run netsleuth
