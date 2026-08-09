@@ -16,7 +16,7 @@ from rich.console import Console
 from netcheck import __version__
 from netcheck.compare import diff_reports, load_report, render_diff
 from netcheck.config import Settings, load_settings
-from netcheck.exporter import build_report, render_markdown, write_report
+from netcheck.exporter import build_report, egress_asn, render_markdown, report_filename, write_report
 from netcheck.interpret import (
     assess_vpn,
     gather_vpn_signals,
@@ -272,7 +272,7 @@ async def _speed_section(client, settings: Settings, options: Options, idle_rtt_
     return ModuleResult(name="speed", status="ok", data=result)
 
 
-async def diagnose(settings: Settings, options: Options) -> tuple[dict, str, Path, Path]:
+async def diagnose(settings: Settings, options: Options) -> tuple[dict, str, str, Path, Path, Path]:
     started_at = utc_now_iso()
     caps = detect_capabilities()
     timeouts = settings.timeouts
@@ -402,9 +402,15 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, str, Pat
         "capabilities": caps,
     }
     report = build_report(meta, modules, findings, raw)
-    markdown = render_markdown(report, emoji=settings.output.emoji)
-    json_path, md_path = write_report(report, markdown, Path(settings.output.logs_dir))
-    return report, markdown, json_path, md_path
+    asn = meta.get("target") or egress_asn(report)
+    md_name = report_filename(asn, started_at, "md")
+    ru_md_name = report_filename(asn, started_at, "ru.md")
+    markdown = render_markdown(report, emoji=settings.output.emoji, lang="en", sibling=ru_md_name)
+    markdown_ru = render_markdown(report, emoji=settings.output.emoji, lang="ru", sibling=md_name)
+    json_path, md_path, ru_md_path = write_report(
+        report, markdown, markdown_ru, Path(settings.output.logs_dir)
+    )
+    return report, markdown, markdown_ru, json_path, md_path, ru_md_path
 
 
 @app.command()
@@ -455,13 +461,13 @@ def run(
         raise typer.Exit(0)
 
     console.print(f"netcheck {__version__} · {options.mode} mode · {platform.system()}")
-    report, _markdown, json_path, md_path = asyncio.run(diagnose(settings, options))
+    report, _markdown, _markdown_ru, json_path, md_path, ru_md_path = asyncio.run(diagnose(settings, options))
     interpretation = report["interpretation"]
     console.print(
         f"Verdict: [bold]{interpretation['overall_status']}[/bold] "
         f"({interpretation['overall_score']}/100) — {interpretation['summary_text']}"
     )
-    console.print(f"Report written to {md_path}\n                 {json_path}")
+    console.print(f"Report written to {md_path}\n                 {ru_md_path}\n                 {json_path}")
 
 
 def main() -> None:
