@@ -77,6 +77,30 @@ def test_cfl4_parsing_survives_unexpected_values():
     assert stats.cwnd == 7
 
 
+def test_cfl4_parsing_handles_none_header():
+    # Typing says `str`, but the function explicitly handles None with `header or ""`
+    assert parse_server_timing_cfl4(None) is None  # type: ignore[arg-type]
+
+
+def test_cfl4_parsing_handles_missing_fields():
+    stats = parse_server_timing_cfl4('cfL4;desc="?proto=tcp"')
+    assert stats is not None
+    assert stats.rtt_ms is None
+    assert stats.min_rtt_ms is None
+    assert stats.rtt_var_ms is None
+    assert stats.delivery_rate_bps is None
+    assert stats.cwnd is None
+    assert stats.unsent_bytes is None
+    assert stats.recv_bytes is None
+
+
+def test_cfl4_parsing_handles_blank_fields():
+    stats = parse_server_timing_cfl4('cfL4;desc="?proto=tcp&rtt=&cwnd="')
+    assert stats is not None
+    assert stats.rtt_ms is None
+    assert stats.cwnd is None
+
+
 def test_bufferbloat_delta_is_the_rise_over_the_idle_baseline():
     assert bufferbloat_delta(12.0, [15.0, 60.0, 200.0, 210.0]) == pytest.approx(196.5)
 
