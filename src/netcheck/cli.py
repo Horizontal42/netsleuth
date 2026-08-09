@@ -102,7 +102,8 @@ def _dedupe(findings: list[Finding]) -> list[Finding]:
 async def _identity(client: httpx.AsyncClient, settings: Settings, options: Options, raw: dict) -> dict:
     token = settings.ipinfo_token.get_secret_value() if settings.ipinfo_token else None
     lookup = options.target_value if options.target_kind in ("ip", "domain") else None
-    if options.target_kind is None:
+    own_network = options.target_kind in (None, "asn")
+    if own_network:
         # The shared client has no address family pinned, so on a dual-stack host it can
         # silently connect over IPv6 (OS/happy-eyeballs preference) and hand back an IPv6
         # literal mislabeled as egress_v4. Force IPv4 here the same way egress_v6 is forced
@@ -125,7 +126,7 @@ async def _identity(client: httpx.AsyncClient, settings: Settings, options: Opti
         )
     raw.update(payloads)
     v6 = None
-    if options.target_kind is None:
+    if own_network:
         try:
             transport = httpx.AsyncHTTPTransport(local_address="::")
             async with httpx.AsyncClient(
