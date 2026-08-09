@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import ctypes
 import os
 import platform
@@ -151,19 +153,29 @@ def _resolvers_per_adapter() -> dict[str, list[str]]:
 
 
 def _resolvers_windows() -> dict[str, list[str]]:
+    # Redirected PowerShell stdout picks its encoding from the console host's
+    # codepage at process start (OEM 866 on a Russian host), and neither
+    # $OutputEncoding nor [Console]::OutputEncoding reliably override that once
+    # stdout is a pipe rather than a real console -- non-ASCII adapter names
+    # come back corrupted no matter which text encoding we guess on decode.
+    # Sidestep the whole codepage question: have PowerShell UTF-8-encode then
+    # base64 its own output before printing, so the pipe only ever carries
+    # ASCII and there is nothing left to mis-decode.
     script = (
-        "Get-DnsClientServerAddress -AddressFamily IPv4,IPv6 | "
-        "ForEach-Object { $_.InterfaceAlias + '|' + ($_.ServerAddresses -join ',') }"
+        "$lines = Get-DnsClientServerAddress -AddressFamily IPv4,IPv6 | "
+        "ForEach-Object { $_.InterfaceAlias + '|' + ($_.ServerAddresses -join ',') }; "
+        "$joined = $lines -join [char]10; "
+        "[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($joined))"
     )
     try:
-        out = subprocess.run(
+        raw = subprocess.run(
             ["powershell", "-NoProfile", "-Command", script],
             capture_output=True,
             text=True,
-            errors="replace",
             timeout=15,
-        ).stdout
-    except (OSError, subprocess.SubprocessError):
+        ).stdout.strip()
+        out = base64.b64decode(raw).decode("utf-8") if raw else ""
+    except (OSError, subprocess.SubprocessError, binascii.Error, UnicodeDecodeError):
         return {}
     adapters: dict[str, list[str]] = {}
     for line in out.splitlines():
