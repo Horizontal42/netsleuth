@@ -448,9 +448,15 @@ def run(
         tcp_trace=tcp_trace,
     )
     if ndt7:
-        console.print(f"[yellow]{NDT7_CONSENT_NOTICE}[/yellow]")
-        if sys.stdin.isatty() and not typer.confirm("Continue with NDT7?", default=False):
-            options.ndt7 = False
+        consent_marker = Path(settings.output.cache_dir) / "ndt7_consent"
+        if not consent_marker.exists():
+            console.print(f"[yellow]{NDT7_CONSENT_NOTICE}[/yellow]")
+            if sys.stdin.isatty():
+                if typer.confirm("Continue with NDT7?", default=False):
+                    consent_marker.parent.mkdir(parents=True, exist_ok=True)
+                    consent_marker.write_text("consented\n", encoding="utf-8")
+                else:
+                    options.ndt7 = False
     if tcp_trace:
         console.print(
             "[yellow]--tcp-trace needs Npcap (Windows) or root (Unix) and the `tcptrace` extra; "
