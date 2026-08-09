@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Iterable
 
 from netsleuth.config import Band, BufferbloatBands, Thresholds, VpnBands
 from netsleuth.models import (
@@ -19,14 +18,6 @@ from netsleuth.models import (
 from netsleuth.netinfo import is_tunnel_iface, mtu_anomaly
 
 _SEVERITY_ORDER = {"ok": 0, "info": 1, "warn": 2, "crit": 3}
-
-
-def worst(severities: Iterable[str]) -> str:
-    best = "ok"
-    for severity in severities:
-        if _SEVERITY_ORDER[severity] > _SEVERITY_ORDER[best]:
-            best = severity
-    return best
 
 
 def severity_for(value: float | None, band: Band, higher_is_worse: bool = True) -> str:
@@ -349,10 +340,12 @@ _SCORE_PENALTY = {"ok": 0, "info": 3, "warn": 10, "crit": 25}
 
 def overall_verdict(findings: list[Finding]) -> tuple[str, int, str]:
     score = 100
+    status = "ok"
     for f in findings:
         score -= _SCORE_PENALTY[f.severity]
+        if _SEVERITY_ORDER[f.severity] > _SEVERITY_ORDER[status]:
+            status = f.severity
     score = max(0, score)
-    status = worst(f.severity for f in findings)
     if status in ("ok", "info"):
         return "ok", score, "No problems found on this connection."
     headline = [f.title for f in findings if f.severity == status]

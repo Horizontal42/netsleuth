@@ -4,7 +4,7 @@ import pytest
 
 from netsleuth.config import Band, Thresholds
 from netsleuth.models import PingResult, TraceHop, TraceResult
-from netsleuth.interpret import latency_findings, path_findings, severity_for, worst
+from netsleuth.interpret import latency_findings, path_findings, severity_for
 
 
 @pytest.fixture()
@@ -31,13 +31,6 @@ def test_severity_can_be_inverted_for_metrics_where_higher_is_better():
     assert severity_for(50.0, band, higher_is_worse=False) == "ok"
     assert severity_for(30.0, band, higher_is_worse=False) == "warn"
     assert severity_for(5.0, band, higher_is_worse=False) == "crit"
-
-
-def test_worst_picks_the_highest_severity():
-    assert worst(["ok", "info", "warn"]) == "warn"
-    assert worst(["ok", "crit", "warn"]) == "crit"
-    assert worst([]) == "ok"
-    assert worst(["ok", "ok"]) == "ok"
 
 
 def ping(**kw) -> PingResult:
