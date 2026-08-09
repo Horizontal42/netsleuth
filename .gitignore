@@ -4,6 +4,8 @@
 bugs.md
 *_ai_notes*
 llm_context*
+TASKS.md
+docs/superpowers/
 
 .venv/
 __pycache__/
