@@ -1,12 +1,12 @@
-# netcheck
+# netsleuth
 
 [English](README.md)
 
 Кроссплатформенная CLI-утилита для глубокой диагностики сети: кто на самом деле ваш провайдер, действительно ли трафик идёт через VPN, где деградирует маршрут и что реально выдаёт канал.
 
 ```console
-$ netcheck --quick
-netcheck 0.1.0 · auto mode · Windows
+$ netsleuth --quick
+netsleuth 0.1.0 · auto mode · Windows
 Verdict: ok (100/100) — No problems found on this connection.
 Report written to logs/report_AS64500_20260808T191200Z.md
                  logs/report_AS64500_20260808T191200Z.ru.md
@@ -21,15 +21,15 @@ Report written to logs/report_AS64500_20260808T191200Z.md
 
 - Python 3.10 или новее
 - Windows, Linux или macOS
-- Доступ в интернет (netcheck — сетевой инструмент; без сети он деградирует корректно, но сделает немного)
+- Доступ в интернет (netsleuth — сетевой инструмент; без сети он деградирует корректно, но сделает немного)
 - Опционально: нативный бинарник Ookla `speedtest` в `PATH` — лучший уровень замера скорости
 - Опционально: `mtr` в `PATH` — лучшие данные по маршруту
 
 ```bash
-git clone https://github.com/<owner>/netcheck
-cd netcheck
+git clone https://github.com/<owner>/netsleuth
+cd netsleuth
 uv sync
-uv run netcheck
+uv run netsleuth
 ```
 
 Нужны `--tcp-trace` и `--ndt7`? Это опциональные extras, по умолчанию не ставятся:
@@ -43,7 +43,7 @@ uv sync --extra tcptrace --extra ndt7
 ```bash
 python -m pip install -r requirements.txt
 python -m pip install -e .
-netcheck
+netsleuth
 ```
 
 Настройка не требуется. Копируйте `.env.example` в `.env` только если у вас есть опциональные API-ключи.
@@ -75,7 +75,7 @@ netcheck
 
 Каждый прогон пишет в `./logs/` три файла: Markdown-отчёт на английском, его полный перевод на русский (`.ru.md` — те же разделы, те же таблицы, те же числа, со взаимными ссылками) и JSON-дамп со всеми сырыми ответами провайдеров без усечения. `./logs/` в gitignore — отчёты содержат ваш внешний IP, город, координаты и название провайдера.
 
-netcheck никогда не требует администратора или root. Там, где привилегии дали бы данные лучше, он деградирует до непривилегированного метода и пишет об этом в отчёте.
+netsleuth никогда не требует администратора или root. Там, где привилегии дали бы данные лучше, он деградирует до непривилегированного метода и пишет об этом в отчёте.
 
 ## Для разработчиков
 
@@ -84,7 +84,7 @@ netcheck никогда не требует администратора или 
 ```bash
 uv sync --all-extras --group dev
 uv run pytest -q
-uv run netcheck --quick
+uv run netsleuth --quick
 uv export --no-hashes --format requirements-txt -o requirements.txt   # после изменения зависимостей
 ```
 
@@ -92,7 +92,7 @@ uv export --no-hashes --format requirements-txt -o requirements.txt   # посл
 
 ## Благодарности
 
-netcheck читает данные из RIPEstat, CAIDA ASRank, Team Cymru, PeeringDB, Cloudflare, ip-api.com, freeipapi.com, ipinfo.io, ipwho.is, Shodan InternetDB, проекта блоклистов FireHOL, Netflix fast.com и M-Lab. Все они используются в рамках бесплатных/безключевых тарифов.
+netsleuth читает данные из RIPEstat, CAIDA ASRank, Team Cymru, PeeringDB, Cloudflare, ip-api.com, freeipapi.com, ipinfo.io, ipwho.is, Shodan InternetDB, проекта блоклистов FireHOL, Netflix fast.com и M-Lab. Все они используются в рамках бесплатных/безключевых тарифов.
 
 ## Лицензия
 

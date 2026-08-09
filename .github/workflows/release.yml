@@ -28,7 +28,7 @@ jobs:
         run: |
           python -m venv /tmp/wheel-check
           /tmp/wheel-check/Scripts/pip install "$(ls dist/*.whl)[tcptrace,ndt7]"
-          /tmp/wheel-check/Scripts/netcheck --help
+          /tmp/wheel-check/Scripts/netsleuth --help
 
       - uses: actions/upload-artifact@v4
         with:
@@ -37,13 +37,14 @@ jobs:
 
   # Publishing is intentionally a separate, manually-approved job.
   #
-  # BLOCKED as of 2026-08-09: the distribution name "netcheck" is already
+  # RENAMED as of 2026-08-09: the distribution name "netcheck" was already
   # taken on PyPI by an unrelated project (Netchecks / hardbyte, a cloud-native
   # network-assertion tool, https://pypi.org/project/netcheck/). `pyproject.toml`'s
-  # [project] name must change before this job can ever run — see TASKS.md.
+  # [project] name has been changed to "netsleuth" — see TASKS.md.
   #
-  # To enable once a free name is chosen:
-  #   1. Update `name` in pyproject.toml.
+  # Still needed before this job can be enabled:
+  #   1. Confirm "netsleuth" is actually free on PyPI (fresh availability check —
+  #      it was only checked against the old name).
   #   2. Set up PyPI Trusted Publishing for the new project name
   #      (https://docs.pypi.org/trusted-publishers/) — no token needed, this
   #      workflow's OIDC identity gets authorized directly on pypi.org.

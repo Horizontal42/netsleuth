@@ -25,5 +25,5 @@ dist/
 build/
 *.egg-info/
 
-# netcheck runtime caches
+# netsleuth runtime caches
 .cache/

@@ -1,12 +1,12 @@
-# netcheck
+# netsleuth
 
 [Русский](README.ru.md)
 
 Cross-platform CLI for deep network diagnostics: who your ISP actually is, whether a VPN is really carrying your traffic, where the path degrades, and what your line actually delivers.
 
 ```console
-$ netcheck --quick
-netcheck 0.1.0 · auto mode · Windows
+$ netsleuth --quick
+netsleuth 0.1.0 · auto mode · Windows
 Verdict: ok (100/100) — No problems found on this connection.
 Report written to logs/report_AS64500_20260808T191200Z.md
                  logs/report_AS64500_20260808T191200Z.ru.md
@@ -21,15 +21,15 @@ Requirements:
 
 - Python 3.10 or newer
 - Windows, Linux or macOS
-- Internet access (netcheck is a network tool; it degrades gracefully but cannot do much offline)
+- Internet access (netsleuth is a network tool; it degrades gracefully but cannot do much offline)
 - Optional: the native Ookla `speedtest` binary on `PATH` for the best bandwidth tier
 - Optional: `mtr` on `PATH` for the best path data
 
 ```bash
-git clone https://github.com/<owner>/netcheck
-cd netcheck
+git clone https://github.com/<owner>/netsleuth
+cd netsleuth
 uv sync
-uv run netcheck
+uv run netsleuth
 ```
 
 Want `--tcp-trace` and `--ndt7` too? They're optional extras, not installed by default:
@@ -43,7 +43,7 @@ Without `uv`:
 ```bash
 python -m pip install -r requirements.txt
 python -m pip install -e .
-netcheck
+netsleuth
 ```
 
 No configuration is required. Copy `.env.example` to `.env` only if you have optional API keys.
@@ -75,7 +75,7 @@ No configuration is required. Copy `.env.example` to `.env` only if you have opt
 
 Every run writes three files into `./logs/`: an English Markdown report, a full Russian translation of the same report (`.ru.md`, same sections, same tables, same numbers — cross-linked with the English one), and a JSON dump containing every raw provider response, untruncated. `./logs/` is gitignored — reports contain your external IP, city, coordinates and ISP name.
 
-netcheck never requires administrator or root. Where privileges would give better data, it degrades to an unprivileged method and says so in the report.
+netsleuth never requires administrator or root. Where privileges would give better data, it degrades to an unprivileged method and says so in the report.
 
 ## For developers
 
@@ -84,7 +84,7 @@ Stack: Python 3.10+, Typer, Rich, httpx, pydantic-settings, dnspython, psutil, i
 ```bash
 uv sync --all-extras --group dev
 uv run pytest -q
-uv run netcheck --quick
+uv run netsleuth --quick
 uv export --no-hashes --format requirements-txt -o requirements.txt   # after dependency changes
 ```
 
@@ -92,7 +92,7 @@ Architecture, data flow and the reasoning behind each provider choice: [ARCHITEC
 
 ## Credits
 
-netcheck reads from RIPEstat, CAIDA ASRank, Team Cymru, PeeringDB, Cloudflare, ip-api.com, freeipapi.com, ipinfo.io, ipwho.is, Shodan InternetDB, the FireHOL blocklist project, Netflix fast.com and M-Lab. All of them are used within their free/keyless tiers.
+netsleuth reads from RIPEstat, CAIDA ASRank, Team Cymru, PeeringDB, Cloudflare, ip-api.com, freeipapi.com, ipinfo.io, ipwho.is, Shodan InternetDB, the FireHOL blocklist project, Netflix fast.com and M-Lab. All of them are used within their free/keyless tiers.
 
 ## License
 

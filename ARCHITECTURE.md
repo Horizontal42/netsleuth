@@ -2,12 +2,12 @@
 
 [Русский](ARCHITECTURE.ru.md)
 
-netcheck collects network facts from many independent, mostly keyless sources, merges them into typed structures, interprets them with pure functions, and renders two artifacts per run. Collection, interpretation and rendering never mix: every module either gathers data or reasons about already-gathered data, never both.
+netsleuth collects network facts from many independent, mostly keyless sources, merges them into typed structures, interprets them with pure functions, and renders two artifacts per run. Collection, interpretation and rendering never mix: every module either gathers data or reasons about already-gathered data, never both.
 
 ## Directory layout
 
 ```
-src/netcheck/
+src/netsleuth/
   cli.py          Typer app: flags, phase orchestration, Rich progress. No business logic.
   config.py       pydantic-settings loader. Precedence: env > .env > config.yaml > default.
   models.py       Every shared dataclass, plus to_jsonable() for serialization.
