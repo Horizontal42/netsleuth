@@ -111,3 +111,49 @@ def test_mtu_anomaly_ignores_normal_and_unknown_values():
 
 def test_mtu_anomaly_flags_unusually_small_links_generically():
     assert mtu_anomaly(1200) == "small"
+
+
+import socket
+
+from netsleuth.netinfo import _parse_windows_default_gateway
+
+_ROUTE_PRINT_WITH_A_VPN_ADAPTER = """
+===========================================================================
+Interface List
+ 12...00 15 5d 01 ab cd ......Ethernet
+ 15...00 ff 21 4a bc de ......Radmin VPN
+===========================================================================
+
+IPv4 Route Table
+===========================================================================
+Active Routes:
+Network Destination        Netmask          Gateway       Interface  Metric
+          0.0.0.0          0.0.0.0        26.0.0.1        26.0.0.5     35
+          0.0.0.0          0.0.0.0      192.168.3.1    192.168.3.72     25
+         26.0.0.0        255.0.0.0         On-link         26.0.0.5    291
+     192.168.3.0    255.255.255.0         On-link     192.168.3.72    281
+===========================================================================
+Persistent Routes:
+  None
+"""
+
+
+def test_windows_default_gateway_picks_the_lowest_metric_route_not_the_first_listed():
+    # Radmin VPN's 0.0.0.0 route (metric 35) is listed before the real Ethernet
+    # default (metric 25); Windows itself prefers the lower metric for outbound
+    # traffic, so the parser must too, regardless of listing order.
+    assert (
+        _parse_windows_default_gateway(_ROUTE_PRINT_WITH_A_VPN_ADAPTER, socket.AF_INET) == "192.168.3.1"
+    )
+
+
+def test_windows_default_gateway_returns_the_only_route_when_there_is_one():
+    single = """
+Network Destination        Netmask          Gateway       Interface  Metric
+          0.0.0.0          0.0.0.0      192.168.1.1     192.168.1.34     25
+"""
+    assert _parse_windows_default_gateway(single, socket.AF_INET) == "192.168.1.1"
+
+
+def test_windows_default_gateway_returns_none_when_no_default_route_exists():
+    assert _parse_windows_default_gateway("Active Routes:\nNone\n", socket.AF_INET) is None

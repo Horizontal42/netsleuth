@@ -234,28 +234,48 @@ def collect_local_net() -> LocalNet:
     )
 
 
+def _parse_windows_default_gateway(route_print_output: str, family: int) -> str | None:
+    # `route print` lists routes in table order, not metric order, and every VPN
+    # adapter (Radmin, Tailscale, ...) contributes its own 0.0.0.0 row -- the row
+    # Windows actually uses for outbound traffic is whichever has the lowest
+    # metric, which is not necessarily the first one printed.
+    needle = "::/0" if family == socket.AF_INET6 else "0.0.0.0"
+    best_gateway: str | None = None
+    best_metric: float | None = None
+    for line in route_print_output.splitlines():
+        if needle not in line:
+            continue
+        tokens = line.split()
+        candidates = [t for t in tokens if _looks_like_ip(t)]
+        if len(candidates) < 3:
+            continue
+        try:
+            metric = float(tokens[-1])
+        except ValueError:
+            continue
+        if best_metric is None or metric < best_metric:
+            best_metric = metric
+            best_gateway = candidates[2]
+    return best_gateway
+
+
 def _default_gateway(family: int) -> str | None:
     if platform.system() == "Windows":
         args = ["route", "print", "-6" if family == socket.AF_INET6 else "-4"]
-        needle = "::/0" if family == socket.AF_INET6 else "0.0.0.0"
     else:
         args = ["ip", "-6", "route", "show", "default"] if family == socket.AF_INET6 else ["ip", "route", "show", "default"]
-        needle = "via"
     try:
         out = subprocess.run(
             args, capture_output=True, text=True, errors="replace", timeout=15
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return None
+    if platform.system() == "Windows":
+        return _parse_windows_default_gateway(out, family)
     for line in out.splitlines():
-        if needle not in line:
-            continue
         tokens = line.split()
-        if needle == "via" and "via" in tokens:
+        if "via" in tokens:
             return tokens[tokens.index("via") + 1]
-        candidates = [t for t in tokens if _looks_like_ip(t)]
-        if len(candidates) >= 3:
-            return candidates[2]
     return None
 
 
