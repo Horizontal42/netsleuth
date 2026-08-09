@@ -131,6 +131,21 @@ async def test_cascade_never_swallows_cancellation():
         await run_cascade([("mtr_json", cancelled)])
 
 
+def test_tcp_trace_is_absent_unless_it_is_asked_for():
+    assert "tcp_trace" not in tier_order(caps(icmp_dgram=True, traceroute_binary="/usr/bin/traceroute"))
+    assert "tcp_trace" not in tier_order(caps(os_name="Windows", icmp_win_api=True))
+
+
+def test_tcp_trace_leads_the_cascade_when_requested():
+    order = tier_order(caps(mtr_binary="/usr/bin/mtr", icmp_dgram=True), tcp_trace=True)
+    assert order[0] == "tcp_trace"
+    assert order[1:] == ["mtr_json", "icmplib"]
+
+
+def test_tcp_trace_can_be_the_only_tier():
+    assert tier_order(caps(), tcp_trace=True) == ["tcp_trace"]
+
+
 def test_win_replies_become_hops_with_ttl_expiry_handled():
     replies = [
         (1, IcmpReply(address="192.168.1.1", status=IP_TTL_EXPIRED_TRANSIT, rtt_ms=1.0, ttl=64)),

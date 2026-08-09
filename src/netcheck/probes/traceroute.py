@@ -11,8 +11,10 @@ from netcheck.probes.icmp_win import IcmpReply, classify_status
 from netcheck.traceparse import build_trace_result, finalize_hop
 
 
-def tier_order(caps: Capabilities) -> list[str]:
-    order: list[str] = []
+def tier_order(caps: Capabilities, tcp_trace: bool = False) -> list[str]:
+    # An explicit --tcp-trace means the user already knows ICMP is being filtered,
+    # so it leads rather than sits behind tiers that are about to fail.
+    order: list[str] = ["tcp_trace"] if tcp_trace else []
     if caps.mtr_binary:
         order.append("mtr_json")
     if caps.icmp_win_api:
@@ -143,6 +145,37 @@ async def _tier_system(target: str, binary: str, max_hops: int, timeout: float) 
     return build_trace_result(text, os_name, target=target, resolved_ip=None, max_hops=max_hops)
 
 
+async def _tier_tcp_trace(target: str, max_hops: int, timeout: float, port: int = 443) -> TraceResult:
+    # scapy ships in the optional `tcptrace` extra and needs Npcap (Windows) or
+    # root (Unix); an ImportError here just falls through to the next tier.
+    from scapy.layers.inet import IP, TCP
+    from scapy.sendrecv import sr
+
+    def _probe() -> list[TraceHop]:
+        answered, _unanswered = sr(
+            IP(dst=target, ttl=(1, max_hops)) / TCP(dport=port, flags="S"),
+            timeout=timeout,
+            verbose=0,
+        )
+        hops = [
+            finalize_hop(
+                TraceHop(ttl=sent.ttl, ip=received.src, probes=[(received.time - sent.sent_time) * 1000.0])
+            )
+            for sent, received in answered
+        ]
+        return sorted(hops, key=lambda hop: hop.ttl)
+
+    hops = await asyncio.to_thread(_probe)
+    return TraceResult(
+        target=target,
+        backend="tcp_trace",
+        hops=hops,
+        cycles=1,
+        completed=bool(hops) and hops[-1].ip == target,
+        max_hops_reached=bool(hops) and hops[-1].ttl >= max_hops,
+    )
+
+
 async def traceroute(
     target: str,
     caps: Capabilities,
@@ -150,14 +183,16 @@ async def traceroute(
     cycles: int,
     timeout: float,
     semaphore: asyncio.Semaphore | None = None,
+    tcp_trace: bool = False,
 ) -> TraceResult:
     builders = {
+        "tcp_trace": lambda: _tier_tcp_trace(target, max_hops, timeout),
         "mtr_json": lambda: _tier_mtr(target, caps.mtr_binary or shutil.which("mtr") or "mtr", cycles, max_hops, timeout),
         "icmp_win": lambda: _tier_icmp_win(target, max_hops, timeout),
         "icmplib": lambda: _tier_icmplib(target, max_hops, timeout, privileged=not caps.icmp_dgram),
         "system_traceroute": lambda: _tier_system(target, caps.traceroute_binary or "traceroute", max_hops, timeout),
     }
-    tiers = [(name, builders[name]) for name in tier_order(caps)]
+    tiers = [(name, builders[name]) for name in tier_order(caps, tcp_trace)]
     if semaphore is None:
         return await run_cascade(tiers)
     async with semaphore:
