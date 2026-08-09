@@ -18,6 +18,7 @@ from netsleuth.reputation import (
     captcha_risk,
     decode_dnsbl,
     fetch_abuseipdb,
+    fetch_internetdb,
     normalize_internetdb,
     parse_netset,
     query_dnsbl,
@@ -425,3 +426,40 @@ async def test_fetch_abuseipdb_raises_on_http_error(httpx_mock):
     async with httpx.AsyncClient() as client:
         with pytest.raises(httpx.HTTPStatusError):
             await fetch_abuseipdb(client, providers, "192.0.2.1", "secret_key")
+
+
+async def test_fetch_internetdb_returns_json_on_success(httpx_mock):
+    providers = Providers()
+    ip = "1.2.3.4"
+    mock_response = {"ip": ip, "ports": [80, 443]}
+    httpx_mock.add_response(
+        url=f"{providers.internetdb_url}{ip}",
+        json=mock_response,
+    )
+    async with httpx.AsyncClient() as client:
+        result = await fetch_internetdb(client, providers, ip)
+
+    assert result == mock_response
+
+async def test_fetch_internetdb_returns_no_info_on_404(httpx_mock):
+    providers = Providers()
+    ip = "1.2.3.4"
+    httpx_mock.add_response(
+        url=f"{providers.internetdb_url}{ip}",
+        status_code=404,
+    )
+    async with httpx.AsyncClient() as client:
+        result = await fetch_internetdb(client, providers, ip)
+
+    assert result == {"detail": "No information available"}
+
+async def test_fetch_internetdb_raises_on_other_errors(httpx_mock):
+    providers = Providers()
+    ip = "1.2.3.4"
+    httpx_mock.add_response(
+        url=f"{providers.internetdb_url}{ip}",
+        status_code=500,
+    )
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            await fetch_internetdb(client, providers, ip)
