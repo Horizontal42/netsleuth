@@ -35,32 +35,29 @@ jobs:
           name: dist
           path: dist/
 
-  # Publishing is intentionally a separate, manually-approved job.
+  # Publishing is intentionally a separate, manually-approved job: a tag push
+  # builds and tests automatically, but a human still has to approve the
+  # `pypi` environment before this job runs and actually publishes.
   #
-  # RENAMED as of 2026-08-09: the distribution name "netcheck" was already
-  # taken on PyPI by an unrelated project (Netchecks / hardbyte, a cloud-native
-  # network-assertion tool, https://pypi.org/project/netcheck/). `pyproject.toml`'s
-  # [project] name has been changed to "netsleuth" — see TASKS.md.
-  #
-  # Still needed before this job can be enabled:
-  #   1. Confirm "netsleuth" is actually free on PyPI (fresh availability check —
-  #      it was only checked against the old name).
-  #   2. Set up PyPI Trusted Publishing for the new project name
-  #      (https://docs.pypi.org/trusted-publishers/) — no token needed, this
-  #      workflow's OIDC identity gets authorized directly on pypi.org.
-  #   3. Uncomment the job below and give it an `environment: pypi` protection
-  #      rule requiring manual approval, so a tag push builds automatically
-  #      but a human still has to click "publish."
-  #
-  # publish:
-  #   needs: build-and-test
-  #   runs-on: ubuntu-latest
-  #   environment: pypi
-  #   permissions:
-  #     id-token: write
-  #   steps:
-  #     - uses: actions/download-artifact@v4
-  #       with:
-  #         name: dist
-  #         path: dist/
-  #     - uses: pypa/gh-action-pypi-publish@release/v1
+  # "netsleuth" confirmed free on PyPI 2026-08-09 (pypi.org/pypi/netsleuth/json
+  # -> 404). Before the first tag push actually publishes, still needed:
+  #   1. Register a PyPI Trusted Publisher for this not-yet-published project
+  #      name at https://pypi.org/manage/account/publishing/ — no token needed,
+  #      this workflow's OIDC identity gets authorized directly on pypi.org.
+  #      Owner: Horizontal42, repo: netsleuth, workflow: release.yml,
+  #      environment: pypi.
+  #   2. Create the `pypi` GitHub Environment (repo Settings → Environments)
+  #      with a required-reviewer protection rule, so publishing needs a
+  #      manual click even after the workflow triggers.
+  publish:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
