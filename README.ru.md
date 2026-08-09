@@ -46,6 +46,15 @@ netsleuth
 
 Настройка не требуется. Копируйте `.env.example` в `.env` только если у вас есть опциональные API-ключи.
 
+### Опциональные инструменты для разных платформ
+
+Ничего из этого не обязательно — без них netsleuth просто корректно деградирует — но каждый инструмент ставится по-разному в зависимости от ОС:
+
+- **`uv`** сам по себе: `curl -LsSf https://astral.sh/uv/install.sh | sh` на Linux/macOS; `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"` на Windows.
+- **`mtr`** (лучшие данные о маршруте): `sudo apt install mtr` (Debian/Ubuntu), `sudo dnf install mtr` (Fedora), `sudo pacman -S mtr` (Arch), `brew install mtr` (macOS). Под Windows сборки нет — этот уровень каскада traceroute просто пропускается, и автоматически используется Windows ICMP API, никаких действий не требуется.
+- **Ookla `speedtest`** (лучший уровень замера скорости): ставьте официальный CLI-бинарник Ookla с их сайта или из пакетного менеджера вашей ОС — не путайте с не связанным с ним community-пакетом `speedtest-cli` на Python: netsleuth вызывает именно бинарник Ookla и разбирает его вывод в `--format=json`.
+- **Npcap/libpcap** (нужны только для extra `--tcp-trace`): на Windows ставьте Npcap; на Linux libpcap обычно уже есть в дистрибутиве, но для отправки сырых пакетов не от root нужно `sudo setcap cap_net_raw+eip $(readlink -f $(which python3))` (либо просто запускать под `sudo`); на macOS libpcap встроен, но scapy всё равно требует запуска от root (`sudo netsleuth --tcp-trace`).
+
 ## Что он делает
 
 - **Идентификация** — внешний IPv4 *и* IPv6, обратный DNS, ASN, организация, гео и тип адреса: домашний, мобильный, хостинговый или корпоративный. Проверяется по шести независимым источникам, поэтому один rate-limit не обнуляет результат.

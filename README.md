@@ -46,6 +46,15 @@ netsleuth
 
 No configuration is required. Copy `.env.example` to `.env` only if you have optional API keys.
 
+### Getting the optional extras per platform
+
+None of this is required — netsleuth degrades gracefully without any of it — but each optional tool is fetched differently depending on your OS:
+
+- **`uv`** itself: `curl -LsSf https://astral.sh/uv/install.sh | sh` on Linux/macOS; `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"` on Windows.
+- **`mtr`** (better path data): `sudo apt install mtr` (Debian/Ubuntu), `sudo dnf install mtr` (Fedora), `sudo pacman -S mtr` (Arch), `brew install mtr` (macOS). No Windows build exists — the traceroute cascade just skips this tier there and falls back to the Windows ICMP API automatically, no action needed.
+- **Ookla `speedtest`** (best bandwidth tier): install Ookla's own CLI binary from their official site or your OS package manager — not the unrelated community `speedtest-cli` Python package, netsleuth specifically shells out to Ookla's binary and parses its `--format=json` output.
+- **Npcap/libpcap** (only for the `--tcp-trace` extra): on Windows install Npcap; on Linux libpcap usually ships with the distro already, but sending raw packets as a non-root user needs `sudo setcap cap_net_raw+eip $(readlink -f $(which python3))` (or just run under `sudo`); on macOS libpcap is built in but scapy still needs to run as root (`sudo netsleuth --tcp-trace`).
+
 ## What it does
 
 - **Identity** — egress IPv4 *and* IPv6, reverse DNS, ASN, organisation, geo, and whether the address looks residential, mobile, hosting or business. Cross-checked across six independent providers so one rate limit does not blank the answer.
