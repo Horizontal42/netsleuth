@@ -131,11 +131,13 @@ def path_findings(trace: TraceResult) -> list[Finding]:
             )
         ]
     findings: list[Finding] = []
+    # A run of lossy hops that clears before the last hop we have data for is ICMP
+    # rate limiting on those routers, not a real problem, no matter how many hops
+    # in a row stayed silent; only loss that persists all the way to the end is real.
+    loss_persists_to_the_end = trace.hops[-1].loss_pct >= 20.0
     for index, hop in enumerate(trace.hops[:-1]):
         following = trace.hops[index + 1]
-        # A single lossy hop with clean hops after it is ICMP rate limiting on that
-        # router, not a real problem; loss that persists to the next hop is real.
-        if hop.loss_pct >= 20.0 and following.loss_pct >= 20.0:
+        if loss_persists_to_the_end and hop.loss_pct >= 20.0 and following.loss_pct >= 20.0:
             findings.append(
                 Finding(
                     id="path.loss_jump",

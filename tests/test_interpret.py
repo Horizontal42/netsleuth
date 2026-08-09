@@ -156,6 +156,36 @@ def test_path_findings_report_an_incomplete_trace():
     assert [f.id for f in path_findings(trace)] == ["path.incomplete"]
 
 
+def test_path_findings_ignore_a_long_run_of_silent_hops_that_recovers_at_the_destination():
+    # Real transit routers commonly rate-limit ICMP for many consecutive hops in a
+    # row (not just one) while the actual destination still answers cleanly.
+    trace = TraceResult(
+        target="8.8.8.8",
+        resolved_ip="8.8.8.8",
+        backend="icmp_win",
+        hops=[TraceHop(ttl=1, ip="192.168.1.1", loss_pct=0.0, avg_ms=1.0)]
+        + [TraceHop(ttl=n, ip=None, loss_pct=100.0, avg_ms=None) for n in range(2, 11)]
+        + [TraceHop(ttl=11, ip="8.8.8.8", loss_pct=0.0, avg_ms=7.0)],
+        completed=True,
+    )
+    assert [f.id for f in path_findings(trace)] == []
+
+
+def test_path_findings_flag_loss_that_persists_all_the_way_to_the_last_hop():
+    trace = TraceResult(
+        target="8.8.8.8",
+        resolved_ip="8.8.8.8",
+        backend="icmp_win",
+        hops=[TraceHop(ttl=1, ip="192.168.1.1", loss_pct=0.0, avg_ms=1.0)]
+        + [TraceHop(ttl=n, ip=None, loss_pct=100.0, avg_ms=None) for n in range(2, 11)],
+        completed=False,
+    )
+    findings = path_findings(trace)
+    loss = [f for f in findings if f.id == "path.loss_jump"]
+    assert len(loss) == 1
+    assert "hop 2" in loss[0].detail
+
+
 from netsleuth.config import VpnBands
 from netsleuth.models import AdapterLeakResult, CfTrace, DnsLeak, IpGeo, LocalNet, Signal
 from netsleuth.interpret import SIGNAL_WEIGHTS, assess_vpn, gather_vpn_signals, score_vpn
