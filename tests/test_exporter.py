@@ -195,9 +195,12 @@ def test_egress_asn_is_read_out_of_the_assembled_report():
 
 def test_write_report_names_the_file_after_the_target_in_target_mode(tmp_path: Path):
     report = build_report({**meta(), "mode": "target", "target": "AS15169"}, modules(), [], {})
-    json_path, md_path = write_report(report, "# netcheck report\n", tmp_path)
+    json_path, md_path, ru_md_path = write_report(
+        report, "# netcheck report\n", "# netcheck report\n", tmp_path
+    )
     assert json_path.name == "report_AS15169_20260808T191200Z.json"
     assert md_path.name == "report_AS15169_20260808T191200Z.md"
+    assert ru_md_path.name == "report_AS15169_20260808T191200Z.ru.md"
 
 
 def test_atomic_write_creates_the_directory_and_leaves_no_temp_file(tmp_path: Path):
@@ -217,11 +220,15 @@ def test_atomic_write_replaces_an_existing_file(tmp_path: Path):
 
 def test_write_report_emits_both_artifacts_with_matching_names(tmp_path: Path):
     report = build_report(meta(), modules(), [], {})
-    json_path, md_path = write_report(report, "# netcheck report\n", tmp_path)
+    json_path, md_path, ru_md_path = write_report(
+        report, "# netcheck report\n", "# netcheck report\n", tmp_path
+    )
     assert json_path.name == "report_AS64500_20260808T191200Z.json"
     assert md_path.name == "report_AS64500_20260808T191200Z.md"
+    assert ru_md_path.name == "report_AS64500_20260808T191200Z.ru.md"
     assert json.loads(json_path.read_text(encoding="utf-8"))["schema_version"] == SCHEMA_VERSION
     assert md_path.read_text(encoding="utf-8").startswith("# netcheck report")
+    assert ru_md_path.read_text(encoding="utf-8").startswith("# netcheck report")
 
 
 from netcheck.exporter import SPARK_CHARS, badge, first_loss_jump, render_markdown, sparkline
@@ -601,10 +608,14 @@ def test_an_all_modules_failed_report_is_still_valid_strict_json():
 
 def test_an_all_modules_failed_run_writes_both_artifacts(tmp_path: Path):
     report = dead_report()
-    json_path, md_path = write_report(report, render_markdown(report), tmp_path)
+    json_path, md_path, ru_md_path = write_report(
+        report, render_markdown(report), render_markdown(report, lang="ru"), tmp_path
+    )
     assert json_path.name.startswith("report_unknown_")
     assert md_path.name.startswith("report_unknown_")
+    assert ru_md_path.name.startswith("report_unknown_")
     assert "## Run diagnostics" in md_path.read_text(encoding="utf-8")
+    assert "## Диагностика запуска" in ru_md_path.read_text(encoding="utf-8")
 
 
 def test_the_diagnostics_table_still_names_every_failed_module():
@@ -617,3 +628,74 @@ def test_a_partial_module_with_data_is_rendered_normally_not_as_a_placeholder():
     report = build_report(meta(), modules(), [], {})
     assert unavailable(report, "latency") is None
     assert "cloudflare-dns" in render_markdown(report)
+
+
+def _has_cyrillic(text: str) -> bool:
+    return any("Ѐ" <= ch <= "ӿ" for ch in text)
+
+
+def test_russian_markdown_is_non_empty_and_contains_cyrillic():
+    text = render_markdown(full_report(), lang="ru")
+    assert text.strip()
+    assert _has_cyrillic(text)
+    assert text.startswith("# netcheck report")
+
+
+def _structural_shape(text: str) -> tuple[int, int, int]:
+    headings = sum(1 for line in text.splitlines() if line.startswith("## "))
+    table_rows = sum(1 for line in text.splitlines() if line.strip().startswith("|"))
+    fences = text.count("```")
+    return headings, table_rows, fences
+
+
+def test_russian_report_has_the_same_structural_shape_as_english_for_a_full_report():
+    en = render_markdown(full_report(), lang="en")
+    ru = render_markdown(full_report(), lang="ru")
+    assert _structural_shape(en) == _structural_shape(ru)
+
+
+def test_russian_report_has_the_same_structural_shape_as_english_for_a_dead_report():
+    en = render_markdown(dead_report(), lang="en")
+    ru = render_markdown(dead_report(), lang="ru")
+    assert _structural_shape(en) == _structural_shape(ru)
+
+
+def test_write_report_creates_three_files_with_the_right_extensions(tmp_path: Path):
+    report = full_report()
+    en_name = "sibling.md"
+    ru_name = "sibling.ru.md"
+    markdown = render_markdown(report, lang="en", sibling=ru_name)
+    markdown_ru = render_markdown(report, lang="ru", sibling=en_name)
+    json_path, md_path, ru_md_path = write_report(report, markdown, markdown_ru, tmp_path)
+    assert json_path.suffix == ".json"
+    assert md_path.name.endswith(".md") and not md_path.name.endswith(".ru.md")
+    assert ru_md_path.name.endswith(".ru.md")
+
+    ru_text = ru_md_path.read_text(encoding="utf-8")
+    assert _has_cyrillic(ru_text)
+
+    en_lines = md_path.read_text(encoding="utf-8").splitlines()
+    ru_lines = ru_text.splitlines()
+    assert en_lines[2] == f"[Русский]({ru_name})"
+    assert ru_lines[2] == f"[English]({en_name})"
+
+
+def test_render_markdown_default_call_is_byte_identical_to_before_the_lang_feature():
+    text = render_markdown(full_report())
+    headings = [line for line in text.splitlines() if line.startswith("## ")]
+    assert headings == [
+        "## TL;DR",
+        "## Connection & identity",
+        "## VPN / proxy assessment",
+        "## ASN & BGP intelligence",
+        "## Reputation",
+        "## Latency",
+        "## Path",
+        "## Speed",
+        "## Problems & recommendations",
+        "## Run diagnostics",
+    ]
+    assert text.startswith("# netcheck report")
+    assert "[Русский]" not in text
+    assert "[English]" not in text
+    assert "cloudflare-dns" in text
