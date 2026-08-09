@@ -4,13 +4,18 @@ from __future__ import annotations
 from netsleuth.config import Band, BufferbloatBands, Thresholds, VpnBands
 from netsleuth.models import (
     CfTrace,
+    DnsAdvanced,
     DnsLeak,
+    DpiCheckResult,
     Finding,
     IpGeo,
     LocalNet,
+    PathDiversity,
     PingResult,
+    PrefixBenchmark,
     Signal,
     SpeedResult,
+    TlsResult,
     TraceResult,
     VpnAssessment,
     VpnContext,
@@ -331,6 +336,252 @@ def speed_findings(speed: SpeedResult, bands: BufferbloatBands) -> list[Finding]
                 + " Включение SQM/fq_codel на роутере — стандартное решение.",
             )
         )
+    return findings
+
+
+def _cpu_bound_ratio(tls_handshake_ms: float | None, tcp_rtt_ms: float | None) -> float | None:
+    if tls_handshake_ms is None or not tcp_rtt_ms:
+        return None
+    return tls_handshake_ms / tcp_rtt_ms
+
+
+def tls_findings(results: list[TlsResult], t: Thresholds) -> list[Finding]:
+    findings: list[Finding] = []
+    for r in results:
+        if r.error:
+            findings.append(
+                Finding(
+                    id=f"tls.unreachable.{r.label}",
+                    severity="warn",
+                    title=f"TLS handshake to {r.host} failed",
+                    detail=f"Could not complete a TLS connection to {r.host}:{r.port}: {r.error}",
+                    metric="error",
+                    value=r.error,
+                    advice="The service may be down, or the port may be blocked between here and the server.",
+                    title_ru=f"TLS-рукопожатие с {r.host} не удалось",
+                    detail_ru=f"Не удалось установить TLS-соединение с {r.host}:{r.port}: {r.error}",
+                    advice_ru="Сервис может быть недоступен, либо порт заблокирован на пути к серверу.",
+                )
+            )
+            continue
+        ratio = _cpu_bound_ratio(r.tls_handshake_ms, r.tcp_rtt_ms)
+        if ratio is not None and ratio > t.tls_cpu_bound_ratio and (r.tls_handshake_ms or 0.0) >= 20.0:
+            findings.append(
+                Finding(
+                    id=f"tls.server_cpu_bound.{r.label}",
+                    severity="warn",
+                    title=f"TLS handshake to {r.host} is disproportionately slow",
+                    detail=f"TLS handshake took {r.tls_handshake_ms} ms, {ratio:.1f}x the {r.tcp_rtt_ms} ms TCP RTT.",
+                    metric="tls_handshake_ms",
+                    value=r.tls_handshake_ms,
+                    threshold=t.tls_cpu_bound_ratio,
+                    advice="Slow handshake relative to network RTT usually points at a CPU-bound TLS terminator, not the network.",
+                    title_ru=f"TLS-рукопожатие с {r.host} непропорционально медленное",
+                    detail_ru=f"TLS-рукопожатие заняло {r.tls_handshake_ms} мс — в {ratio:.1f} раза больше TCP RTT ({r.tcp_rtt_ms} мс).",
+                    advice_ru="Медленное рукопожатие относительно сетевого RTT обычно указывает на упирающийся в CPU TLS-терминатор, а не на сеть.",
+                )
+            )
+        severity = severity_for(r.tls_handshake_ms, t.tls_handshake_ms)
+        if severity not in ("ok", "info"):
+            findings.append(
+                Finding(
+                    id=f"tls.handshake_slow.{r.label}",
+                    severity=severity,
+                    title=f"TLS handshake to {r.host} above target",
+                    detail=f"TLS handshake took {r.tls_handshake_ms} ms.",
+                    metric="tls_handshake_ms",
+                    value=r.tls_handshake_ms,
+                    threshold=t.tls_handshake_ms.warn,
+                    advice="Check server load and TLS session resumption settings.",
+                    title_ru=f"TLS-рукопожатие с {r.host} выше целевого",
+                    detail_ru=f"TLS-рукопожатие заняло {r.tls_handshake_ms} мс.",
+                    advice_ru="Проверьте нагрузку на сервер и настройки возобновления TLS-сессий.",
+                )
+            )
+        severity = severity_for(r.ttfb_ms, t.ttfb_ms)
+        if severity not in ("ok", "info"):
+            findings.append(
+                Finding(
+                    id=f"tls.ttfb_slow.{r.label}",
+                    severity=severity,
+                    title=f"Time to first byte from {r.host} above target",
+                    detail=f"TTFB was {r.ttfb_ms} ms.",
+                    metric="ttfb_ms",
+                    value=r.ttfb_ms,
+                    threshold=t.ttfb_ms.warn,
+                    advice="Slow TTFB with a fast handshake points at server-side processing, not the network.",
+                    title_ru=f"Время до первого байта от {r.host} выше целевого",
+                    detail_ru=f"TTFB составило {r.ttfb_ms} мс.",
+                    advice_ru="Медленный TTFB при быстром рукопожатии указывает на обработку на стороне сервера, а не на сеть.",
+                )
+            )
+    return findings
+
+
+def prefix_findings(bench: PrefixBenchmark, t: Thresholds) -> list[Finding]:
+    findings: list[Finding] = []
+    if not bench.results:
+        return findings
+    severity = severity_for(bench.spread_ms, t.prefix_spread_ms)
+    if severity not in ("ok", "info"):
+        findings.append(
+            Finding(
+                id="prefix.spread",
+                severity=severity,
+                title="Latency spread across AS prefixes is high",
+                detail=f"Spread between best ({bench.best}) and worst ({bench.worst}) probed prefix is {bench.spread_ms} ms.",
+                metric="spread_ms",
+                value=bench.spread_ms,
+                threshold=t.prefix_spread_ms.warn,
+                advice="Pick the best-performing prefix's PoP as your entry point if your provider lets you choose.",
+                title_ru="Разброс задержки между префиксами AS велик",
+                detail_ru=f"Разброс между лучшим ({bench.best}) и худшим ({bench.worst}) префиксом составляет {bench.spread_ms} мс.",
+                advice_ru="Если провайдер позволяет выбрать точку входа, выбирайте PoP с лучшим префиксом.",
+            )
+        )
+    unreachable = sum(1 for p in bench.results if not p.reachable)
+    if unreachable / len(bench.results) > 0.7:
+        reachable_pct = round(100 * (1 - unreachable / len(bench.results)), 1)
+        findings.append(
+            Finding(
+                id="prefix.mostly_unreachable",
+                severity="info",
+                title="Most probed prefixes did not answer",
+                detail=f"{unreachable} of {len(bench.results)} probed prefixes gave no ICMP reply.",
+                metric="reachable_pct",
+                value=reachable_pct,
+                advice="Many networks filter ICMP to the first host of a subnet; this is common and not necessarily a fault.",
+                title_ru="Большинство проверенных префиксов не ответили",
+                detail_ru=f"{unreachable} из {len(bench.results)} проверенных префиксов не дали ответа по ICMP.",
+                advice_ru="Многие сети фильтруют ICMP к первому хосту подсети; это обычное явление, не обязательно неисправность.",
+            )
+        )
+    return findings
+
+
+_DPI_TEXT = {
+    "reset_injection": ("crit", "Possible active DPI interference on {t}", "Возможное активное вмешательство DPI на {t}"),
+    "partial_filtering": ("warn", "Selective port filtering detected on {t}", "Обнаружена выборочная фильтрация портов на {t}"),
+    "unreachable": ("info", "{t} did not respond on any probed port", "{t} не ответил ни на одном проверенном порту"),
+}
+
+
+def dpi_findings(result: DpiCheckResult) -> list[Finding]:
+    spec = _DPI_TEXT.get(result.verdict)
+    if spec is None:
+        return []
+    severity, title, title_ru = spec
+    title = title.format(t=result.target)
+    title_ru = title_ru.format(t=result.target)
+    return [
+        Finding(
+            id=f"dpi.{result.verdict}",
+            severity=severity,
+            title=title,
+            detail=result.rationale,
+            metric="verdict",
+            value=result.verdict,
+            advice="Try the same ports over a VPN/proxy to confirm whether the block is on the path to this specific server.",
+            title_ru=title_ru,
+            detail_ru=result.rationale_ru or "",
+            advice_ru="Попробуйте те же порты через VPN/прокси, чтобы подтвердить, что блокировка именно на пути к этому серверу.",
+        )
+    ]
+
+
+def dns_advanced_findings(adv: DnsAdvanced, t: Thresholds) -> list[Finding]:
+    findings: list[Finding] = []
+    if adv.transparent_proxy is True:
+        findings.append(
+            Finding(
+                id="dns.transparent_proxy",
+                severity="warn",
+                title="ISP appears to intercept DNS traffic on port 53",
+                detail=adv.transparent_proxy_detail or "",
+                advice="A transparent DNS proxy can silently redirect or rewrite lookups even when you configure a different resolver.",
+                title_ru="Провайдер, похоже, перехватывает DNS-трафик на 53 порту",
+                detail_ru=adv.transparent_proxy_detail or "",
+                advice_ru="Прозрачный DNS-прокси может незаметно перенаправлять или подменять запросы, даже если вы указали другой резолвер.",
+            )
+        )
+    if adv.system_avg_ms is not None and adv.doh_avg_ms is not None:
+        severity = severity_for(adv.system_avg_ms, t.dns_resolve_ms)
+        if severity not in ("ok", "info") and adv.system_avg_ms > adv.doh_avg_ms:
+            findings.append(
+                Finding(
+                    id="dns.system_slow",
+                    severity=severity,
+                    title="System DNS resolver is slow compared to DoH",
+                    detail=f"System resolver averaged {adv.system_avg_ms} ms vs {adv.doh_avg_ms} ms over DoH.",
+                    metric="system_avg_ms",
+                    value=adv.system_avg_ms,
+                    threshold=t.dns_resolve_ms.warn,
+                    advice="Switching the OS resolver to a faster public one (or using DoH) may cut page load latency.",
+                    title_ru="Системный DNS-резолвер медленнее, чем DoH",
+                    detail_ru=f"Системный резолвер в среднем {adv.system_avg_ms} мс против {adv.doh_avg_ms} мс через DoH.",
+                    advice_ru="Переключение системного резолвера на более быстрый публичный (или использование DoH) может снизить задержку загрузки страниц.",
+                )
+            )
+    for divergence in adv.divergences:
+        if "suspicious=True" not in divergence:
+            continue
+        name = divergence.split(":", 1)[0].strip()
+        findings.append(
+            Finding(
+                id=f"dns.poisoned_answer.{name}",
+                severity="crit",
+                title=f"System resolver returned a bogus answer for {name}",
+                detail=divergence,
+                advice="Compare against a known-good resolver (1.1.1.1/8.8.8.8) or DoH; this can indicate ISP-level DNS injection.",
+                title_ru=f"Системный резолвер вернул некорректный ответ для {name}",
+                detail_ru=divergence,
+                advice_ru="Сравните с заведомо надёжным резолвером (1.1.1.1/8.8.8.8) или DoH; это может указывать на подмену DNS на стороне провайдера.",
+            )
+        )
+    return findings
+
+
+_EDGE_FAR_MS = 50.0
+
+
+def path_diversity_findings(pd: PathDiversity) -> list[Finding]:
+    findings: list[Finding] = []
+    if pd.international_loop:
+        countries = ", ".join(pd.detour_countries)
+        findings.append(
+            Finding(
+                id="anycast.international_loop",
+                severity="warn",
+                title="Anycast routed traffic through another country",
+                detail=pd.note or f"Traffic detoured through {countries}.",
+                metric="detour_countries",
+                value=countries,
+                advice="Ask your ISP about local peering/CDN caching for this provider, or use a resolver closer to the intended PoP.",
+                title_ru="Anycast завернул трафик через другую страну",
+                detail_ru=pd.note_ru or f"Трафик прошёл через {countries}.",
+                advice_ru="Спросите провайдера про локальный пиринг/кэширование CDN для этого сервиса, либо используйте резолвер ближе к нужному PoP.",
+            )
+        )
+    for hop in pd.hops:
+        if hop.client_rtt_ms is None or hop.edge_rtt_ms is None:
+            continue
+        delta = hop.client_rtt_ms - hop.edge_rtt_ms
+        if delta > _EDGE_FAR_MS:
+            findings.append(
+                Finding(
+                    id=f"anycast.edge_far.{hop.target}",
+                    severity="info",
+                    title=f"Anycast edge for {hop.target} is far from the client",
+                    detail=f"Client RTT {hop.client_rtt_ms} ms vs edge-observed RTT {hop.edge_rtt_ms} ms.",
+                    metric="client_rtt_ms",
+                    value=hop.client_rtt_ms,
+                    threshold=_EDGE_FAR_MS,
+                    advice="The last mile to the nearest PoP may be the bottleneck rather than the wider path.",
+                    title_ru=f"Anycast-точка для {hop.target} далеко от клиента",
+                    detail_ru=f"RTT клиента {hop.client_rtt_ms} мс против RTT со стороны edge {hop.edge_rtt_ms} мс.",
+                    advice_ru="Узким местом может быть последняя миля до ближайшего PoP, а не весь остальной путь.",
+                )
+            )
     return findings
 
 
