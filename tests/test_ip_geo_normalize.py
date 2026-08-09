@@ -118,12 +118,22 @@ def test_provider_flags_of_a_failed_payload_is_empty(api_fixture):
 @pytest.mark.parametrize(
     ("mobile", "proxy", "hosting", "known", "expected"),
     [
-        (False, False, False, False, "unknown"),
-        (False, False, False, True, "residential"),
-        (True, False, False, True, "mobile"),
+        (True, True, True, True, "mobile"),
+        (True, True, True, False, "unknown"),
+        (True, True, False, True, "mobile"),
+        (True, True, False, False, "unknown"),
         (True, False, True, True, "mobile"),
+        (True, False, True, False, "unknown"),
+        (True, False, False, True, "mobile"),
+        (True, False, False, False, "unknown"),
+        (False, True, True, True, "hosting"),
+        (False, True, True, False, "unknown"),
         (False, True, False, True, "hosting"),
+        (False, True, False, False, "unknown"),
         (False, False, True, True, "hosting"),
+        (False, False, True, False, "unknown"),
+        (False, False, False, True, "residential"),
+        (False, False, False, False, "unknown"),
     ],
 )
 def test_ip_type_classification(mobile, proxy, hosting, known, expected):
