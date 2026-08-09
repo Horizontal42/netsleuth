@@ -47,11 +47,7 @@ def _unix_probes(body: str) -> list[float | None]:
 
 
 def _unix_annotations(body: str) -> list[str]:
-    seen: list[str] = []
-    for token in ANNOTATION_RE.findall(body):
-        if token not in seen:
-            seen.append(token)
-    return seen
+    return list(dict.fromkeys(ANNOTATION_RE.findall(body)))
 
 
 def parse_linux(text: str) -> list[TraceHop]:
