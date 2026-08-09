@@ -39,6 +39,34 @@ def test_throughput_of_no_samples_is_zero():
     assert throughput_from_samples([]) == 0.0
 
 
+def test_throughput_ignores_zero_or_negative_rates():
+    # 0 Mbps (1M / 0s) and negative Mbps (ignored anyway by mbps, but let's test the throughput_from_samples logic)
+    # 1M / 1s = 8 Mbps
+    # 1M / 0.5s = 16 Mbps
+    samples = [(1_000_000, 0.0), (1_000_000, 1.0), (1_000_000, 0.5)]
+    # The 0 Mbps rate is filtered out. Remaining: 8, 16. p90 interpolates to 15.2.
+    assert throughput_from_samples(samples) == pytest.approx(15.2)
+
+
+def test_throughput_returns_zero_if_no_positive_rates():
+    # All samples will result in 0.0 Mbps
+    samples = [(1_000_000, 0.0), (0, 1.0)]
+    assert throughput_from_samples(samples) == 0.0
+
+
+def test_throughput_supports_custom_percentile():
+    samples = [(1_000_000, 1.0), (1_000_000, 0.5), (1_000_000, 0.4), (1_000_000, 0.25)]
+    # Per-sample Mbps: 8, 16, 20, 32
+    # p50 interpolates to 18.0
+    assert throughput_from_samples(samples, p=50.0) == pytest.approx(18.0)
+
+
+def test_throughput_rounds_to_three_decimal_places():
+    samples = [(1_000_000, 0.99)] # 8.080808...
+    # Should round to 8.081
+    assert throughput_from_samples(samples) == 8.081
+
+
 def test_cfl4_header_is_parsed_into_typed_stats():
     header = (
         'cfL4;desc="?proto=tcp&rtt=12345&min_rtt=11000&rtt_var=1500&sent=100&recv=200'
