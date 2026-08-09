@@ -269,6 +269,14 @@ class PingResult:
 
 
 @dataclass
+class TraceConfig:
+    target: str
+    resolved_ip: str | None
+    backend: str = "system_traceroute"
+    max_hops: int = 30
+
+
+@dataclass
 class TraceHop:
     ttl: int
     ip: str | None = None

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from netsleuth.models import TraceHop, TraceResult
+from netsleuth.models import TraceConfig, TraceHop, TraceResult
 from netsleuth.stats import rtt_stats
 
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -160,18 +160,15 @@ def parse_traceroute(text: str, os_name: str) -> list[TraceHop]:
 def build_trace_result(
     text: str,
     os_name: str,
-    target: str,
-    resolved_ip: str | None,
-    backend: str = "system_traceroute",
-    max_hops: int = 30,
+    config: TraceConfig,
 ) -> TraceResult:
     hops = parse_traceroute(text, os_name)
-    completed = bool(hops and resolved_ip and hops[-1].ip == resolved_ip)
-    max_hops_reached = bool(hops) and not completed and hops[-1].ttl >= max_hops
+    completed = bool(hops and config.resolved_ip and hops[-1].ip == config.resolved_ip)
+    max_hops_reached = bool(hops) and not completed and hops[-1].ttl >= config.max_hops
     return TraceResult(
-        target=target,
-        resolved_ip=resolved_ip,
-        backend=backend,
+        target=config.target,
+        resolved_ip=config.resolved_ip,
+        backend=config.backend,
         hops=hops,
         cycles=1,
         completed=completed,

@@ -8,7 +8,7 @@ import shutil
 import threading
 from typing import Awaitable, Callable, TypeVar
 
-from netsleuth.models import Capabilities, TraceHop, TraceResult
+from netsleuth.models import Capabilities, TraceConfig, TraceHop, TraceResult
 from netsleuth.probes.icmp_win import IcmpReply, classify_status
 from netsleuth.traceparse import build_trace_result, finalize_hop
 
@@ -213,7 +213,8 @@ async def _tier_system(
     os_name = platform.system()
     args = trace_argv("system_traceroute", binary, target, max_hops, 1, os_name, source_ip)
     text = await _run(args, timeout)
-    return build_trace_result(text, os_name, target=target, resolved_ip=None, max_hops=max_hops)
+    config = TraceConfig(target=target, resolved_ip=None, max_hops=max_hops)
+    return build_trace_result(text, os_name, config)
 
 
 async def _tier_tcp_trace(

@@ -185,6 +185,7 @@ def test_darwin_parser_tolerates_empty_input():
     assert parse_darwin("") == []
 
 
+from netsleuth.models import TraceConfig
 from netsleuth.traceparse import build_trace_result, parse_traceroute
 
 
@@ -206,9 +207,11 @@ def test_build_trace_result_marks_completion_when_the_target_is_reached(trace_fi
     result = build_trace_result(
         trace_fixture("linux", "gnu_basic.txt"),
         "Linux",
-        target="1.1.1.1",
-        resolved_ip="1.1.1.1",
-        max_hops=30,
+        TraceConfig(
+            target="1.1.1.1",
+            resolved_ip="1.1.1.1",
+            max_hops=30,
+        ),
     )
     assert result.completed is True
     assert result.max_hops_reached is False
@@ -221,9 +224,11 @@ def test_build_trace_result_flags_a_run_that_died_at_max_hops(trace_fixture):
     result = build_trace_result(
         trace_fixture("linux", "gnu_maxhops.txt"),
         "Linux",
-        target="203.0.113.200",
-        resolved_ip="203.0.113.200",
-        max_hops=5,
+        TraceConfig(
+            target="203.0.113.200",
+            resolved_ip="203.0.113.200",
+            max_hops=5,
+        ),
     )
     assert result.completed is False
     assert result.max_hops_reached is True
@@ -233,16 +238,18 @@ def test_build_trace_result_is_not_complete_when_the_last_hop_is_a_different_hos
     result = build_trace_result(
         trace_fixture("linux", "gnu_unreachable.txt"),
         "Linux",
-        target="203.0.113.9",
-        resolved_ip="203.0.113.9",
-        max_hops=30,
+        TraceConfig(
+            target="203.0.113.9",
+            resolved_ip="203.0.113.9",
+            max_hops=30,
+        ),
     )
     assert result.completed is False
     assert result.max_hops_reached is False
 
 
 def test_build_trace_result_on_empty_output_is_a_well_formed_empty_result():
-    result = build_trace_result("", "Linux", target="1.1.1.1", resolved_ip=None)
+    result = build_trace_result("", "Linux", TraceConfig(target="1.1.1.1", resolved_ip=None))
     assert result.hops == []
     assert result.completed is False
     assert result.max_hops_reached is False
