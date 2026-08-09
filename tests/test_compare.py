@@ -81,6 +81,55 @@ def test_speed_deltas_cover_throughput_and_the_bufferbloat_grade(before, after):
     assert "Speedtest method" not in changes
 
 
+def test_speed_of_a_report_against_itself_is_empty(before):
+    assert speed_changes(before, before) == []
+
+
+def test_speed_changes_with_missing_sections():
+    assert speed_changes({}, {}) == []
+
+
+def test_speed_changes_all_fields():
+    before_report = {
+        "speed": {
+            "data": {
+                "method": "fast",
+                "download_mbps": 100.0,
+                "upload_mbps": 50.0,
+                "bufferbloat_down_ms": 10.0,
+                "bufferbloat_up_ms": 5.0,
+                "bufferbloat_grade": "A",
+            }
+        }
+    }
+    after_report = {
+        "speed": {
+            "data": {
+                "method": "cloudflare",
+                "download_mbps": 200.0,
+                "upload_mbps": 100.0,
+                "bufferbloat_down_ms": 20.0,
+                "bufferbloat_up_ms": 15.0,
+                "bufferbloat_grade": "C",
+            }
+        }
+    }
+    changes = by_label(speed_changes(before_report, after_report))
+
+    assert changes["Speedtest method"].before == "fast"
+    assert changes["Speedtest method"].after == "cloudflare"
+    assert changes["Speedtest method"].delta is None
+
+    assert changes["Download Mbps"].delta == pytest.approx(100.0)
+    assert changes["Upload Mbps"].delta == pytest.approx(50.0)
+    assert changes["Bufferbloat down ms"].delta == pytest.approx(10.0)
+    assert changes["Bufferbloat up ms"].delta == pytest.approx(10.0)
+
+    assert changes["Bufferbloat grade"].before == "A"
+    assert changes["Bufferbloat grade"].after == "C"
+    assert changes["Bufferbloat grade"].delta is None
+
+
 def test_findings_are_split_into_new_and_resolved(before, after):
     new, resolved = finding_changes(before, after)
     assert [f["id"] for f in new] == ["speed.bufferbloat_down"]
