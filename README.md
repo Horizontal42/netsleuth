@@ -95,4 +95,4 @@ netcheck reads from RIPEstat, CAIDA ASRank, Team Cymru, PeeringDB, Cloudflare, i
 
 ## License
 
-Not yet finalized — see [LICENSE](LICENSE). The choice is between MIT and Polyform Noncommercial; the default reputation sources (Shodan InternetDB, Spamhaus free mirrors) are non-commercial-use-only, which is the crux of the decision.
+[PolyForm Noncommercial 1.0.0](LICENSE) — chosen because the default reputation sources (Shodan InternetDB, Spamhaus free mirrors) are non-commercial-use-only; this license keeps every downstream fork inside those same terms.

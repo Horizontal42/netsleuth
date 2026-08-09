@@ -95,4 +95,4 @@ netcheck читает данные из RIPEstat, CAIDA ASRank, Team Cymru, Peer
 
 ## Лицензия
 
-Пока не выбрана — см. [LICENSE](LICENSE). Выбор между MIT и Polyform Noncommercial; источники репутации по умолчанию (Shodan InternetDB, свободные зеркала Spamhaus) разрешены только для некоммерческого использования — в этом суть решения.
+[PolyForm Noncommercial 1.0.0](LICENSE) — выбрана потому что источники репутации по умолчанию (Shodan InternetDB, свободные зеркала Spamhaus) разрешены только для некоммерческого использования; эта лицензия удерживает любой форк в тех же рамках.
