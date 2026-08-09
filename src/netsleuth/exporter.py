@@ -153,8 +153,7 @@ def badge(severity: str, emoji: bool, lang: str = "en") -> str:
 
 
 def first_loss_jump(hops: list[dict]) -> int | None:
-    for index, hop in enumerate(hops[:-1]):
-        following = hops[index + 1]
+    for hop, following in zip(hops, hops[1:]):
         if hop.get("loss_pct", 0.0) >= _LOSS_JUMP_PCT and following.get("loss_pct", 0.0) >= _LOSS_JUMP_PCT:
             return hop.get("ttl")
     return None
