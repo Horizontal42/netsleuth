@@ -391,3 +391,106 @@ def test_overall_score_never_goes_below_zero():
     status, score, _ = overall_verdict(findings)
     assert status == "crit"
     assert score == 0
+
+
+_CYRILLIC = set("абвгдеёжзийклмнопрстуфхцчшщъыьэюя")
+
+
+def has_cyrillic(text: str) -> bool:
+    return any(ch in _CYRILLIC for ch in text.lower())
+
+
+def test_latency_findings_carry_russian_siblings():
+    findings = latency_findings(
+        [
+            ping(received=0, loss_pct=100.0, avg_ms=None, min_ms=None, max_ms=None, jitter_ms=None),
+            ping(avg_ms=130.0, jitter_ms=25.0, loss_pct=5.0, received=19),
+        ],
+        thresholds_fixture(),
+    )
+    assert findings
+    for f in findings:
+        assert f.title_ru and has_cyrillic(f.title_ru)
+        assert f.detail_ru and has_cyrillic(f.detail_ru)
+        if f.advice:
+            assert f.advice_ru and has_cyrillic(f.advice_ru)
+
+
+def test_path_findings_carry_russian_siblings_for_every_case():
+    no_hops = TraceResult(target="1.1.1.1", resolved_ip="1.1.1.1", backend="icmplib", hops=[])
+    findings = path_findings(no_hops)
+    assert findings[0].title_ru and has_cyrillic(findings[0].title_ru)
+    assert findings[0].detail_ru and has_cyrillic(findings[0].detail_ru)
+    assert findings[0].advice_ru and has_cyrillic(findings[0].advice_ru)
+
+    loss_jump_trace = TraceResult(
+        target="1.1.1.1",
+        resolved_ip="1.1.1.1",
+        backend="mtr_json",
+        hops=[
+            TraceHop(ttl=1, ip="192.168.1.1", loss_pct=0.0, avg_ms=1.0),
+            TraceHop(ttl=2, ip="10.64.0.1", loss_pct=0.0, avg_ms=9.0),
+            TraceHop(ttl=3, ip="198.51.100.7", loss_pct=60.0, avg_ms=40.0),
+            TraceHop(ttl=4, ip="1.1.1.1", loss_pct=55.0, avg_ms=41.0),
+        ],
+        completed=True,
+    )
+    loss_findings = path_findings(loss_jump_trace)
+    loss = [f for f in loss_findings if f.id == "path.loss_jump"][0]
+    assert loss.title_ru and has_cyrillic(loss.title_ru)
+    assert loss.detail_ru and has_cyrillic(loss.detail_ru)
+    assert loss.advice_ru and has_cyrillic(loss.advice_ru)
+
+    incomplete_trace = TraceResult(
+        target="1.1.1.1",
+        resolved_ip="1.1.1.1",
+        backend="mtr_json",
+        hops=[TraceHop(ttl=1, ip="192.168.1.1", loss_pct=0.0, avg_ms=1.0)],
+        completed=False,
+    )
+    incomplete = path_findings(incomplete_trace)
+    incomplete_finding = [f for f in incomplete if f.id == "path.incomplete"][0]
+    assert incomplete_finding.title_ru and has_cyrillic(incomplete_finding.title_ru)
+    assert incomplete_finding.detail_ru and has_cyrillic(incomplete_finding.detail_ru)
+    assert incomplete_finding.advice_ru and has_cyrillic(incomplete_finding.advice_ru)
+
+
+def thresholds_fixture() -> Thresholds:
+    return Thresholds()
+
+
+def test_speed_findings_carry_russian_siblings():
+    unavailable = speed_findings(SpeedResult(method="none"), BufferbloatBands())
+    assert unavailable[0].title_ru and has_cyrillic(unavailable[0].title_ru)
+    assert unavailable[0].detail_ru and has_cyrillic(unavailable[0].detail_ru)
+    assert unavailable[0].advice_ru and has_cyrillic(unavailable[0].advice_ru)
+
+    speed = SpeedResult(
+        method="cloudflare",
+        download_mbps=300.0,
+        upload_mbps=40.0,
+        bufferbloat_down_ms=150.0,
+        bufferbloat_up_ms=150.0,
+    )
+    findings = speed_findings(speed, BufferbloatBands())
+    assert len(findings) == 2
+    for f in findings:
+        assert f.title_ru and has_cyrillic(f.title_ru)
+        assert f.detail_ru and has_cyrillic(f.detail_ru)
+        assert f.advice_ru and has_cyrillic(f.advice_ru)
+    down = [f for f in findings if f.id == "speed.bufferbloat_down"][0]
+    up = [f for f in findings if f.id == "speed.bufferbloat_up"][0]
+    assert "приём" in down.title_ru
+    assert "передача" in up.title_ru
+
+
+def test_bufferbloat_consequence_russian_covers_every_grade():
+    for grade in "ABCDEF?":
+        text = bufferbloat_consequence(grade, lang="ru")
+        assert text and has_cyrillic(text)
+
+
+def test_bufferbloat_consequence_default_english_is_unchanged():
+    for grade in "ABCDEF?":
+        assert bufferbloat_consequence(grade) == bufferbloat_consequence(grade, lang="en")
+    assert "call" in bufferbloat_consequence("F").lower()
