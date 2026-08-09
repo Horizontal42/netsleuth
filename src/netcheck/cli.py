@@ -33,6 +33,16 @@ from netcheck.probes.latency import ping_fanout, tcp_connect_rtt
 from netcheck.probes.traceroute import traceroute
 from netcheck.speed import NDT7_CONSENT_NOTICE
 
+if sys.platform == "win32":
+    # A legacy console codepage (e.g. cp1251) cannot encode the emoji badges and
+    # Unicode punctuation this CLI prints; forcing UTF-8 here avoids a hard crash
+    # in rich's Windows renderer on every non-ASCII character.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
 app = typer.Typer(add_completion=False, help="Deep network diagnostics.")
 console = Console()
 

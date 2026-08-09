@@ -117,7 +117,7 @@ def _block(title: str, changes: list[Change]) -> list[str]:
     if not changes:
         return [f"### {title}", "", "No change.", ""]
     return (
-        [f"### {title}", "", "| Field | Before | After | Δ |", "|---|---|---|---|"]
+        [f"### {title}", "", "| Field | Before | After | Delta |", "|---|---|---|---|"]
         + [f"| {c.label} | {_fmt(c.before)} | {_fmt(c.after)} | {_fmt(c.delta)} |" for c in changes]
         + [""]
     )
