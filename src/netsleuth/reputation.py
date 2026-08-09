@@ -75,26 +75,49 @@ async def refresh_netsets(
     cache_dir: Path,
 ) -> NetsetIndex:
     directory = Path(cache_dir) / "firehol"
-    directory.mkdir(parents=True, exist_ok=True)
+
+    def setup_dir() -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+
+    await asyncio.to_thread(setup_dir)
     index = NetsetIndex()
-    for url in providers.firehol_netsets:
+
+    async def process_one(url: str) -> tuple[str, list[str] | None]:
         name = url.rsplit("/", 1)[-1].removesuffix(".netset")
         path = directory / f"{name}.netset"
-        fresh = (
-            path.exists()
-            and (time.time() - os.path.getmtime(path)) < providers.firehol_refresh_hours * 3600
-        )
+
+        def check_fresh() -> bool:
+            return (
+                path.exists()
+                and (time.time() - os.path.getmtime(path)) < providers.firehol_refresh_hours * 3600
+            )
+
+        fresh = await asyncio.to_thread(check_fresh)
         if not fresh:
             try:
                 response = await client.get(url)
                 response.raise_for_status()
-                tmp = path.with_suffix(".netset.tmp")
-                tmp.write_text(response.text, encoding="utf-8")
-                os.replace(tmp, path)
+
+                def write_file() -> None:
+                    tmp = path.with_suffix(".netset.tmp")
+                    tmp.write_text(response.text, encoding="utf-8")
+                    os.replace(tmp, path)
+
+                await asyncio.to_thread(write_file)
             except httpx.HTTPError:
-                if not path.exists():
-                    continue
-        index.add(name, parse_netset(path.read_text(encoding="utf-8")))
+                if not await asyncio.to_thread(path.exists):
+                    return name, None
+
+        def read_and_parse() -> list[str]:
+            return parse_netset(path.read_text(encoding="utf-8"))
+
+        parsed = await asyncio.to_thread(read_and_parse)
+        return name, parsed
+
+    results = await asyncio.gather(*(process_one(url) for url in providers.firehol_netsets))
+    for name, parsed in results:
+        if parsed is not None:
+            index.add(name, parsed)
     return index
 
 
