@@ -315,8 +315,9 @@ def _connection(report: dict, lang: str = "en") -> list[str]:
         [_t(lang, "Cloudflare colo", "Дата-центр Cloudflare"), cf.get("colo") or "—"],
     ]
     lines = [title, ""] + _table([_t(lang, "Field", "Поле"), _t(lang, "Value", "Значение")], rows, lang) + [""]
-    if geo_bundle.get("dual_stack_note"):
-        lines += [f"> {geo_bundle['dual_stack_note']}", ""]
+    note = geo_bundle.get("dual_stack_note_ru" if lang == "ru" else "dual_stack_note")
+    if note:
+        lines += [f"> {note}", ""]
     return lines
 
 

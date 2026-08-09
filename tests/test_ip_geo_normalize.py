@@ -183,10 +183,14 @@ def test_merge_ignores_a_provider_that_returned_nothing():
 def test_dual_stack_mismatch_is_reported_not_resolved():
     v4 = IpGeo(ip="203.0.113.44", asn="AS64500", country_code="NL")
     v6 = IpGeo(ip="2001:db8::1", asn="AS64777", country_code="DE")
-    note = dual_stack_mismatch(v4, v6)
-    assert note is not None
-    assert "AS64500" in note
-    assert "AS64777" in note
+    pair = dual_stack_mismatch(v4, v6)
+    assert pair is not None
+    en, ru = pair
+    assert "AS64500" in en
+    assert "AS64777" in en
+    assert "AS64500" in ru
+    assert "AS64777" in ru
+    assert any(ch in ru for ch in "абвгдеёжзийклмнопрстуфхцчшщъыьэюя")
 
 
 def test_dual_stack_agreement_produces_no_note():

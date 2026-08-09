@@ -136,11 +136,13 @@ async def _identity(client: httpx.AsyncClient, settings: Settings, options: Opti
             v6 = v6_merged if v6_merged.ip else None
         except (httpx.HTTPError, OSError):
             v6 = None
+    dual_stack = dual_stack_mismatch(merged, v6)
     return {
         "egress_v4": merged,
         "egress_v6": v6,
         "cf_trace": cf,
-        "dual_stack_note": dual_stack_mismatch(merged, v6),
+        "dual_stack_note": dual_stack[0] if dual_stack else None,
+        "dual_stack_note_ru": dual_stack[1] if dual_stack else None,
         "_flags": flags,
     }
 

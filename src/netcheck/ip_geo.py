@@ -194,15 +194,20 @@ def merge_geo(candidates: list[tuple[str, IpGeo]]) -> IpGeo:
     return merged
 
 
-def dual_stack_mismatch(v4: IpGeo | None, v6: IpGeo | None) -> str | None:
+def dual_stack_mismatch(v4: IpGeo | None, v6: IpGeo | None) -> tuple[str, str] | None:
     if v4 is None or v6 is None or not v4.asn or not v6.asn:
         return None
     if v4.asn == v6.asn and (v4.country_code or "") == (v6.country_code or ""):
         return None
-    return (
+    en = (
         f"IPv4 egress {v4.ip} is {v4.asn} ({v4.country_code}) but IPv6 egress {v6.ip} "
         f"is {v6.asn} ({v6.country_code}); the two stacks leave through different networks."
     )
+    ru = (
+        f"Исходящий IPv4 {v4.ip} — это {v4.asn} ({v4.country_code}), а исходящий IPv6 {v6.ip} — "
+        f"{v6.asn} ({v6.country_code}); два стека выходят через разные сети."
+    )
+    return en, ru
 
 
 import asyncio
