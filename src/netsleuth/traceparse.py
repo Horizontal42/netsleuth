@@ -40,10 +40,10 @@ def _unix_host_and_ip(body: str) -> tuple[str | None, str | None]:
 
 
 def _unix_probes(body: str) -> list[float | None]:
-    probes: list[float | None] = []
-    for match in _UNIX_PROBE_RE.finditer(body):
-        probes.append(None if match.group("star") else float(match.group("rtt")))
-    return probes
+    return [
+        None if match.group("star") else float(match.group("rtt"))
+        for match in _UNIX_PROBE_RE.finditer(body)
+    ]
 
 
 def _unix_annotations(body: str) -> list[str]:
