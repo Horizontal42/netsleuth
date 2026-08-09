@@ -26,6 +26,10 @@
 - Documentation freshness pass against the final module and flag set
 - License finalized as PolyForm Noncommercial 1.0.0 — Shodan InternetDB and the free Spamhaus mirrors are non-commercial-use-only, and this license keeps every downstream fork inside those same terms. Real license text landed in `LICENSE`, README/README.ru.md updated, `pyproject.toml` carries the SPDX identifier
 - Russian Markdown report (`report_<ASN>_<ts>.ru.md`), written alongside the English one on every run, same structure, same tables, same numbers, cross-linked with its English sibling. `Finding`/`Reputation`/`DnsLeak` carry optional `_ru` sibling fields set alongside the English ones at each construction site; `exporter.py` renders both languages from one code path via `render_markdown(report, lang=...)` and inline `_t(lang, en, ru)` calls, so the two reports cannot structurally drift. Module skip/warning reasons are translated too (small exact-match dict in `exporter.py`)
+- Fixed adapter-name mojibake in the DNS-leak table: `netinfo.py`'s `_resolvers_windows()` read PowerShell's redirected stdout as text, but neither `$OutputEncoding` nor `[Console]::OutputEncoding` reliably control that encoding once stdout is a pipe rather than a real console — non-ASCII adapter names came back corrupted no matter which codec was guessed on decode. Fixed by having PowerShell UTF-8-encode and base64 its own output before printing, so the pipe only ever carries ASCII; Python base64-decodes then UTF-8-decodes. Verified live: a Bluetooth virtual adapter's Russian display name now renders correctly in both report languages
+- Closed the remaining Russian-report gap for `dual_stack_note`: `ip_geo.dual_stack_mismatch()` now returns an `(en, ru)` pair instead of a single English string; `_connection` in `exporter.py` picks the right one by `lang`. The English copy still goes into `ModuleResult.warnings` for the Run-diagnostics table (that surface stays English — low-traffic, documented)
+- `--ndt7` now remembers consent in a `.cache/ndt7_consent` marker file so a repeat interactive run is not re-prompted; a non-TTY run still proceeds without asking (unchanged, correct for CI/scripted use). `--tcp-trace`'s warning stays an unconditional informational print — it is not a privacy consent gate like NDT7's, just a capability notice
+- Added `.github/workflows/release.yml`: builds on every `v*.*.*` tag, runs the full test suite, verifies the `tcptrace`+`ndt7` extras install cleanly from the built wheel. The actual PyPI publish step is commented out and gated behind a separate, manually-approved job — **not run**, because the distribution name `netcheck` is already taken on PyPI by an unrelated project (see Blocked below)
 
 ## In Progress
 
@@ -33,11 +37,8 @@
 
 ## Next
 
-- Consider publishing to PyPI: decide on the distribution name, add a release workflow, and confirm the `tcptrace`/`ndt7` extras install cleanly from a wheel rather than from the repo.
-- Revisit the opt-in extras' UX. `--ndt7` currently prints its consent notice and prompts on every interactive run, and `--tcp-trace` prints its privilege warning unconditionally. Decide whether consent should be remembered (a flag in `config.yaml`, or a marker in `.cache/`) so a repeat user is not re-prompted, and what the right behaviour is when stdin is not a TTY.
-- Fix adapter-name mojibake in the DNS-leak table: a non-ASCII Windows adapter name (seen on this dev machine: a Bluetooth virtual adapter) renders as cp1251/cp866-corrupted garbage in both the English and Russian reports. Pre-existing bug in `netinfo.py`'s per-adapter resolver enumeration, not introduced by the Russian-report work — needs its own investigation into what encoding Windows actually hands back for adapter friendly names.
-- `dual_stack_note` and other free-text notes generated outside `interpret.py`/`reputation.py`/`probes/dns_leak.py` still render in English inside the Russian report (only `Finding`, `Reputation`, `DnsLeak` carry `_ru` fields today). Low-traffic edge case; extend the same inline-sibling pattern if it turns out to matter.
+- Nothing outstanding beyond what's Blocked.
 
 ## Blocked
 
-- Nothing
+- **PyPI publishing needs a new distribution name.** `netcheck` is already registered on pypi.org by an unrelated project ("Netchecks" by hardbyte — a cloud-native network-assertion tool, active since 2022, most recent release checked May 2026). This project's own name cannot be freed up; a different name must be chosen before `.github/workflows/release.yml`'s publish job can be enabled (update `pyproject.toml`'s `[project] name`, then set up PyPI Trusted Publishing for the new name). Needs the user's call — not a decision to make unilaterally.

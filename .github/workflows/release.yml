@@ -1,0 +1,65 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Sync base + optional extras
+        run: uv sync --extra tcptrace --extra ndt7
+
+      - name: Run test suite
+        run: uv run pytest -q
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Verify extras install cleanly from the built wheel
+        shell: bash
+        run: |
+          python -m venv /tmp/wheel-check
+          /tmp/wheel-check/Scripts/pip install "$(ls dist/*.whl)[tcptrace,ndt7]"
+          /tmp/wheel-check/Scripts/netcheck --help
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # Publishing is intentionally a separate, manually-approved job.
+  #
+  # BLOCKED as of 2026-08-09: the distribution name "netcheck" is already
+  # taken on PyPI by an unrelated project (Netchecks / hardbyte, a cloud-native
+  # network-assertion tool, https://pypi.org/project/netcheck/). `pyproject.toml`'s
+  # [project] name must change before this job can ever run — see TASKS.md.
+  #
+  # To enable once a free name is chosen:
+  #   1. Update `name` in pyproject.toml.
+  #   2. Set up PyPI Trusted Publishing for the new project name
+  #      (https://docs.pypi.org/trusted-publishers/) — no token needed, this
+  #      workflow's OIDC identity gets authorized directly on pypi.org.
+  #   3. Uncomment the job below and give it an `environment: pypi` protection
+  #      rule requiring manual approval, so a tag push builds automatically
+  #      but a human still has to click "publish."
+  #
+  # publish:
+  #   needs: build-and-test
+  #   runs-on: ubuntu-latest
+  #   environment: pypi
+  #   permissions:
+  #     id-token: write
+  #   steps:
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         name: dist
+  #         path: dist/
+  #     - uses: pypa/gh-action-pypi-publish@release/v1
