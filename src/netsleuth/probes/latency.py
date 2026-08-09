@@ -53,9 +53,11 @@ async def tcp_connect_rtt(
     return (time.perf_counter() - began) * 1000.0
 
 
-def _resolve(host: str) -> str | None:
+async def _resolve(host: str) -> str | None:
     try:
-        return socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)[0][4][0]
+        loop = asyncio.get_running_loop()
+        res = await loop.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+        return res[0][4][0]
     except (OSError, IndexError):
         return None
 
@@ -87,7 +89,7 @@ async def ping_host(
     backend: str,
     source_ip: str | None = None,
 ) -> PingResult:
-    resolved = _resolve(host)
+    resolved = await _resolve(host)
     if backend in ("icmp_win", "icmp_dgram", "icmp_raw"):
         try:
             samples = await _icmp_samples(host, count, interval, timeout, backend, source_ip)
