@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
+import dns.asyncresolver
+import dns.exception
+import pytest
+
 from netsleuth.reputation import (
     NetsetIndex,
     build_reputation,
@@ -8,6 +14,7 @@ from netsleuth.reputation import (
     decode_dnsbl,
     normalize_internetdb,
     parse_netset,
+    query_dnsbl,
     summarize_dnsbl,
 )
 
@@ -206,3 +213,68 @@ def test_captcha_risk_public_signature_still_returns_a_two_tuple():
     risk, rationale = result
     assert risk == "low"
     assert rationale
+
+
+@pytest.mark.asyncio
+async def test_query_dnsbl_happy_path():
+    with patch("dns.asyncresolver.Resolver.resolve", new_callable=AsyncMock) as mock_resolve:
+        mock_answer = AsyncMock()
+        mock_record1 = AsyncMock()
+        mock_record1.address = "127.0.0.2"
+        mock_record2 = AsyncMock()
+        mock_record2.address = "127.0.0.3"
+
+        # answer is iterable and returns our mocked records
+        mock_answer.__iter__.return_value = iter([mock_record1, mock_record2])
+        mock_resolve.return_value = mock_answer
+
+        outcomes = await query_dnsbl("192.168.1.1", ["zen.spamhaus.org"], 5.0)
+
+        assert len(outcomes) == 1
+        assert outcomes[0].zone == "zen.spamhaus.org"
+        assert outcomes[0].listed is True
+        assert outcomes[0].codes == ["127.0.0.2", "127.0.0.3"]
+
+        # Verify it reversed the IP correctly for the query
+        mock_resolve.assert_called_once_with("1.1.168.192.zen.spamhaus.org", "A")
+
+@pytest.mark.asyncio
+async def test_query_dnsbl_dns_exception():
+    with patch("dns.asyncresolver.Resolver.resolve", new_callable=AsyncMock) as mock_resolve:
+        mock_resolve.side_effect = dns.exception.DNSException("Test error")
+
+        outcomes = await query_dnsbl("192.168.1.1", ["zen.spamhaus.org"], 5.0)
+
+        assert len(outcomes) == 1
+        assert outcomes[0].zone == "zen.spamhaus.org"
+        assert outcomes[0].listed is False
+        assert outcomes[0].codes == []
+
+@pytest.mark.asyncio
+async def test_query_dnsbl_multiple_zones():
+    with patch("dns.asyncresolver.Resolver.resolve", new_callable=AsyncMock) as mock_resolve:
+        def resolve_side_effect(qname, rdtype):
+            if "zone1" in qname:
+                mock_answer = AsyncMock()
+                mock_record = AsyncMock()
+                mock_record.address = "127.0.0.2"
+                mock_answer.__iter__.return_value = iter([mock_record])
+                return mock_answer
+            elif "zone2" in qname:
+                raise dns.exception.DNSException("NXDOMAIN")
+
+        mock_resolve.side_effect = resolve_side_effect
+
+        outcomes = await query_dnsbl("192.168.1.1", ["zone1.com", "zone2.com"], 5.0)
+
+        # Sort outcomes to ensure test consistency as asyncio.gather does not guarantee order
+        outcomes.sort(key=lambda o: o.zone)
+
+        assert len(outcomes) == 2
+        assert outcomes[0].zone == "zone1.com"
+        assert outcomes[0].listed is True
+        assert outcomes[0].codes == ["127.0.0.2"]
+
+        assert outcomes[1].zone == "zone2.com"
+        assert outcomes[1].listed is False
+        assert outcomes[1].codes == []
