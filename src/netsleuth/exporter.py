@@ -281,6 +281,22 @@ def unavailable(report: dict[str, Any], section: str, lang: str = "en") -> str |
     return f"_{label} — {status_word}: {detail}._"
 
 
+def _forced_interface_rows(meta: dict, lang: str = "en") -> list[list[str]]:
+    forced = meta.get("interface")
+    if not forced:
+        return []
+    rows = [
+        [
+            _t(lang, "Forced interface", "Принудительный интерфейс"),
+            f"{forced.get('resolved_iface') or '?'} — {forced.get('bind_ipv4') or '?'} (--interface)",
+        ]
+    ]
+    os_iface, os_ipv4 = forced.get("os_default_iface"), forced.get("os_default_ipv4")
+    if os_iface and (os_iface, os_ipv4) != (forced.get("resolved_iface"), forced.get("bind_ipv4")):
+        rows.append([_t(lang, "OS default interface", "Интерфейс ОС по умолчанию"), f"{os_iface} — {os_ipv4 or '?'}"])
+    return rows
+
+
 def _connection(report: dict, lang: str = "en") -> list[str]:
     title = _section_title("connection", lang)
     conn_note = unavailable(report, "connection", lang)
@@ -293,8 +309,10 @@ def _connection(report: dict, lang: str = "en") -> list[str]:
     geo = geo_bundle.get("egress_v4") or {}
     v6 = geo_bundle.get("egress_v6") or {}
     cf = geo_bundle.get("cf_trace") or {}
+    meta = report.get("meta") or {}
     rows = [
         [_t(lang, "Interface", "Интерфейс"), f"{local.get('iface_name') or '?'} (MTU {local.get('iface_mtu') or '?'})"],
+        *_forced_interface_rows(meta, lang),
         [
             _t(lang, "Local address", "Локальный адрес"),
             f"{local.get('local_ipv4') or '?'} / {local.get('local_ipv6') or '—'}",
@@ -317,6 +335,17 @@ def _connection(report: dict, lang: str = "en") -> list[str]:
     note = geo_bundle.get("dual_stack_note_ru" if lang == "ru" else "dual_stack_note")
     if note:
         lines += [f"> {note}", ""]
+    dropped = (meta.get("interface") or {}).get("dropped_backends") or []
+    if dropped:
+        lines += [
+            "> "
+            + _t(
+                lang,
+                f"--interface could not be honored by {', '.join(dropped)} (no IPv4 source-address option); that tier was skipped for this run.",
+                f"--interface не удалось применить к {', '.join(dropped)} (нет опции адреса-источника IPv4); этот уровень пропущен для данного запуска.",
+            ),
+            "",
+        ]
     return lines
 
 

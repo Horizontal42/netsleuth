@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from netsleuth.speed import bufferbloat_delta, mbps, parse_server_timing_cfl4, throughput_from_samples
+from netsleuth.speed import bufferbloat_delta, mbps, ookla_interface_args, parse_server_timing_cfl4, throughput_from_samples
 
 
 def test_mbps_converts_bytes_and_seconds():
@@ -79,6 +79,18 @@ def test_bufferbloat_delta_is_the_rise_over_the_idle_baseline():
 
 def test_bufferbloat_delta_never_goes_negative():
     assert bufferbloat_delta(50.0, [10.0, 12.0, 11.0]) == 0.0
+
+
+def test_ookla_interface_args_prefers_interface_name_over_ip():
+    assert ookla_interface_args(iface_name="Ethernet", ipv4="192.168.3.72") == ["--interface", "Ethernet"]
+
+
+def test_ookla_interface_args_falls_back_to_ip_without_a_name():
+    assert ookla_interface_args(iface_name=None, ipv4="192.168.3.72") == ["--ip", "192.168.3.72"]
+
+
+def test_ookla_interface_args_is_empty_without_a_forced_bind():
+    assert ookla_interface_args(iface_name=None, ipv4=None) == []
 
 
 def test_bufferbloat_delta_needs_both_a_baseline_and_samples():

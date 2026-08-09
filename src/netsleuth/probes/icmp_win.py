@@ -100,6 +100,23 @@ def _handle():
         ctypes.c_uint32,
     ]
     iphlpapi.IcmpSendEcho2.restype = ctypes.c_uint32
+    # Ex variant inserts SourceAddress (IPAddr) before DestinationAddress; only
+    # used when a caller asks to bind to a specific adapter's address.
+    iphlpapi.IcmpSendEcho2Ex.argtypes = [
+        wintypes.HANDLE,
+        wintypes.HANDLE,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_void_p,
+        ctypes.c_uint16,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+    ]
+    iphlpapi.IcmpSendEcho2Ex.restype = ctypes.c_uint32
     iphlpapi.IcmpCloseHandle.argtypes = [wintypes.HANDLE]
     handle = iphlpapi.IcmpCreateFile()
     if handle == wintypes.HANDLE(-1).value:
@@ -107,25 +124,44 @@ def _handle():
     return iphlpapi, handle
 
 
-def echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth") -> IcmpReply:
+def echo_once(
+    dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth", source_ip: str | None = None
+) -> IcmpReply:
     iphlpapi, handle = _handle()
     try:
         options = _IpOptionInformation(Ttl=ttl, Tos=0, Flags=0, OptionsSize=0, OptionsData=None)
         buffer = ctypes.create_string_buffer(_REPLY_BUFFER_SIZE)
         address = struct.unpack("<I", socket.inet_aton(dest))[0]
-        count = iphlpapi.IcmpSendEcho2(
-            handle,
-            None,
-            None,
-            None,
-            ctypes.c_uint32(address),
-            payload,
-            ctypes.c_ushort(len(payload)),
-            ctypes.byref(options),
-            buffer,
-            ctypes.c_uint32(_REPLY_BUFFER_SIZE),
-            ctypes.c_uint32(timeout_ms),
-        )
+        if source_ip:
+            source = struct.unpack("<I", socket.inet_aton(source_ip))[0]
+            count = iphlpapi.IcmpSendEcho2Ex(
+                handle,
+                None,
+                None,
+                None,
+                ctypes.c_uint32(source),
+                ctypes.c_uint32(address),
+                payload,
+                ctypes.c_ushort(len(payload)),
+                ctypes.byref(options),
+                buffer,
+                ctypes.c_uint32(_REPLY_BUFFER_SIZE),
+                ctypes.c_uint32(timeout_ms),
+            )
+        else:
+            count = iphlpapi.IcmpSendEcho2(
+                handle,
+                None,
+                None,
+                None,
+                ctypes.c_uint32(address),
+                payload,
+                ctypes.c_ushort(len(payload)),
+                ctypes.byref(options),
+                buffer,
+                ctypes.c_uint32(_REPLY_BUFFER_SIZE),
+                ctypes.c_uint32(timeout_ms),
+            )
         if count == 0:
             return IcmpReply(address=None, status=IP_REQ_TIMED_OUT, rtt_ms=None, ttl=0)
         return parse_echo_reply(buffer.raw, pointer_size=ctypes.sizeof(ctypes.c_void_p))
@@ -133,14 +169,16 @@ def echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth
         iphlpapi.IcmpCloseHandle(handle)
 
 
-def ping_samples_win(host: str, count: int, interval: float, timeout: float) -> list[float | None]:
+def ping_samples_win(
+    host: str, count: int, interval: float, timeout: float, source_ip: str | None = None
+) -> list[float | None]:
     dest = socket.gethostbyname(host)
     timeout_ms = int(timeout * 1000)
     samples: list[float | None] = []
     for index in range(count):
         if index:
             time.sleep(interval)
-        reply = echo_once(dest, ttl=128, timeout_ms=timeout_ms)
+        reply = echo_once(dest, ttl=128, timeout_ms=timeout_ms, source_ip=source_ip)
         samples.append(reply.rtt_ms if classify_status(reply.status) == "ok" else None)
     return samples
 
@@ -150,7 +188,9 @@ def ping_samples_win(host: str, count: int, interval: float, timeout: float) -> 
 _MAX_HOP_TIMEOUT_MS = 4000
 
 
-def trace_hops_win(dest: str, max_hops: int, timeout_ms: int) -> list[tuple[int, IcmpReply]]:
+def trace_hops_win(
+    dest: str, max_hops: int, timeout_ms: int, source_ip: str | None = None
+) -> list[tuple[int, IcmpReply]]:
     # timeout_ms is the TOTAL budget for the whole trace (all hops combined), not
     # a per-hop timeout - a caller-supplied 60s budget across 30 hops must not turn
     # into 30 minutes of blocking IcmpSendEcho2 calls.
@@ -161,7 +201,7 @@ def trace_hops_win(dest: str, max_hops: int, timeout_ms: int) -> list[tuple[int,
     for ttl in range(1, max_hops + 1):
         if time.monotonic() >= deadline:
             break
-        reply = echo_once(address, ttl=ttl, timeout_ms=per_hop_timeout_ms)
+        reply = echo_once(address, ttl=ttl, timeout_ms=per_hop_timeout_ms, source_ip=source_ip)
         hops.append((ttl, reply))
         if classify_status(reply.status) == "ok":
             break

@@ -263,7 +263,7 @@ def test_format_extensions_covers_the_three_known_formats():
     assert FORMAT_EXTENSIONS == {"md": "md", "ru-md": "ru.md", "json": "json"}
 
 
-from netsleuth.exporter import SPARK_CHARS, badge, first_loss_jump, render_markdown, sparkline
+from netsleuth.exporter import SPARK_CHARS, _forced_interface_rows, badge, first_loss_jump, render_markdown, sparkline
 from netsleuth.models import (
     AdapterLeakResult,
     BgpIntel,
@@ -572,6 +572,47 @@ def test_markdown_without_emoji_uses_text_badges():
     text = render_markdown(full_report(), emoji=False)
     assert "[warn]" in text
     assert "🟡" not in text
+
+
+def test_forced_interface_rows_are_empty_without_a_forced_interface():
+    assert _forced_interface_rows({}, "en") == []
+
+
+def test_forced_interface_rows_show_the_resolved_adapter():
+    meta = {
+        "interface": {
+            "requested": "Ethernet",
+            "resolved_iface": "Ethernet",
+            "bind_ipv4": "192.168.3.72",
+            "os_default_iface": "Ethernet",
+            "os_default_ipv4": "192.168.3.72",
+        }
+    }
+    rows = _forced_interface_rows(meta, "en")
+    assert rows == [["Forced interface", "Ethernet — 192.168.3.72 (--interface)"]]
+
+
+def test_forced_interface_rows_add_the_os_default_when_it_differs():
+    meta = {
+        "interface": {
+            "requested": "Tailscale",
+            "resolved_iface": "Tailscale",
+            "bind_ipv4": "100.84.46.36",
+            "os_default_iface": "Ethernet",
+            "os_default_ipv4": "192.168.3.72",
+        }
+    }
+    rows = _forced_interface_rows(meta, "en")
+    assert rows == [
+        ["Forced interface", "Tailscale — 100.84.46.36 (--interface)"],
+        ["OS default interface", "Ethernet — 192.168.3.72"],
+    ]
+
+
+def test_forced_interface_rows_are_translated_in_russian():
+    meta = {"interface": {"requested": "Ethernet", "resolved_iface": "Ethernet", "bind_ipv4": "192.168.3.72"}}
+    rows = _forced_interface_rows(meta, "ru")
+    assert rows[0][0] == "Принудительный интерфейс"
 
 
 from netsleuth.exporter import unavailable

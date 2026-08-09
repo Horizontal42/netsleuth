@@ -19,7 +19,7 @@ def test_trace_hops_win_total_elapsed_is_bounded_by_the_total_budget_not_hops_ti
     # to the 100ms total budget.
     call_timeouts: list[int] = []
 
-    def fake_echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth") -> IcmpReply:
+    def fake_echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth", source_ip=None) -> IcmpReply:
         call_timeouts.append(timeout_ms)
         time.sleep(timeout_ms / 1000.0)
         return IcmpReply(address=None, status=IP_REQ_TIMED_OUT, rtt_ms=None, ttl=0)
@@ -43,7 +43,7 @@ def test_trace_hops_win_total_elapsed_is_bounded_by_the_total_budget_not_hops_ti
 def test_trace_hops_win_per_hop_timeout_is_capped_even_for_a_huge_total_budget():
     call_timeouts: list[int] = []
 
-    def fake_echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth") -> IcmpReply:
+    def fake_echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth", source_ip=None) -> IcmpReply:
         call_timeouts.append(timeout_ms)
         return IcmpReply(address=None, status=IP_REQ_TIMED_OUT, rtt_ms=None, ttl=0)
 
@@ -62,7 +62,7 @@ def test_trace_hops_win_per_hop_timeout_is_capped_even_for_a_huge_total_budget()
 def test_trace_hops_win_happy_path_hop_count_and_ok_break_are_unchanged():
     from netsleuth.probes.icmp_win import IP_SUCCESS
 
-    def fake_echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth") -> IcmpReply:
+    def fake_echo_once(dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth", source_ip=None) -> IcmpReply:
         if ttl < 3:
             return IcmpReply(address=f"10.0.0.{ttl}", status=IP_REQ_TIMED_OUT, rtt_ms=None, ttl=0)
         return IcmpReply(address="203.0.113.1", status=IP_SUCCESS, rtt_ms=5.0, ttl=64)

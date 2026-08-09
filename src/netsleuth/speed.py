@@ -109,8 +109,23 @@ import httpx
 from netsleuth.config import Speedtest
 
 
-async def tier_ookla(binary: str, server: str | None, timeout: float) -> SpeedResult:
+def ookla_interface_args(iface_name: str | None, ipv4: str | None) -> list[str]:
+    if iface_name:
+        return ["--interface", iface_name]
+    if ipv4:
+        return ["--ip", ipv4]
+    return []
+
+
+async def tier_ookla(
+    binary: str,
+    server: str | None,
+    timeout: float,
+    iface_name: str | None = None,
+    ipv4: str | None = None,
+) -> SpeedResult:
     args = [binary, "--format=json", "--accept-license", "--accept-gdpr"]
+    args += ookla_interface_args(iface_name, ipv4)
     if server:
         args += ["--server-id", server] if server.isdigit() else ["--host", server]
     process = await asyncio.create_subprocess_exec(
@@ -186,7 +201,9 @@ async def tier_fastcom(client: httpx.AsyncClient, cfg: Speedtest, timeout: float
     )
 
 
-async def tier_ndt7(client: httpx.AsyncClient, cfg: Speedtest, timeout: float) -> SpeedResult:
+async def tier_ndt7(
+    client: httpx.AsyncClient, cfg: Speedtest, timeout: float, source_ip: str | None = None
+) -> SpeedResult:
     import websockets
 
     locate = await client.get(cfg.ndt7_locate_url, timeout=timeout)
@@ -196,8 +213,11 @@ async def tier_ndt7(client: httpx.AsyncClient, cfg: Speedtest, timeout: float) -
         raise RuntimeError("no ndt7 server offered by locate.measurementlab.net")
     url = results[0]["urls"]["wss:///ndt/v7/download"]
     total = 0
+    connect_kwargs = {"local_addr": (source_ip, 0)} if source_ip else {}
     began = time.perf_counter()
-    async with websockets.connect(url, subprotocols=["net.measurementlab.ndt.v7"]) as socket:
+    async with websockets.connect(
+        url, subprotocols=["net.measurementlab.ndt.v7"], **connect_kwargs
+    ) as socket:
         while time.perf_counter() - began < 10:
             try:
                 message = await asyncio.wait_for(socket.recv(), timeout=timeout)

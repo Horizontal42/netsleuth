@@ -53,6 +53,41 @@ def tier_order(caps: Capabilities, tcp_trace: bool = False) -> list[str]:
     return order
 
 
+def filter_trace_tiers(order: list[str], os_name: str, forced_v4: bool) -> tuple[list[str], list[str]]:
+    # Windows tracert exposes a source-address override for IPv6 only (-S), never
+    # for IPv4, so it cannot honor a forced IPv4 bind; running it anyway would
+    # silently measure the OS-default path under a report claiming otherwise.
+    if not forced_v4 or os_name != "Windows" or "system_traceroute" not in order:
+        return order, []
+    return [t for t in order if t != "system_traceroute"], ["system_traceroute"]
+
+
+def trace_argv(
+    backend: str,
+    binary: str,
+    target: str,
+    max_hops: int,
+    cycles: int,
+    os_name: str,
+    source_ip: str | None = None,
+) -> list[str]:
+    if backend == "mtr_json":
+        args = [binary, "--json", "--report-cycles", str(cycles), "--max-ttl", str(max_hops)]
+        if source_ip:
+            args += ["--address", source_ip]
+        args.append(target)
+        return args
+    if backend == "system_traceroute":
+        if os_name == "Windows":
+            return [binary, "-h", str(max_hops), "-w", "2", target]
+        args = [binary, "-m", str(max_hops), "-w", "2"]
+        if source_ip:
+            args += ["-s", source_ip]
+        args.append(target)
+        return args
+    raise ValueError(f"unsupported backend for trace_argv: {backend!r}")
+
+
 async def run_cascade(tiers: list[tuple[str, Callable[[], Awaitable[TraceResult]]]]) -> TraceResult:
     for _name, tier in tiers:
         try:
@@ -100,9 +135,11 @@ def _console_encoding() -> str:
         return "utf-8"
 
 
-async def _tier_mtr(target: str, binary: str, cycles: int, max_hops: int, timeout: float) -> TraceResult:
+async def _tier_mtr(
+    target: str, binary: str, cycles: int, max_hops: int, timeout: float, source_ip: str | None = None
+) -> TraceResult:
     text = await _run(
-        [binary, "--json", "--report-cycles", str(cycles), "--max-ttl", str(max_hops), target], timeout
+        trace_argv("mtr_json", binary, target, max_hops, cycles, platform.system(), source_ip), timeout
     )
     payload = json.loads(text)
     report = payload.get("report") or {}
@@ -128,10 +165,12 @@ async def _tier_mtr(target: str, binary: str, cycles: int, max_hops: int, timeou
     )
 
 
-async def _tier_icmp_win(target: str, max_hops: int, timeout: float) -> TraceResult:
+async def _tier_icmp_win(
+    target: str, max_hops: int, timeout: float, source_ip: str | None = None
+) -> TraceResult:
     from netsleuth.probes.icmp_win import trace_hops_win
 
-    replies = await _run_in_daemon_thread(trace_hops_win, target, max_hops, int(timeout * 1000))
+    replies = await _run_in_daemon_thread(trace_hops_win, target, max_hops, int(timeout * 1000), source_ip)
     hops = hops_from_win_replies(replies)
     return TraceResult(
         target=target,
@@ -143,10 +182,14 @@ async def _tier_icmp_win(target: str, max_hops: int, timeout: float) -> TraceRes
     )
 
 
-async def _tier_icmplib(target: str, max_hops: int, timeout: float, privileged: bool) -> TraceResult:
+async def _tier_icmplib(
+    target: str, max_hops: int, timeout: float, privileged: bool, source_ip: str | None = None
+) -> TraceResult:
     from icmplib import async_traceroute
 
-    raw = await async_traceroute(target, max_hops=max_hops, timeout=timeout, privileged=privileged)
+    raw = await async_traceroute(
+        target, max_hops=max_hops, timeout=timeout, privileged=privileged, source=source_ip
+    )
     hops = [
         finalize_hop(TraceHop(ttl=h.distance, ip=h.address, probes=list(h.rtts)))
         for h in raw
@@ -161,26 +204,29 @@ async def _tier_icmplib(target: str, max_hops: int, timeout: float, privileged: 
     )
 
 
-async def _tier_system(target: str, binary: str, max_hops: int, timeout: float) -> TraceResult:
+async def _tier_system(
+    target: str, binary: str, max_hops: int, timeout: float, source_ip: str | None = None
+) -> TraceResult:
     os_name = platform.system()
-    args = (
-        [binary, "-h", str(max_hops), "-w", "2", target]
-        if os_name == "Windows"
-        else [binary, "-m", str(max_hops), "-w", "2", target]
-    )
+    args = trace_argv("system_traceroute", binary, target, max_hops, 1, os_name, source_ip)
     text = await _run(args, timeout)
     return build_trace_result(text, os_name, target=target, resolved_ip=None, max_hops=max_hops)
 
 
-async def _tier_tcp_trace(target: str, max_hops: int, timeout: float, port: int = 443) -> TraceResult:
+async def _tier_tcp_trace(
+    target: str, max_hops: int, timeout: float, port: int = 443, source_ip: str | None = None
+) -> TraceResult:
     # scapy ships in the optional `tcptrace` extra and needs Npcap (Windows) or
     # root (Unix); an ImportError here just falls through to the next tier.
     from scapy.layers.inet import IP, TCP
     from scapy.sendrecv import sr
 
     def _probe() -> list[TraceHop]:
+        packet = IP(dst=target, ttl=(1, max_hops))
+        if source_ip:
+            packet.src = source_ip
         answered, _unanswered = sr(
-            IP(dst=target, ttl=(1, max_hops)) / TCP(dport=port, flags="S"),
+            packet / TCP(dport=port, flags="S"),
             timeout=timeout,
             verbose=0,
         )
@@ -211,15 +257,22 @@ async def traceroute(
     timeout: float,
     semaphore: asyncio.Semaphore | None = None,
     tcp_trace: bool = False,
+    source_ip: str | None = None,
 ) -> TraceResult:
     builders = {
-        "tcp_trace": lambda: _tier_tcp_trace(target, max_hops, timeout),
-        "mtr_json": lambda: _tier_mtr(target, caps.mtr_binary or shutil.which("mtr") or "mtr", cycles, max_hops, timeout),
-        "icmp_win": lambda: _tier_icmp_win(target, max_hops, timeout),
-        "icmplib": lambda: _tier_icmplib(target, max_hops, timeout, privileged=not caps.icmp_dgram),
-        "system_traceroute": lambda: _tier_system(target, caps.traceroute_binary or "traceroute", max_hops, timeout),
+        "tcp_trace": lambda: _tier_tcp_trace(target, max_hops, timeout, source_ip=source_ip),
+        "mtr_json": lambda: _tier_mtr(
+            target, caps.mtr_binary or shutil.which("mtr") or "mtr", cycles, max_hops, timeout, source_ip
+        ),
+        "icmp_win": lambda: _tier_icmp_win(target, max_hops, timeout, source_ip),
+        "icmplib": lambda: _tier_icmplib(target, max_hops, timeout, privileged=not caps.icmp_dgram, source_ip=source_ip),
+        "system_traceroute": lambda: _tier_system(
+            target, caps.traceroute_binary or "traceroute", max_hops, timeout, source_ip
+        ),
     }
-    tiers = [(name, builders[name]) for name in tier_order(caps, tcp_trace)]
+    order = tier_order(caps, tcp_trace)
+    order, _dropped = filter_trace_tiers(order, caps.os_name, forced_v4=bool(source_ip))
+    tiers = [(name, builders[name]) for name in order]
     if semaphore is None:
         return await run_cascade(tiers)
     async with semaphore:

@@ -13,6 +13,7 @@ src/netsleuth/
   models.py       Every shared dataclass, plus to_jsonable() for serialization.
   orchestration.py  run_module(): timing, timeout, exception -> ProbeError classification.
   netinfo.py      Capability detection and local interface/gateway/MTU/resolver facts.
+  iface.py        --interface resolution: adapter name/IP -> BindTarget, pure and tested.
   ip_geo.py       Six-provider identity chain, per-provider normalizers, field-wise merge.
   bgp.py          RIPEstat, CAIDA ASRank, Team Cymru DNS, PeeringDB (disk-cached).
   reputation.py   FireHOL netset cache + prefix lookup, Shodan InternetDB, DNSBL decode.
@@ -81,6 +82,10 @@ Two hard concurrency constraints:
 **Reputation defaults to sources that do not learn what you are checking.** FireHOL netsets are downloaded once, cached, and matched locally — no runtime query, no rate limit, no disclosure. Shodan InternetDB tells a home user something actionable (an exposed router, a forgotten port-forward) far more often than a mail blocklist does. Classic DNSBLs are opt-in behind `--dnsbl`.
 
 **DNSBL responses in `127.255.255.0/24` are errors, not listings.** Spamhaus returns `127.255.255.254` for "you queried through a public resolver" — which is the case for anyone on 1.1.1.1 or 8.8.8.8 — and `127.255.255.255` for "rate limited". A naive "any `127.x.x.x` means listed" implementation red-flags most users. Both are surfaced as *result unavailable*, never as a finding.
+
+**`--interface` binds where the code structurally can, drops where it structurally can't, never runs unbound and silent.** Every httpx-based provider client can bind an exact local address (`local_address=` on the transport) — cheap and solid. The Ookla binary tier passes `--interface`/`--ip` through to the external process. `icmp_win` uses `IcmpSendEcho2Ex` (which adds a `SourceAddress`) instead of `IcmpSendEcho2` only when a bind is forced, so the unforced path is byte-for-byte unchanged. The one structural dead end is Windows `tracert.exe`, which exposes a source-address override for IPv6 only, never IPv4 (`-S` is documented IPv6-only in its own usage text) — `filter_trace_tiers()` drops that tier rather than let it silently measure the OS-default path under a report claiming a forced adapter. `netinfo.collect_local_net()`'s own observation of the OS's real default route is deliberately left untouched by the flag: the report needs to show *both* the forced adapter and what the OS would have chosen on its own, and overwriting the observation would turn the VPN gateway/tunnel-interface signals into a tautology (force the VPN adapter, get "VPN confirmed" for free).
+
+**An interface with no route to the internet is a diagnostic answer, not an error.** Resolving an unknown/down/addressless adapter aborts immediately (`typer.BadParameter`, every adapter listed) — that is bad *input*. But an adapter that resolves fine and turns out to carry nothing is exactly the kind of thing this tool exists to surface, so the run proceeds, every probe fails into the normal `unavailable`/`timeout` classification, and the report says so plainly rather than pretending to be a default run.
 
 **Bulk RIPEstat endpoints are always bounded.** `routing-history` and friends return 10 MB+ payloads for large ISPs, so every such call carries `max_rows` and a timeframe from `config.yaml`.
 

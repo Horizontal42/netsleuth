@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import platform
+import socket
 import sys
 import uuid
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
 import httpx
+import psutil
 import typer
 from rich.console import Console
 
@@ -17,6 +19,7 @@ from netsleuth import __version__
 from netsleuth.compare import diff_reports, load_report, render_diff
 from netsleuth.config import FORMAT_EXTENSIONS, Settings, load_settings
 from netsleuth.exporter import build_report, dump_json, egress_asn, render_markdown, report_filename, write_report
+from netsleuth.iface import available_interfaces_hint, resolve_bind_target
 from netsleuth.interpret import (
     assess_vpn,
     gather_vpn_signals,
@@ -25,12 +28,12 @@ from netsleuth.interpret import (
     speed_findings,
 )
 from netsleuth.ip_geo import dual_stack_mismatch, gather_identity
-from netsleuth.models import Finding, IpGeo, LocalNet, ModuleResult, SpeedResult
-from netsleuth.netinfo import collect_local_net, detect_capabilities, is_tunnel_iface
+from netsleuth.models import BindTarget, Finding, IpGeo, LocalNet, ModuleResult, SpeedResult
+from netsleuth.netinfo import collect_local_net, detect_capabilities, iface_for_ip, is_tunnel_iface, primary_interface_ip
 from netsleuth.orchestration import gather_modules, run_module, utc_now_iso
 from netsleuth.probes.dns_leak import collect_dns_leak
 from netsleuth.probes.latency import ping_fanout, tcp_connect_rtt
-from netsleuth.probes.traceroute import traceroute
+from netsleuth.probes.traceroute import filter_trace_tiers, tier_order, traceroute
 from netsleuth.speed import NDT7_CONSENT_NOTICE
 
 if sys.platform == "win32":
@@ -60,6 +63,8 @@ class Options:
     ndt7: bool = False
     tcp_trace: bool = False
     formats: frozenset[str] = frozenset({"md"})
+    interface: str | None = None
+    bind: BindTarget | None = None
 
 
 def parse_formats(
@@ -136,13 +141,15 @@ async def _identity(client: httpx.AsyncClient, settings: Settings, options: Opti
     token = settings.ipinfo_token.get_secret_value() if settings.ipinfo_token else None
     lookup = options.target_value if options.target_kind in ("ip", "domain") else None
     own_network = options.target_kind in (None, "asn")
+    bind_v4 = options.bind.ipv4 if options.bind else "0.0.0.0"
+    warnings: list[str] = []
     if own_network:
         # The shared client has no address family pinned, so on a dual-stack host it can
         # silently connect over IPv6 (OS/happy-eyeballs preference) and hand back an IPv6
         # literal mislabeled as egress_v4. Force IPv4 here the same way egress_v6 is forced
         # below, so the two slots can never both resolve to the same protocol.
         try:
-            transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+            transport = httpx.AsyncHTTPTransport(local_address=bind_v4)
             async with httpx.AsyncClient(
                 transport=transport, timeout=settings.timeouts.http_seconds
             ) as v4_client:
@@ -159,9 +166,13 @@ async def _identity(client: httpx.AsyncClient, settings: Settings, options: Opti
         )
     raw.update(payloads)
     v6 = None
-    if own_network:
+    if own_network and options.bind and options.bind.ipv6 is None:
+        warnings.append(
+            f"IPv6 identity skipped: forced interface {options.bind.iface_name!r} has no global IPv6 address"
+        )
+    elif own_network:
         try:
-            transport = httpx.AsyncHTTPTransport(local_address="::")
+            transport = httpx.AsyncHTTPTransport(local_address=options.bind.ipv6 if options.bind else "::")
             async with httpx.AsyncClient(
                 transport=transport, timeout=settings.timeouts.http_seconds
             ) as v6_client:
@@ -177,6 +188,7 @@ async def _identity(client: httpx.AsyncClient, settings: Settings, options: Opti
         "dual_stack_note": dual_stack[0] if dual_stack else None,
         "dual_stack_note_ru": dual_stack[1] if dual_stack else None,
         "_flags": flags,
+        "_warnings": warnings,
     }
 
 
@@ -248,6 +260,7 @@ async def _traces(hosts, caps, settings: Settings, cycles: int, options: Options
                     timeout=settings.timeouts.subprocess_seconds,
                     semaphore=semaphore,
                     tcp_trace=options.tcp_trace,
+                    source_ip=options.bind.ipv4 if options.bind else None,
                 )
                 for _label, host in hosts
             )
@@ -269,13 +282,18 @@ async def _speed_section(client, settings: Settings, options: Options, idle_rtt_
 
     cfg = settings.speedtest
     timeout = settings.timeouts.speedtest_seconds
+    bind = options.bind
     builders = {
         "ookla_bin": lambda: tier_ookla(
-            shutil.which("speedtest") or "speedtest", options.speedtest_server, timeout
+            shutil.which("speedtest") or "speedtest",
+            options.speedtest_server,
+            timeout,
+            iface_name=bind.iface_name if bind else None,
+            ipv4=bind.ipv4 if bind else None,
         ),
         "cloudflare": lambda: tier_cloudflare(client, cfg, timeout),
         "fastcom": lambda: tier_fastcom(client, cfg, timeout),
-        "ndt7": lambda: tier_ndt7(client, cfg, timeout),
+        "ndt7": lambda: tier_ndt7(client, cfg, timeout, source_ip=bind.ipv4 if bind else None),
     }
     enabled = list(cfg.enabled_tiers) + (["ndt7"] if options.ndt7 else [])
     result = await run_speed_cascade([(name, builders[name]) for name in enabled if name in builders])
@@ -314,7 +332,11 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
     modules: dict[str, ModuleResult] = {}
     raw: dict[str, Any] = {}
 
+    client_transport = (
+        httpx.AsyncHTTPTransport(local_address=options.bind.ipv4, http2=True) if options.bind else None
+    )
     async with httpx.AsyncClient(
+        transport=client_transport,
         timeout=timeouts.http_seconds,
         follow_redirects=True,
         http2=True,
@@ -330,9 +352,11 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         )
         bundle = modules["ip_geo"].data or {}
         flags = bundle.pop("_flags", {}) if isinstance(bundle, dict) else {}
+        identity_warnings = bundle.pop("_warnings", []) if isinstance(bundle, dict) else []
         geo = bundle.get("egress_v4") or IpGeo()
         if bundle.get("dual_stack_note"):
             modules["ip_geo"].warnings.append(bundle["dual_stack_note"])
+        modules["ip_geo"].warnings.extend(identity_warnings)
         asn = geo.asn if options.target_kind != "asn" else options.target_value
 
         # Phase 2 — bgp || reputation || dns_leak
@@ -390,6 +414,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
                     count,
                     settings.probing.ping_interval_seconds,
                     settings.probing.ping_timeout_seconds,
+                    source_ip=options.bind.ipv4 if options.bind else None,
                 ),
                 timeout=timeouts.subprocess_seconds,
             ),
@@ -432,11 +457,25 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
             "dnsbl": options.dnsbl,
             "ndt7": options.ndt7,
             "tcp_trace": options.tcp_trace,
+            "interface": options.interface,
         },
         "formats": sorted(options.formats),
         "host_os": f"{platform.system()} {platform.release()}",
         "capabilities": caps,
     }
+    if options.bind:
+        _kept, dropped = filter_trace_tiers(
+            tier_order(caps, options.tcp_trace), caps.os_name, forced_v4=bool(options.bind.ipv4)
+        )
+        meta["interface"] = {
+            "requested": options.bind.requested,
+            "resolved_iface": options.bind.iface_name,
+            "bind_ipv4": options.bind.ipv4,
+            "bind_ipv6": options.bind.ipv6,
+            "os_default_iface": local.iface_name,
+            "os_default_ipv4": local.local_ipv4,
+            "dropped_backends": dropped,
+        }
     report = build_report(meta, modules, findings, raw)
     asn = meta.get("target") or egress_asn(report)
     md_name = report_filename(asn, started_at, "md")
@@ -478,6 +517,11 @@ def run(
     ),
     ru: bool = typer.Option(False, "--ru", help="Shorthand for --format ru-md."),
     json_flag: bool = typer.Option(False, "--json", help="Shorthand for --format json."),
+    interface: Optional[str] = typer.Option(
+        None,
+        "--interface",
+        help="Force outbound probing through this adapter (name or IP), instead of the OS default route.",
+    ),
 ) -> None:
     settings = load_settings()
     if compare:
@@ -500,6 +544,29 @@ def run(
         tcp_trace=tcp_trace,
         formats=formats,
     )
+    if interface:
+        addrs_by_iface = {
+            name: [(a.family, a.address.split("%")[0]) for a in addrs]
+            for name, addrs in psutil.net_if_addrs().items()
+        }
+        up_by_iface = {name: stats.isup for name, stats in psutil.net_if_stats().items()}
+        bind = resolve_bind_target(interface, addrs_by_iface, up_by_iface)
+        if bind.error:
+            raise typer.BadParameter(bind.error, param_hint="--interface")
+        options.interface = interface
+        options.bind = bind
+        if bind.ipv4:
+            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                probe.bind((bind.ipv4, 0))
+                probe.connect(("1.1.1.1", 53))
+            except OSError:
+                console.print(
+                    f"[yellow]--interface {bind.iface_name}: no route to the internet from this "
+                    "address yet — continuing, this run may show every module as unreachable.[/yellow]"
+                )
+            finally:
+                probe.close()
     if ndt7:
         consent_marker = Path(settings.output.cache_dir) / "ndt7_consent"
         if not consent_marker.exists():

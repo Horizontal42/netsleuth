@@ -96,6 +96,16 @@ class Capabilities:
 
 
 @dataclass
+class BindTarget:
+    requested: str
+    iface_name: str | None = None
+    ipv4: str | None = None
+    ipv6: str | None = None
+    is_up: bool = False
+    error: str | None = None
+
+
+@dataclass
 class LocalNet:
     iface_name: str | None = None
     local_ipv4: str | None = None

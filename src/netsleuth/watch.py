@@ -72,6 +72,8 @@ class WatchSession:
     asn: str | None = None
     interval_seconds: int = 60
     speedtest_every_n_cycles: int = 10
+    interface: str | None = None
+    bind_ipv4: str | None = None
     cycles: list[dict] = field(default_factory=list)
 
     def add(self, summary: dict) -> None:
@@ -102,6 +104,8 @@ class WatchSession:
                 "interval_seconds": self.interval_seconds,
                 "speedtest_every_n_cycles": self.speedtest_every_n_cycles,
                 "cycle_count": len(self.cycles),
+                "interface": self.interface,
+                "bind_ipv4": self.bind_ipv4,
             },
             "cycles": to_jsonable(self.cycles),
         }
@@ -140,10 +144,13 @@ async def run_watch(settings: Settings, options) -> Path:
     from netsleuth.cli import _speed_section
 
     caps = detect_capabilities()
+    bind = options.bind
     session = WatchSession(
         started_at=utc_now_iso(),
         interval_seconds=settings.watch.interval_seconds,
         speedtest_every_n_cycles=settings.watch.speedtest_every_n_cycles,
+        interface=bind.iface_name if bind else None,
+        bind_ipv4=bind.ipv4 if bind else None,
     )
     hosts = [(h.label, h.host) for h in settings.probing.reference_hosts]
     if options.extra_host:
@@ -151,7 +158,9 @@ async def run_watch(settings: Settings, options) -> Path:
     console = Console()
     console.print(f"netsleuth {__version__} · watching every {session.interval_seconds}s · Ctrl-C to stop")
 
+    transport = httpx.AsyncHTTPTransport(local_address=bind.ipv4) if bind else None
     async with httpx.AsyncClient(
+        transport=transport,
         timeout=settings.timeouts.http_seconds,
         follow_redirects=True,
         headers={"User-Agent": f"netsleuth/{__version__}"},
@@ -173,6 +182,7 @@ async def run_watch(settings: Settings, options) -> Path:
                         settings.probing.quick_ping_count,
                         settings.probing.ping_interval_seconds,
                         settings.probing.ping_timeout_seconds,
+                        source_ip=bind.ipv4 if bind else None,
                     )
                     speed = None
                     if is_speedtest_cycle(cycle, session.speedtest_every_n_cycles) and not options.quick:

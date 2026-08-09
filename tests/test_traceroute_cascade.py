@@ -7,7 +7,14 @@ import pytest
 
 from netsleuth.models import Capabilities, TraceHop, TraceResult
 from netsleuth.probes.icmp_win import IP_REQ_TIMED_OUT, IP_SUCCESS, IP_TTL_EXPIRED_TRANSIT, IcmpReply
-from netsleuth.probes.traceroute import _run_in_daemon_thread, hops_from_win_replies, run_cascade, tier_order
+from netsleuth.probes.traceroute import (
+    _run_in_daemon_thread,
+    filter_trace_tiers,
+    hops_from_win_replies,
+    run_cascade,
+    tier_order,
+    trace_argv,
+)
 
 
 def caps(**kw) -> Capabilities:
@@ -204,3 +211,59 @@ def test_run_in_daemon_thread_never_creates_a_non_daemon_worker_thread():
 
     assert seen
     assert all(t.daemon for t in seen)
+
+
+def test_filter_trace_tiers_drops_windows_tracert_when_a_v4_bind_is_forced():
+    kept, dropped = filter_trace_tiers(["icmp_win", "system_traceroute"], "Windows", forced_v4=True)
+    assert kept == ["icmp_win"]
+    assert dropped == ["system_traceroute"]
+
+
+def test_filter_trace_tiers_keeps_everything_when_nothing_is_forced():
+    order = ["icmp_win", "system_traceroute"]
+    kept, dropped = filter_trace_tiers(order, "Windows", forced_v4=False)
+    assert kept == order
+    assert dropped == []
+
+
+def test_filter_trace_tiers_leaves_unix_traceroute_alone_even_when_forced():
+    order = ["mtr_json", "icmplib", "system_traceroute"]
+    kept, dropped = filter_trace_tiers(order, "Linux", forced_v4=True)
+    assert kept == order
+    assert dropped == []
+
+
+def test_filter_trace_tiers_is_a_noop_when_system_traceroute_is_absent():
+    kept, dropped = filter_trace_tiers(["icmp_win"], "Windows", forced_v4=True)
+    assert kept == ["icmp_win"]
+    assert dropped == []
+
+
+def test_trace_argv_mtr_adds_address_flag_when_source_given():
+    args = trace_argv("mtr_json", "/usr/bin/mtr", "1.1.1.1", max_hops=30, cycles=10, os_name="Linux", source_ip="192.168.1.34")
+    assert args == [
+        "/usr/bin/mtr", "--json", "--report-cycles", "10", "--max-ttl", "30",
+        "--address", "192.168.1.34", "1.1.1.1",
+    ]
+
+
+def test_trace_argv_mtr_omits_address_flag_without_a_source():
+    args = trace_argv("mtr_json", "/usr/bin/mtr", "1.1.1.1", max_hops=30, cycles=10, os_name="Linux")
+    assert "--address" not in args
+
+
+def test_trace_argv_unix_traceroute_adds_source_flag():
+    args = trace_argv(
+        "system_traceroute", "/usr/bin/traceroute", "1.1.1.1", max_hops=30, cycles=1,
+        os_name="Linux", source_ip="192.168.1.34",
+    )
+    assert args == ["/usr/bin/traceroute", "-m", "30", "-w", "2", "-s", "192.168.1.34", "1.1.1.1"]
+
+
+def test_trace_argv_windows_tracert_never_gets_a_source_flag():
+    args = trace_argv(
+        "system_traceroute", "tracert", "1.1.1.1", max_hops=30, cycles=1,
+        os_name="Windows", source_ip="192.168.1.34",
+    )
+    assert args == ["tracert", "-h", "30", "-w", "2", "1.1.1.1"]
+    assert "-s" not in args and "-S" not in args
