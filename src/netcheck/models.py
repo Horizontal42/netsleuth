@@ -59,6 +59,9 @@ class Finding:
     value: float | str | None = None
     threshold: float | str | None = None
     advice: str | None = None
+    title_ru: str | None = None
+    detail_ru: str | None = None
+    advice_ru: str | None = None
 
     def __post_init__(self) -> None:
         if self.severity not in SEVERITIES:
@@ -147,6 +150,7 @@ class DnsLeak:
     per_adapter: list[AdapterLeakResult] = field(default_factory=list)
     ecs_leaked: bool = False
     note: str = ""
+    note_ru: str | None = None
 
 
 @dataclass
@@ -223,6 +227,7 @@ class Reputation:
     abuseipdb_reports: int | None = None
     captcha_risk: str = "low"
     rationale: str = ""
+    rationale_ru: str | None = None
 
 
 @dataclass
