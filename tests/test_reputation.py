@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import os
+import time
 from unittest.mock import AsyncMock, patch
 
 import dns.asyncresolver
 import dns.exception
+import httpx
 import pytest
 
+from netsleuth.config import Providers
 from netsleuth.reputation import (
     NetsetIndex,
     build_reputation,
@@ -15,6 +19,7 @@ from netsleuth.reputation import (
     normalize_internetdb,
     parse_netset,
     query_dnsbl,
+    refresh_netsets,
     summarize_dnsbl,
 )
 
@@ -278,3 +283,81 @@ async def test_query_dnsbl_multiple_zones():
         assert outcomes[1].zone == "zone2.com"
         assert outcomes[1].listed is False
         assert outcomes[1].codes == []
+
+
+@pytest.fixture
+def providers():
+    return Providers(
+        firehol_netsets=[
+            "http://example.com/firehol_level1.netset",
+            "http://example.com/firehol_level2.netset"
+        ]
+    )
+
+async def test_refresh_netsets_downloads_new_lists_and_caches_them(httpx_mock, tmp_path, providers):
+    httpx_mock.add_response(url="http://example.com/firehol_level1.netset", text="192.0.2.0/24\n")
+    httpx_mock.add_response(url="http://example.com/firehol_level2.netset", text="198.51.100.0/24\n")
+
+    async with httpx.AsyncClient() as client:
+        index = await refresh_netsets(client, providers, tmp_path)
+
+    assert index.hits("192.0.2.1") == ["firehol_level1"]
+    assert index.hits("198.51.100.1") == ["firehol_level2"]
+
+    cache_dir = tmp_path / "firehol"
+    assert (cache_dir / "firehol_level1.netset").exists()
+    assert (cache_dir / "firehol_level1.netset").read_text() == "192.0.2.0/24\n"
+    assert (cache_dir / "firehol_level2.netset").exists()
+
+async def test_refresh_netsets_uses_fresh_cache_without_downloading(httpx_mock, tmp_path, providers):
+    cache_dir = tmp_path / "firehol"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "firehol_level1.netset").write_text("192.0.2.0/24\n")
+    (cache_dir / "firehol_level2.netset").write_text("198.51.100.0/24\n")
+
+    # Set mtime to now so it's fresh
+    now = time.time()
+    os.utime(cache_dir / "firehol_level1.netset", (now, now))
+    os.utime(cache_dir / "firehol_level2.netset", (now, now))
+
+    # httpx_mock shouldn't receive any requests
+    async with httpx.AsyncClient() as client:
+        index = await refresh_netsets(client, providers, tmp_path)
+
+    assert index.hits("192.0.2.1") == ["firehol_level1"]
+
+async def test_refresh_netsets_falls_back_to_stale_cache_on_http_error(httpx_mock, tmp_path, providers):
+    cache_dir = tmp_path / "firehol"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "firehol_level1.netset").write_text("192.0.2.0/24\n")
+    (cache_dir / "firehol_level2.netset").write_text("198.51.100.0/24\n")
+
+    # Make cache stale
+    stale_time = time.time() - (providers.firehol_refresh_hours * 3600 + 100)
+    os.utime(cache_dir / "firehol_level1.netset", (stale_time, stale_time))
+    os.utime(cache_dir / "firehol_level2.netset", (stale_time, stale_time))
+
+    # Fail the download
+    httpx_mock.add_response(url="http://example.com/firehol_level1.netset", status_code=500)
+    httpx_mock.add_response(url="http://example.com/firehol_level2.netset", status_code=500)
+
+    async with httpx.AsyncClient() as client:
+        index = await refresh_netsets(client, providers, tmp_path)
+
+    # Should still load the data from cache
+    assert index.hits("192.0.2.1") == ["firehol_level1"]
+    assert index.hits("198.51.100.1") == ["firehol_level2"]
+
+async def test_refresh_netsets_skips_list_on_http_error_if_no_cache_exists(httpx_mock, tmp_path, providers):
+    httpx_mock.add_response(url="http://example.com/firehol_level1.netset", text="192.0.2.0/24\n")
+    httpx_mock.add_response(url="http://example.com/firehol_level2.netset", status_code=404)
+
+    async with httpx.AsyncClient() as client:
+        index = await refresh_netsets(client, providers, tmp_path)
+
+    assert index.hits("192.0.2.1") == ["firehol_level1"]
+    assert index.hits("198.51.100.1") == []
+
+    cache_dir = tmp_path / "firehol"
+    assert (cache_dir / "firehol_level1.netset").exists()
+    assert not (cache_dir / "firehol_level2.netset").exists()
