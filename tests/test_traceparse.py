@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from netsleuth.traceparse import parse_linux
+from netsleuth.models import TraceHop
+from netsleuth.traceparse import parse_linux, finalize_hop
 
 
 @pytest.fixture()
@@ -253,3 +254,40 @@ def test_build_trace_result_on_empty_output_is_a_well_formed_empty_result():
     assert result.hops == []
     assert result.completed is False
     assert result.max_hops_reached is False
+
+def test_finalize_hop_computes_stats_for_probes():
+    hop = TraceHop(ttl=1, probes=[10.0, 20.0, 30.0])
+    finalized = finalize_hop(hop)
+    assert finalized is hop
+    assert finalized.loss_pct == 0.0
+    assert finalized.min_ms == 10.0
+    assert finalized.avg_ms == 20.0
+    assert finalized.max_ms == 30.0
+    assert finalized.jitter_ms == 10.0
+
+def test_finalize_hop_handles_empty_probes():
+    hop = TraceHop(ttl=1, probes=[])
+    finalized = finalize_hop(hop)
+    assert finalized.loss_pct == 0.0
+    assert finalized.min_ms is None
+    assert finalized.avg_ms is None
+    assert finalized.max_ms is None
+    assert finalized.jitter_ms is None
+
+def test_finalize_hop_handles_all_lost_probes():
+    hop = TraceHop(ttl=1, probes=[None, None, None])
+    finalized = finalize_hop(hop)
+    assert finalized.loss_pct == 100.0
+    assert finalized.min_ms is None
+    assert finalized.avg_ms is None
+    assert finalized.max_ms is None
+    assert finalized.jitter_ms is None
+
+def test_finalize_hop_handles_partial_lost_probes():
+    hop = TraceHop(ttl=1, probes=[10.0, None, 20.0])
+    finalized = finalize_hop(hop)
+    assert finalized.loss_pct == pytest.approx(33.333, abs=0.01)
+    assert finalized.min_ms == 10.0
+    assert finalized.avg_ms == 15.0
+    assert finalized.max_ms == 20.0
+    assert finalized.jitter_ms == 0.0
