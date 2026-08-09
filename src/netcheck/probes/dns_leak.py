@@ -8,6 +8,10 @@ _LEAK_NOTE = (
     "This test only sees resolvers configured at the OS level. A browser using DoH "
     "or DoT bypasses them entirely and is not covered here."
 )
+_LEAK_NOTE_RU = (
+    "Этот тест видит только резолверы, настроенные на уровне ОС. Браузер, использующий DoH "
+    "или DoT, полностью обходит их и здесь не учитывается."
+)
 
 
 def _unquote(text: str) -> str:
@@ -66,16 +70,28 @@ def build_adapter_result(
 def build_dns_leak(results: list[AdapterLeakResult], ecs_leaked: bool) -> DnsLeak:
     leaking = [r.adapter for r in results if r.matches_egress_asn is False]
     parts: list[str] = []
+    parts_ru: list[str] = []
     if leaking:
         parts.append(
             f"DNS queries from {', '.join(leaking)} resolve through a network outside the egress ASN."
         )
+        parts_ru.append(
+            f"DNS-запросы с {', '.join(leaking)} разрешаются через сеть за пределами egress ASN."
+        )
     else:
         parts.append("No adapter resolves DNS outside the egress ASN.")
+        parts_ru.append("Ни один адаптер не резолвит DNS за пределами egress ASN.")
     if ecs_leaked:
         parts.append("The resolver forwards your EDNS Client Subnet, exposing your network to authoritative servers.")
+        parts_ru.append("Резолвер пересылает ваш EDNS Client Subnet, раскрывая вашу сеть авторитативным серверам.")
     parts.append(_LEAK_NOTE)
-    return DnsLeak(per_adapter=results, ecs_leaked=ecs_leaked, note=" ".join(parts))
+    parts_ru.append(_LEAK_NOTE_RU)
+    return DnsLeak(
+        per_adapter=results,
+        ecs_leaked=ecs_leaked,
+        note=" ".join(parts),
+        note_ru=" ".join(parts_ru),
+    )
 
 
 import asyncio

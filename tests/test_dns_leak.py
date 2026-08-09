@@ -93,3 +93,33 @@ def test_dns_leak_note_mentions_ecs_when_the_subnet_leaked():
     leak = build_dns_leak([clean], ecs_leaked=True)
     assert leak.ecs_leaked is True
     assert "client subnet" in leak.note.lower()
+
+
+_CYRILLIC = set("абвгдеёжзийклмнопрстуфхцчшщъыьэюя")
+
+
+def has_cyrillic(text: str) -> bool:
+    return any(ch in _CYRILLIC for ch in text.lower())
+
+
+def test_dns_leak_note_ru_names_the_leaking_adapter():
+    leaking = build_adapter_result("Wi-Fi", ["192.168.1.1"], "203.0.113.9", "AS64501", "AS64500")
+    clean = build_adapter_result("wg0", ["10.7.0.1"], "203.0.113.44", "AS64500", "AS64500")
+    leak = build_dns_leak([clean, leaking], ecs_leaked=False)
+    assert leak.note_ru
+    assert has_cyrillic(leak.note_ru)
+    assert "Wi-Fi" in leak.note_ru
+
+
+def test_dns_leak_note_ru_is_clean_when_every_adapter_agrees():
+    clean = build_adapter_result("wg0", ["10.7.0.1"], "203.0.113.44", "AS64500", "AS64500")
+    leak = build_dns_leak([clean], ecs_leaked=False)
+    assert leak.note_ru
+    assert has_cyrillic(leak.note_ru)
+
+
+def test_dns_leak_note_ru_mentions_ecs_when_the_subnet_leaked():
+    clean = build_adapter_result("wg0", ["10.7.0.1"], "203.0.113.44", "AS64500", "AS64500")
+    leak = build_dns_leak([clean], ecs_leaked=True)
+    assert leak.note_ru
+    assert has_cyrillic(leak.note_ru)
