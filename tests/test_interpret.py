@@ -187,7 +187,7 @@ def test_path_findings_flag_loss_that_persists_all_the_way_to_the_last_hop():
 
 
 from netsleuth.config import VpnBands
-from netsleuth.models import AdapterLeakResult, CfTrace, DnsLeak, IpGeo, LocalNet, Signal
+from netsleuth.models import AdapterLeakResult, CfTrace, DnsLeak, IpGeo, LocalNet, Signal, VpnContext
 from netsleuth.interpret import SIGNAL_WEIGHTS, assess_vpn, gather_vpn_signals, score_vpn
 
 
@@ -264,7 +264,7 @@ def test_clean_direction_signals_reduce_confidence():
 def test_gather_signals_flags_a_wireguard_tunnel_with_a_hosting_egress():
     local = LocalNet(iface_name="wg0", local_ipv4="10.7.0.2", iface_mtu=1420, default_gateway_v4="10.7.0.1")
     geo = IpGeo(ip="203.0.113.44", asn="AS64500", country_code="NL", timezone="Europe/Amsterdam")
-    signals = {s.name: s for s in gather_vpn_signals(
+    ctx = VpnContext(
         local=local,
         geo=geo,
         cf=CfTrace(ip="203.0.113.44", warp="off"),
@@ -272,7 +272,8 @@ def test_gather_signals_flags_a_wireguard_tunnel_with_a_hosting_egress():
         pdb_info_type="NSP",
         os_timezone="Europe/Amsterdam",
         provider_flags={"hosting": True, "proxy": False, "mobile": False},
-    )}
+    )
+    signals = {s.name: s for s in gather_vpn_signals(ctx)}
     assert signals["tunnel_iface"].observed is True
     assert signals["tunnel_iface"].note == "wg0"
     assert signals["mtu_anomaly"].observed is True
@@ -294,7 +295,7 @@ def test_gather_signals_detects_a_dns_resolver_in_another_asn():
             )
         ]
     )
-    signals = {s.name: s for s in gather_vpn_signals(
+    ctx = VpnContext(
         local=LocalNet(iface_name="eth0"),
         geo=IpGeo(asn="AS64500"),
         cf=None,
@@ -302,13 +303,14 @@ def test_gather_signals_detects_a_dns_resolver_in_another_asn():
         pdb_info_type=None,
         os_timezone=None,
         provider_flags={},
-    )}
+    )
+    signals = {s.name: s for s in gather_vpn_signals(ctx)}
     assert signals["dns_asn_mismatch"].observed is True
     assert "Wi-Fi" in signals["dns_asn_mismatch"].note
 
 
 def test_gather_signals_detects_cloudflare_warp():
-    signals = {s.name: s for s in gather_vpn_signals(
+    ctx = VpnContext(
         local=LocalNet(),
         geo=IpGeo(),
         cf=CfTrace(warp="on"),
@@ -316,7 +318,8 @@ def test_gather_signals_detects_cloudflare_warp():
         pdb_info_type=None,
         os_timezone=None,
         provider_flags={},
-    )}
+    )
+    signals = {s.name: s for s in gather_vpn_signals(ctx)}
     assert signals["cf_warp"].observed is True
 
 

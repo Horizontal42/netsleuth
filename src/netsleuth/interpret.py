@@ -14,6 +14,7 @@ from netsleuth.models import (
     SpeedResult,
     TraceResult,
     VpnAssessment,
+    VpnContext,
 )
 from netsleuth.netinfo import is_tunnel_iface, mtu_anomaly
 
@@ -198,29 +199,21 @@ def _signal(name: str, observed: bool, note: str = "") -> Signal:
     return Signal(name=name, observed=observed, weight=SIGNAL_WEIGHTS[name], direction="vpn", note=note)
 
 
-def gather_vpn_signals(
-    local: LocalNet,
-    geo: IpGeo,
-    cf: CfTrace | None,
-    dns_leak: DnsLeak | None,
-    pdb_info_type: str | None,
-    os_timezone: str | None,
-    provider_flags: dict[str, bool],
-) -> list[Signal]:
-    iface = local.iface_name or ""
-    anomaly = mtu_anomaly(local.iface_mtu)
+def gather_vpn_signals(ctx: VpnContext) -> list[Signal]:
+    iface = ctx.local.iface_name or ""
+    anomaly = mtu_anomaly(ctx.local.iface_mtu)
     leaking = [
         a
-        for a in (dns_leak.per_adapter if dns_leak else [])
+        for a in (ctx.dns_leak.per_adapter if ctx.dns_leak else [])
         if a.matches_egress_asn is False
     ]
-    tz_country = _TZ_COUNTRY_PREFIX.get(os_timezone or "")
+    tz_country = _TZ_COUNTRY_PREFIX.get(ctx.os_timezone or "")
     return [
         _signal("tunnel_iface", is_tunnel_iface(iface), iface),
-        _signal("cf_warp", bool(cf and (cf.warp or "").lower() == "on"), (cf.warp if cf else "") or ""),
-        _signal("provider_proxy", bool(provider_flags.get("proxy"))),
-        _signal("provider_hosting", bool(provider_flags.get("hosting"))),
-        _signal("provider_mobile", bool(provider_flags.get("mobile"))),
+        _signal("cf_warp", bool(ctx.cf and (ctx.cf.warp or "").lower() == "on"), (ctx.cf.warp if ctx.cf else "") or ""),
+        _signal("provider_proxy", bool(ctx.provider_flags.get("proxy"))),
+        _signal("provider_hosting", bool(ctx.provider_flags.get("hosting"))),
+        _signal("provider_mobile", bool(ctx.provider_flags.get("mobile"))),
         _signal("mtu_anomaly", anomaly in ("wireguard", "ipsec"), anomaly or ""),
         _signal(
             "dns_asn_mismatch",
@@ -229,14 +222,14 @@ def gather_vpn_signals(
         ),
         _signal(
             "gateway_egress_mismatch",
-            bool(local.default_gateway_v4 and is_tunnel_iface(iface)),
-            local.default_gateway_v4 or "",
+            bool(ctx.local.default_gateway_v4 and is_tunnel_iface(iface)),
+            ctx.local.default_gateway_v4 or "",
         ),
-        _signal("pdb_info_type_nsp", (pdb_info_type or "").upper() in ("NSP", "CONTENT", "ENTERPRISE"), pdb_info_type or ""),
+        _signal("pdb_info_type_nsp", (ctx.pdb_info_type or "").upper() in ("NSP", "CONTENT", "ENTERPRISE"), ctx.pdb_info_type or ""),
         _signal(
             "timezone_mismatch",
-            bool(tz_country and geo.country_code and tz_country != geo.country_code),
-            f"{os_timezone} vs {geo.country_code}" if tz_country else "",
+            bool(tz_country and ctx.geo.country_code and tz_country != ctx.geo.country_code),
+            f"{ctx.os_timezone} vs {ctx.geo.country_code}" if tz_country else "",
         ),
     ]
 

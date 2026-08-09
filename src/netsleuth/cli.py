@@ -28,7 +28,7 @@ from netsleuth.interpret import (
     speed_findings,
 )
 from netsleuth.ip_geo import dual_stack_mismatch, gather_identity
-from netsleuth.models import BindTarget, Finding, IpGeo, LocalNet, ModuleResult, SpeedResult
+from netsleuth.models import BindTarget, Finding, IpGeo, LocalNet, ModuleResult, SpeedResult, VpnContext
 from netsleuth.netinfo import collect_local_net, detect_capabilities, iface_for_ip, is_tunnel_iface, primary_interface_ip
 from netsleuth.orchestration import gather_modules, run_module, utc_now_iso
 from netsleuth.probes.dns_leak import collect_dns_leak
@@ -372,7 +372,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
             ),
         )
         modules["bgp"], modules["reputation"] = bgp_result, rep_result
-        signals = gather_vpn_signals(
+        ctx = VpnContext(
             local=local,
             geo=geo,
             cf=bundle.get("cf_trace"),
@@ -381,6 +381,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
             os_timezone=_os_timezone(),
             provider_flags=flags,
         )
+        signals = gather_vpn_signals(ctx)
         modules["vpn_assessment"] = ModuleResult(
             name="vpn_assessment",
             status="ok" if dns_result.status == "ok" else "partial",

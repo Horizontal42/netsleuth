@@ -164,6 +164,17 @@ class DnsLeak:
 
 
 @dataclass
+class VpnContext:
+    local: LocalNet
+    geo: IpGeo
+    cf: CfTrace | None = None
+    dns_leak: DnsLeak | None = None
+    pdb_info_type: str | None = None
+    os_timezone: str | None = None
+    provider_flags: dict[str, bool] = field(default_factory=dict)
+
+
+@dataclass
 class VpnAssessment:
     verdict: str = "none"
     confidence: float = 0.0
