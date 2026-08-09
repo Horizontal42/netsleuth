@@ -3,6 +3,7 @@ from __future__ import annotations
 from netsleuth.reputation import (
     NetsetIndex,
     build_reputation,
+    ReputationContext,
     captcha_risk,
     decode_dnsbl,
     normalize_internetdb,
@@ -132,12 +133,14 @@ def test_captcha_risk_escalates_on_a_high_abuseipdb_score():
 
 def test_build_reputation_marks_the_query_as_blocked_without_inventing_hits(api_fixture):
     rep = build_reputation(
-        internetdb=normalize_internetdb(api_fixture("internetdb.json")),
-        firehol_hits=[],
-        dnsbl_outcomes=[decode_dnsbl("zen.spamhaus.org", ["127.255.255.254"])],
-        ip_type="residential",
-        abuseipdb_score=None,
-        abuseipdb_reports=None,
+        ReputationContext(
+            internetdb=normalize_internetdb(api_fixture("internetdb.json")),
+            firehol_hits=[],
+            dnsbl_outcomes=[decode_dnsbl("zen.spamhaus.org", ["127.255.255.254"])],
+            ip_type="residential",
+            abuseipdb_score=None,
+            abuseipdb_reports=None,
+        )
     )
     assert rep.dnsbl_hits == []
     assert rep.dnsbl_query_blocked is True
@@ -146,12 +149,14 @@ def test_build_reputation_marks_the_query_as_blocked_without_inventing_hits(api_
 
 def test_build_reputation_without_dnsbl_leaves_the_field_none(api_fixture):
     rep = build_reputation(
-        internetdb=normalize_internetdb(api_fixture("internetdb.json")),
-        firehol_hits=["firehol_level1"],
-        dnsbl_outcomes=None,
-        ip_type="residential",
-        abuseipdb_score=None,
-        abuseipdb_reports=None,
+        ReputationContext(
+            internetdb=normalize_internetdb(api_fixture("internetdb.json")),
+            firehol_hits=["firehol_level1"],
+            dnsbl_outcomes=None,
+            ip_type="residential",
+            abuseipdb_score=None,
+            abuseipdb_reports=None,
+        )
     )
     assert rep.dnsbl_hits is None
     assert rep.dnsbl_query_blocked is False
@@ -181,12 +186,14 @@ def test_build_reputation_rationale_ru_is_populated_and_cyrillic_for_every_reaso
     ]
     for case in cases:
         rep = build_reputation(
-            internetdb=normalize_internetdb(api_fixture("internetdb.json")),
-            firehol_hits=case["firehol_hits"],
-            dnsbl_outcomes=case["dnsbl_outcomes"],
-            ip_type=case["ip_type"],
-            abuseipdb_score=case["abuseipdb_score"],
-            abuseipdb_reports=None,
+            ReputationContext(
+                internetdb=normalize_internetdb(api_fixture("internetdb.json")),
+                firehol_hits=case["firehol_hits"],
+                dnsbl_outcomes=case["dnsbl_outcomes"],
+                ip_type=case["ip_type"],
+                abuseipdb_score=case["abuseipdb_score"],
+                abuseipdb_reports=None,
+            )
         )
         assert rep.rationale
         assert rep.rationale_ru

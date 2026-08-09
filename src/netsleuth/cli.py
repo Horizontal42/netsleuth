@@ -208,6 +208,7 @@ async def _bgp_section(client, settings: Settings, asn: str | None, raw: dict):
 async def _reputation_section(client, settings: Settings, options: Options, geo: IpGeo, raw: dict):
     from netsleuth.reputation import (
         build_reputation,
+        ReputationContext,
         fetch_abuseipdb,
         fetch_internetdb,
         normalize_internetdb,
@@ -235,12 +236,14 @@ async def _reputation_section(client, settings: Settings, options: Options, geo:
     else:
         warnings.append("ABUSEIPDB_API_KEY not set — abuse score skipped")
     reputation = build_reputation(
-        internetdb=normalize_internetdb(payload),
-        firehol_hits=index.hits(geo.ip),
-        dnsbl_outcomes=outcomes,
-        ip_type=geo.ip_type,
-        abuseipdb_score=score,
-        abuseipdb_reports=reports,
+        ReputationContext(
+            internetdb=normalize_internetdb(payload),
+            firehol_hits=index.hits(geo.ip),
+            dnsbl_outcomes=outcomes,
+            ip_type=geo.ip_type,
+            abuseipdb_score=score,
+            abuseipdb_reports=reports,
+        )
     )
     return ModuleResult(
         name="reputation", status="partial" if warnings else "ok", data=reputation, warnings=warnings

@@ -208,26 +208,29 @@ def _captcha_risk_full(
     return risk, "; ".join(reasons), "; ".join(reasons_ru)
 
 
-def build_reputation(
-    internetdb: InternetDbResult | None,
-    firehol_hits: list[str],
-    dnsbl_outcomes: list[DnsblOutcome] | None,
-    ip_type: str,
-    abuseipdb_score: int | None,
-    abuseipdb_reports: int | None,
-) -> Reputation:
+@dataclass
+class ReputationContext:
+    ip_type: str
+    internetdb: InternetDbResult | None
+    firehol_hits: list[str]
+    dnsbl_outcomes: list[DnsblOutcome] | None
+    abuseipdb_score: int | None
+    abuseipdb_reports: int | None
+
+
+def build_reputation(ctx: ReputationContext) -> Reputation:
     hits: list[DnsblHit] | None = None
     blocked = False
-    if dnsbl_outcomes is not None:
-        hits, blocked = summarize_dnsbl(dnsbl_outcomes)
-    risk, rationale, rationale_ru = _captcha_risk_full(firehol_hits, hits or [], ip_type, abuseipdb_score)
+    if ctx.dnsbl_outcomes is not None:
+        hits, blocked = summarize_dnsbl(ctx.dnsbl_outcomes)
+    risk, rationale, rationale_ru = _captcha_risk_full(ctx.firehol_hits, hits or [], ctx.ip_type, ctx.abuseipdb_score)
     return Reputation(
-        internetdb=internetdb,
-        firehol_hits=firehol_hits,
+        internetdb=ctx.internetdb,
+        firehol_hits=ctx.firehol_hits,
         dnsbl_hits=hits,
         dnsbl_query_blocked=blocked,
-        abuseipdb_score=abuseipdb_score,
-        abuseipdb_reports=abuseipdb_reports,
+        abuseipdb_score=ctx.abuseipdb_score,
+        abuseipdb_reports=ctx.abuseipdb_reports,
         captcha_risk=risk,
         rationale=rationale,
         rationale_ru=rationale_ru,
