@@ -589,6 +589,34 @@ def test_unavailable_surfaces_the_skip_reason_from_warnings():
     assert "speedtest skipped in target mode" in note
 
 
+def test_unavailable_translates_the_skip_reason_into_russian():
+    report = build_report(
+        meta(),
+        {"speed": ModuleResult(name="speed", status="skipped", warnings=["speedtest skipped: --quick"])},
+        [],
+        {},
+    )
+    note = unavailable(report, "speed", lang="ru")
+    assert note is not None
+    assert "speedtest skipped: --quick" not in note
+    assert "speedtest пропущен: --quick" in note
+
+
+def test_diagnostics_translates_module_warnings_into_russian():
+    from netcheck.exporter import _diagnostics
+
+    report = build_report(
+        meta(),
+        {"reputation": ModuleResult(name="reputation", status="partial", warnings=["ABUSEIPDB_API_KEY not set — abuse score skipped"])},
+        [],
+        {},
+    )
+    lines = _diagnostics(report, lang="ru")
+    text = "\n".join(lines)
+    assert "ABUSEIPDB_API_KEY not set — abuse score skipped" not in text
+    assert "ABUSEIPDB_API_KEY не задан" in text
+
+
 def test_an_all_modules_failed_run_still_renders_every_section():
     text = render_markdown(dead_report())
     headings = [line for line in text.splitlines() if line.startswith("## ")]

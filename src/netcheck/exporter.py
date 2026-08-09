@@ -114,6 +114,20 @@ def _t(lang: str, en: str, ru: str) -> str:
     return en if lang == "en" else ru
 
 
+_WARNING_RU = {
+    "no ASN was resolved for this target": "для этой цели не удалось определить ASN",
+    "no egress IP to check": "нет внешнего IP для проверки",
+    "ABUSEIPDB_API_KEY not set — abuse score skipped": "ABUSEIPDB_API_KEY не задан — оценка abuse пропущена",
+    "speedtest skipped: --quick": "speedtest пропущен: --quick",
+    "speedtest skipped in target mode": "speedtest пропущен в режиме цели",
+    "no throughput measured": "пропускная способность не измерена",
+}
+
+
+def _warning(lang: str, text: str) -> str:
+    return text if lang == "en" else _WARNING_RU.get(text, text)
+
+
 def sparkline(values: list[float | None]) -> str:
     numbers = [v for v in values if v is not None]
     if not numbers:
@@ -260,7 +274,7 @@ def unavailable(report: dict[str, Any], section: str, lang: str = "en") -> str |
         return None
     detail = "; ".join(f"{e.get('source')}: {e.get('message')}" for e in module.get("errors") or [])
     if not detail:
-        detail = "; ".join(module.get("warnings") or [])
+        detail = "; ".join(_warning(lang, w) for w in module.get("warnings") or [])
     if not detail:
         detail = _t(lang, "no data was collected for this section", "для этого раздела не собраны данные")
     status_word = _module_status_word(module.get("status", "skipped"), lang)
@@ -641,7 +655,7 @@ def _diagnostics(report: dict, lang: str = "en") -> list[str]:
         lang,
     )
     if warnings:
-        lines += [""] + [f"- {w}" for w in warnings]
+        lines += [""] + [f"- {_warning(lang, w)}" for w in warnings]
     return lines + [""]
 
 
