@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 
 import pytest
 
 from netcheck.models import Capabilities, TraceHop, TraceResult
 from netcheck.probes.icmp_win import IP_REQ_TIMED_OUT, IP_SUCCESS, IP_TTL_EXPIRED_TRANSIT, IcmpReply
-from netcheck.probes.traceroute import hops_from_win_replies, run_cascade, tier_order
+from netcheck.probes.traceroute import _run_in_daemon_thread, hops_from_win_replies, run_cascade, tier_order
 
 
 def caps(**kw) -> Capabilities:
@@ -161,3 +162,45 @@ def test_win_replies_become_hops_with_ttl_expiry_handled():
     assert hops[1].loss_pct == 100.0
     assert hops[2].ip == "1.1.1.1"
     assert hops[2].avg_ms == 12.0
+
+
+async def test_run_in_daemon_thread_returns_the_function_result():
+    result = await _run_in_daemon_thread(lambda a, b: a + b, 2, 3)
+    assert result == 5
+
+
+async def test_run_in_daemon_thread_propagates_exceptions():
+    def boom():
+        raise ValueError("nope")
+
+    with pytest.raises(ValueError, match="nope"):
+        await _run_in_daemon_thread(boom)
+
+
+def test_run_in_daemon_thread_never_creates_a_non_daemon_worker_thread():
+    # This is the crux of the process-exit hang fix: asyncio.to_thread()/the
+    # default executor spawn non-daemon ThreadPoolExecutor workers that get
+    # joined by concurrent.futures' atexit handler, which is exactly what let
+    # an orphaned, uncancellable IcmpSendEcho2 call keep the whole process
+    # alive. We can't unit-test "process exit is never blocked" directly (that
+    # needs a real subprocess), but we can pin the one property that makes it
+    # true: every thread this helper spawns is a plain daemon thread, never
+    # routed through a ThreadPoolExecutor.
+    seen: list[threading.Thread] = []
+    original_init = threading.Thread.__init__
+
+    def spy_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        seen.append(self)
+
+    async def run():
+        await _run_in_daemon_thread(lambda: None)
+
+    threading.Thread.__init__ = spy_init
+    try:
+        asyncio.run(run())
+    finally:
+        threading.Thread.__init__ = original_init
+
+    assert seen
+    assert all(t.daemon for t in seen)

@@ -145,11 +145,23 @@ def ping_samples_win(host: str, count: int, interval: float, timeout: float) -> 
     return samples
 
 
+# A single non-responding hop must never be allowed to eat the whole trace budget:
+# cap its timeout even if that leaves room for very few hops.
+_MAX_HOP_TIMEOUT_MS = 4000
+
+
 def trace_hops_win(dest: str, max_hops: int, timeout_ms: int) -> list[tuple[int, IcmpReply]]:
+    # timeout_ms is the TOTAL budget for the whole trace (all hops combined), not
+    # a per-hop timeout - a caller-supplied 60s budget across 30 hops must not turn
+    # into 30 minutes of blocking IcmpSendEcho2 calls.
     address = socket.gethostbyname(dest)
     hops: list[tuple[int, IcmpReply]] = []
+    per_hop_timeout_ms = max(1, min(timeout_ms // max(max_hops, 1), _MAX_HOP_TIMEOUT_MS))
+    deadline = time.monotonic() + timeout_ms / 1000.0
     for ttl in range(1, max_hops + 1):
-        reply = echo_once(address, ttl=ttl, timeout_ms=timeout_ms)
+        if time.monotonic() >= deadline:
+            break
+        reply = echo_once(address, ttl=ttl, timeout_ms=per_hop_timeout_ms)
         hops.append((ttl, reply))
         if classify_status(reply.status) == "ok":
             break

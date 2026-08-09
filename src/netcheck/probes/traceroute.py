@@ -1,14 +1,41 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import platform
 import shutil
-from typing import Awaitable, Callable
+import threading
+from typing import Awaitable, Callable, TypeVar
 
 from netcheck.models import Capabilities, TraceHop, TraceResult
 from netcheck.probes.icmp_win import IcmpReply, classify_status
 from netcheck.traceparse import build_trace_result, finalize_hop
+
+_T = TypeVar("_T")
+
+
+def _run_in_daemon_thread(func: Callable[..., _T], *args: object) -> "asyncio.Future[_T]":
+    # asyncio.to_thread()/loop.run_in_executor(None, ...) queue work onto the
+    # ThreadPoolExecutor-backed default executor, whose worker threads are non-daemon
+    # and get joined by concurrent.futures' atexit handler. If the underlying call
+    # (a blocking WinAPI IcmpSendEcho2) ever outlives its own timeout budget, that
+    # join blocks process exit indefinitely. A raw daemon thread is never tracked
+    # by that handler, so it can never hold the process open.
+    result: concurrent.futures.Future = concurrent.futures.Future()
+
+    def _target() -> None:
+        if not result.set_running_or_notify_cancel():
+            return
+        try:
+            value = func(*args)
+        except BaseException as exc:  # noqa: BLE001 - propagated to the awaiting coroutine
+            result.set_exception(exc)
+        else:
+            result.set_result(value)
+
+    threading.Thread(target=_target, name="netcheck-icmp-win", daemon=True).start()
+    return asyncio.wrap_future(result)
 
 
 def tier_order(caps: Capabilities, tcp_trace: bool = False) -> list[str]:
@@ -104,7 +131,7 @@ async def _tier_mtr(target: str, binary: str, cycles: int, max_hops: int, timeou
 async def _tier_icmp_win(target: str, max_hops: int, timeout: float) -> TraceResult:
     from netcheck.probes.icmp_win import trace_hops_win
 
-    replies = await asyncio.to_thread(trace_hops_win, target, max_hops, int(timeout * 1000))
+    replies = await _run_in_daemon_thread(trace_hops_win, target, max_hops, int(timeout * 1000))
     hops = hops_from_win_replies(replies)
     return TraceResult(
         target=target,
