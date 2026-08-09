@@ -7,16 +7,12 @@ Cross-platform CLI for deep network diagnostics: who your ISP actually is, wheth
 ```console
 $ netcheck --quick
 netcheck 0.1.0 · auto mode · Windows
-
-Connection   Wi-Fi 2  ·  192.168.1.34  ·  MTU 1500  ·  gw 192.168.1.1
-Egress       203.0.113.44  (AS64500 Example Telecom, Amsterdam NL)
-VPN          none          confidence 0.10
-Latency      1.1.1.1  12.4 ms avg  ·  jitter 1.9 ms  ·  loss 0%
-Verdict      🟢 healthy — no problems found
-
+Verdict: ok (100/100) — No problems found on this connection.
 Report written to logs/report_AS64500_20260808T191200Z.md
                  logs/report_AS64500_20260808T191200Z.json
 ```
+
+Everything else — egress ASN, VPN verdict, latency, path, speed — lives in the two files it just wrote, not on the console; the terminal only tells you the headline and where to look.
 
 ## Install
 
@@ -33,6 +29,12 @@ git clone https://github.com/<owner>/netcheck
 cd netcheck
 uv sync
 uv run netcheck
+```
+
+Want `--tcp-trace` and `--ndt7` too? They're optional extras, not installed by default:
+
+```bash
+uv sync --extra tcptrace --extra ndt7
 ```
 
 Without `uv`:
@@ -61,14 +63,14 @@ No configuration is required. Copy `.env.example` to `.env` only if you have opt
 |---|---|
 | `--quick` | ~10 s express run: reference-host pings only, no speedtest |
 | `--full` | ~60–120 s: full speedtest and full MTR cycles |
-| `--target AS64500` / `--target 1.2.3.4` / `--target example.com` | Investigate a specific network instead of your own connection |
+| `--target AS64500` / `--target 64500` / `--target 1.2.3.4` / `--target example.com` | Investigate a specific network instead of your own connection — the `AS` prefix on a bare ASN is optional |
 | `--target-host <ip\|domain>` | Add an extra host to the ping and traceroute fan-out |
 | `--speedtest-server <id\|url>` | Pin the speedtest to a specific server |
-| `--watch` | Continuous monitoring with a live dashboard — for catching intermittent drops |
-| `--compare a.json b.json` | Diff two earlier reports: before/after a VPN switch, before/after an ISP call |
+| `--watch` | Continuous monitoring with a live dashboard — for catching intermittent drops. Writes one `logs/watch_*.json` time series per session, not one report per tick |
+| `--compare a.json b.json` | Diff two earlier reports: before/after a VPN switch, before/after an ISP call. Read-only — no probing, no network calls |
 | `--dnsbl` | Opt in to classic DNSBL reputation zones |
-| `--ndt7` | Opt in to M-Lab NDT7 (publishes your measurement, including your IP, as CC0 open data) |
-| `--tcp-trace` | Opt in to a scapy TCP-SYN traceroute through ICMP-filtering middleboxes (needs Npcap or root) |
+| `--ndt7` | Opt in to M-Lab NDT7 (publishes your measurement, including your IP, as CC0 open data). On an interactive terminal it prints the consent notice and asks first; on a non-interactive one it proceeds without asking |
+| `--tcp-trace` | Opt in to a scapy TCP-SYN traceroute through ICMP-filtering middleboxes (needs the `tcptrace` extra plus Npcap on Windows or root on Unix). Falls through to the normal cascade when it cannot run |
 
 Every run writes two files into `./logs/`: a Markdown report to read and a JSON dump containing every raw provider response, untruncated. `./logs/` is gitignored — reports contain your external IP, city, coordinates and ISP name.
 

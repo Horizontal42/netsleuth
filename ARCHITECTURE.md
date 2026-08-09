@@ -20,16 +20,27 @@ src/netcheck/
   traceparse.py   Pure text -> TraceHop parsers for Windows, Linux and BSD/macOS output.
   interpret.py    Pure verdict engine: thresholds -> Finding[], VPN scoring, bufferbloat grade.
   speed.py        Cascading speedtest, throughput math, cfL4 header parsing, bufferbloat probe.
-  exporter.py     JSON and Markdown rendering, atomic writes into ./logs/. Deliberately over
-                  the file-size guideline to keep both output formats in one place.
+  exporter.py     JSON and Markdown rendering, atomic writes into ./logs/.
   compare.py      --compare: diff two saved JSON reports.
   watch.py        --watch: periodic re-run loop with a live Rich dashboard.
   probes/
     latency.py    Ping fan-out and jitter/loss/mdev statistics.
-    traceroute.py Cascade: mtr --json -> icmp_win -> icmplib -> system binary text.
+    traceroute.py Cascade: mtr --json -> icmp_win -> icmplib -> system binary text, plus the opt-in tcp_trace tier.
     icmp_win.py   ctypes IcmpSendEcho2 / Icmp6SendEcho2 engine (Windows only).
     dns_leak.py   Per-adapter resolver enumeration, echo probes, ECS detection.
 ```
+
+**File-size exceptions.** The ~200-line guideline (Global Constraints) held for most modules, but these grew past it during implementation and were kept as single files rather than split, because each one is a single cohesive responsibility that splitting would only scatter across more files with a thinner reason to draw the line anywhere in particular:
+
+- `exporter.py` (~475 lines) — JSON and Markdown are two renderers of the same report shape; keeping them together is what guarantees they can never drift on which sections exist.
+- `cli.py` (~465 lines) — the Typer app, every flag, and the full `diagnose()` phase pipeline; splitting flag parsing from what the flags toggle would just add an import hop.
+- `models.py` (~330 lines) — every shared dataclass plus `to_jsonable()`; this is deliberately the one place that defines the report's vocabulary.
+- `interpret.py` (~320 lines) — threshold bands, the latency/path/speed finding generators, VPN scoring and bufferbloat grading all reason over the same `Finding[]` shape.
+- `bgp.py` (~305 lines) — four independent providers (RIPEstat, CAIDA ASRank, Team Cymru, PeeringDB) plus the disk cache they share.
+- `ip_geo.py` (~280 lines) — six independent provider normalizers plus the field-wise merge that reconciles them.
+- `netinfo.py`, `speed.py` (~260 lines each) — OS-specific capability probing and the four-tier speedtest cascade both fan out into several backends that don't split cleanly by single responsibility.
+- `reputation.py` (~250 lines) — FireHOL netsets, Shodan InternetDB and DNSBL decoding are three unrelated reputation sources sharing one result shape.
+- `probes/traceroute.py` (~225 lines) — the four-tier cascade plus the opt-in `tcp_trace` tier.
 
 ## Data flow
 
@@ -78,9 +89,10 @@ Two hard concurrency constraints:
 
 ## Storage
 
-- `./logs/report_<ASN>_<YYYYMMDDTHHMMSSZ>.{md,json}` — one pair per run. Compact ISO timestamps because Windows forbids `:` in filenames. Falls back to `report_unknown_…` when the ASN lookup fails entirely. Written temp-file-plus-`os.replace()`, always atomic. Gitignored: reports contain the external IP, city, coordinates and ISP name.
+- `./logs/report_<ASN>_<YYYYMMDDTHHMMSSZ>.{md,json}` — one pair per run. `<ASN>` is the target's subject in target mode (an ASN, IP or domain) and the local egress ASN in auto mode. Compact ISO timestamps because Windows forbids `:` in filenames. Falls back to `report_unknown_…` when the ASN lookup fails entirely. Written temp-file-plus-`os.replace()`, always atomic. Gitignored: reports contain the external IP, city, coordinates and ISP name.
+- `./logs/watch_<ASN>_<YYYYMMDDTHHMMSSZ>.json` — one time-series artifact per `--watch` session, not one report per tick.
 - `./.cache/firehol/*.netset` — downloaded blocklists, refreshed per `providers.firehol_refresh_hours`.
-- `./.cache/peeringdb/*.json` — PeeringDB responses, valid for `providers.peeringdb_cache_hours`.
+- `./.cache/pdb-net-<asn>.json`, `./.cache/pdb-netixlan-<net_id>.json` — PeeringDB responses, valid for `providers.peeringdb_cache_hours`.
 - `./config.yaml` — all non-secret settings. `./.env` — the three optional API keys and nothing else.
 
 ## Configuration
@@ -89,4 +101,4 @@ Two hard concurrency constraints:
 
 ## Tests
 
-`uv run pytest -q`. Roughly 120 tests covering the parsers, normalizers, verdict engine, DNSBL decoding, throughput math, ping statistics, serialization and the report diff. Glue is deliberately untested: live HTTP, real ICMP, Typer wiring, `psutil`/`ctypes` calls and the `--watch` timing loop. Traceroute fixtures live in `tests/fixtures/traceroute/{windows,linux,darwin}/` and include a cp866-encoded Russian Windows sample, because that encoding is exactly what breaks naive parsers.
+`uv run pytest -q`. Roughly 385 tests covering the parsers, normalizers, verdict engine, DNSBL decoding, throughput math, ping statistics, serialization and the report diff. Glue is deliberately untested: live HTTP, real ICMP, Typer wiring, `psutil`/`ctypes` calls and the `--watch` timing loop. Traceroute fixtures live in `tests/fixtures/traceroute/{windows,linux,darwin}/` and include a cp866-encoded Russian Windows sample, because that encoding is exactly what breaks naive parsers.
