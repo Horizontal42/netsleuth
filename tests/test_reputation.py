@@ -17,6 +17,7 @@ from netsleuth.reputation import (
     ReputationContext,
     captcha_risk,
     decode_dnsbl,
+    fetch_abuseipdb,
     normalize_internetdb,
     parse_netset,
     query_dnsbl,
@@ -397,3 +398,30 @@ def test_summarize_dnsbl_some_blocked():
     assert hits[0].zone == "zone1"
     assert hits[0].codes == ["127.0.0.2"]
     assert blocked is True
+
+
+async def test_fetch_abuseipdb_success(httpx_mock):
+    httpx_mock.add_response(
+        url="https://api.abuseipdb.com/api/v2/check?ipAddress=192.0.2.1&maxAgeInDays=90",
+        json={"data": {"ipAddress": "192.0.2.1", "abuseConfidenceScore": 50}},
+    )
+    providers = Providers()
+    async with httpx.AsyncClient() as client:
+        result = await fetch_abuseipdb(client, providers, "192.0.2.1", "secret_key")
+
+    assert result == {"data": {"ipAddress": "192.0.2.1", "abuseConfidenceScore": 50}}
+
+    request = httpx_mock.get_request()
+    assert request.headers["Key"] == "secret_key"
+    assert request.headers["Accept"] == "application/json"
+
+
+async def test_fetch_abuseipdb_raises_on_http_error(httpx_mock):
+    httpx_mock.add_response(
+        url="https://api.abuseipdb.com/api/v2/check?ipAddress=192.0.2.1&maxAgeInDays=90",
+        status_code=403,
+    )
+    providers = Providers()
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            await fetch_abuseipdb(client, providers, "192.0.2.1", "secret_key")
