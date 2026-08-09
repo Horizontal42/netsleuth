@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "meta": { "run_id": "bbbb2222", "started_at": "2026-08-08T21:40:00Z", "mode": "auto", "target": null },
+  "connection": { "name": "connection", "status": "ok", "data": { "iface_name": "wg0" }, "errors": [], "warnings": [], "duration_ms": 41 },
+  "ip_geo": {
+    "name": "ip_geo",
+    "status": "ok",
+    "data": {
+      "egress_v4": {
+        "ip": "198.51.100.7",
+        "asn": "AS64777",
+        "as_name": "Example Hosting",
+        "org": "Example Hosting BV",
+        "country_code": "DE",
+        "ip_type": "hosting"
+      },
+      "egress_v6": null,
+      "cf_trace": null,
+      "dual_stack_note": null
+    },
+    "errors": [],
+    "warnings": [],
+    "duration_ms": 950
+  },
+  "vpn_assessment": {
+    "name": "vpn_assessment",
+    "status": "ok",
+    "data": { "verdict": "confirmed", "confidence": 0.75, "signals": [], "tunnel_iface": "wg0", "dns_leak": null },
+    "errors": [],
+    "warnings": [],
+    "duration_ms": 310
+  },
+  "bgp": { "name": "bgp", "status": "ok", "data": { "asn": "AS64777", "holder": "Example Hosting BV" }, "errors": [], "warnings": [], "duration_ms": 1300 },
+  "reputation": { "name": "reputation", "status": "ok", "data": { "captcha_risk": "medium", "firehol_hits": [] }, "errors": [], "warnings": [], "duration_ms": 820 },
+  "latency": {
+    "name": "latency",
+    "status": "ok",
+    "data": [
+      { "label": "cloudflare-dns", "host": "1.1.1.1", "method": "icmp_win", "avg_ms": 46.9, "jitter_ms": 1.9, "loss_pct": 0.0 },
+      { "label": "quad9-dns", "host": "9.9.9.9", "method": "icmp_win", "avg_ms": 48.0, "jitter_ms": 3.0, "loss_pct": 1.0 }
+    ],
+    "errors": [],
+    "warnings": [],
+    "duration_ms": 5400
+  },
+  "path": { "name": "path", "status": "ok", "data": [], "errors": [], "warnings": [], "duration_ms": 4100 },
+  "speed": {
+    "name": "speed",
+    "status": "ok",
+    "data": {
+      "method": "cloudflare",
+      "download_mbps": 96.1,
+      "upload_mbps": 38.0,
+      "bufferbloat_down_ms": 74.0,
+      "bufferbloat_grade": "D"
+    },
+    "errors": [],
+    "warnings": [],
+    "duration_ms": 31000
+  },
+  "interpretation": {
+    "overall_status": "crit",
+    "overall_score": 75,
+    "summary_text": "Bufferbloat under load (downstream): grade D",
+    "findings": [
+      {
+        "id": "speed.bufferbloat_down",
+        "severity": "crit",
+        "title": "Bufferbloat under load (downstream): grade D",
+        "detail": "Latency rose by 74.0 ms while saturating the downstream direction.",
+        "metric": "bufferbloat_down_ms",
+        "value": "D",
+        "threshold": 60.0,
+        "advice": "Enabling SQM/fq_codel on the router is the standard fix."
+      }
+    ]
+  },
+  "errors": [],
+  "raw": {}
+}

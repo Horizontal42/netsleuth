@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "meta": { "run_id": "aaaa1111", "started_at": "2026-08-08T19:12:00Z", "mode": "auto", "target": null },
+  "connection": { "name": "connection", "status": "ok", "data": { "iface_name": "Wi-Fi 2" }, "errors": [], "warnings": [], "duration_ms": 40 },
+  "ip_geo": {
+    "name": "ip_geo",
+    "status": "ok",
+    "data": {
+      "egress_v4": {
+        "ip": "203.0.113.44",
+        "asn": "AS64500",
+        "as_name": "Example Telecom",
+        "org": "Example Telecom BV",
+        "country_code": "NL",
+        "ip_type": "residential"
+      },
+      "egress_v6": null,
+      "cf_trace": null,
+      "dual_stack_note": null
+    },
+    "errors": [],
+    "warnings": [],
+    "duration_ms": 900
+  },
+  "vpn_assessment": {
+    "name": "vpn_assessment",
+    "status": "ok",
+    "data": { "verdict": "none", "confidence": 0.1, "signals": [], "tunnel_iface": null, "dns_leak": null },
+    "errors": [],
+    "warnings": [],
+    "duration_ms": 300
+  },
+  "bgp": { "name": "bgp", "status": "ok", "data": { "asn": "AS64500", "holder": "Example Telecom BV" }, "errors": [], "warnings": [], "duration_ms": 1200 },
+  "reputation": { "name": "reputation", "status": "ok", "data": { "captcha_risk": "low", "firehol_hits": [] }, "errors": [], "warnings": [], "duration_ms": 800 },
+  "latency": {
+    "name": "latency",
+    "status": "ok",
+    "data": [
+      { "label": "cloudflare-dns", "host": "1.1.1.1", "method": "icmp_win", "avg_ms": 12.4, "jitter_ms": 1.9, "loss_pct": 0.0 },
+      { "label": "google-dns", "host": "8.8.8.8", "method": "icmp_win", "avg_ms": 14.0, "jitter_ms": 2.0, "loss_pct": 0.0 }
+    ],
+    "errors": [],
+    "warnings": [],
+    "duration_ms": 5200
+  },
+  "path": { "name": "path", "status": "ok", "data": [], "errors": [], "warnings": [], "duration_ms": 4000 },
+  "speed": {
+    "name": "speed",
+    "status": "ok",
+    "data": {
+      "method": "cloudflare",
+      "download_mbps": 284.3,
+      "upload_mbps": 41.7,
+      "bufferbloat_down_ms": 12.0,
+      "bufferbloat_grade": "B"
+    },
+    "errors": [],
+    "warnings": [],
+    "duration_ms": 30000
+  },
+  "interpretation": {
+    "overall_status": "ok",
+    "overall_score": 100,
+    "summary_text": "No problems found on this connection.",
+    "findings": []
+  },
+  "errors": [],
+  "raw": {}
+}
