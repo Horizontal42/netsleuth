@@ -11,6 +11,7 @@ import pytest
 
 from netsleuth.config import Providers
 from netsleuth.reputation import (
+    DnsblOutcome,
     NetsetIndex,
     build_reputation,
     ReputationContext,
@@ -361,3 +362,38 @@ async def test_refresh_netsets_skips_list_on_http_error_if_no_cache_exists(httpx
     cache_dir = tmp_path / "firehol"
     assert (cache_dir / "firehol_level1.netset").exists()
     assert not (cache_dir / "firehol_level2.netset").exists()
+
+
+def test_summarize_dnsbl_empty():
+    hits, blocked = summarize_dnsbl([])
+    assert hits == []
+    assert blocked is False
+
+
+def test_summarize_dnsbl_all_listed():
+    outcomes = [
+        DnsblOutcome(zone="zone1", listed=True, codes=["127.0.0.2"]),
+        DnsblOutcome(zone="zone2", listed=True, codes=["127.0.0.3"]),
+    ]
+    hits, blocked = summarize_dnsbl(outcomes)
+    assert len(hits) == 2
+    assert hits[0].zone == "zone1"
+    assert hits[0].codes == ["127.0.0.2"]
+    assert hits[0].meaning == "listed"
+    assert hits[1].zone == "zone2"
+    assert hits[1].codes == ["127.0.0.3"]
+    assert hits[1].meaning == "listed"
+    assert blocked is False
+
+
+def test_summarize_dnsbl_some_blocked():
+    outcomes = [
+        DnsblOutcome(zone="zone1", listed=True, codes=["127.0.0.2"]),
+        DnsblOutcome(zone="zone2", listed=False, codes=[], unavailable_reason="rate_limited"),
+        DnsblOutcome(zone="zone3", listed=False, codes=[]),
+    ]
+    hits, blocked = summarize_dnsbl(outcomes)
+    assert len(hits) == 1
+    assert hits[0].zone == "zone1"
+    assert hits[0].codes == ["127.0.0.2"]
+    assert blocked is True
