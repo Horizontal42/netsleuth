@@ -59,23 +59,23 @@ def test_colo_location_none():
 
 
 def test_detect_international_loop_true_when_edge_diverges():
-    assert detect_international_loop("RU", "RU", "DE") == (True, ["DE"])
+    assert detect_international_loop("RU", "DE") == (True, ["DE"])
 
 
 def test_detect_international_loop_false_when_edge_matches_client():
-    assert detect_international_loop("RU", "RU", "RU") == (False, [])
+    assert detect_international_loop("RU", "RU") == (False, [])
 
 
 def test_detect_international_loop_false_when_edge_unknown():
-    assert detect_international_loop("RU", "RU", None) == (False, [])
+    assert detect_international_loop("RU", None) == (False, [])
 
 
 def test_detect_international_loop_false_when_client_country_missing():
-    assert detect_international_loop(None, "RU", "DE") == (False, [])
+    assert detect_international_loop(None, "DE") == (False, [])
 
 
 def test_build_path_diversity_with_looping_hop():
-    hop = AnycastHop(target="example.com", ip_country="RU", edge_country="DE", source="cf_ray")
+    hop = AnycastHop(target="example.com", edge_country="DE", source="cf_ray")
     diversity = build_path_diversity("RU", [hop])
     assert diversity.international_loop is True
     assert diversity.detour_countries
