@@ -17,7 +17,7 @@ Everything else — egress ASN, VPN verdict, latency, path, speed — lives in t
 
 Requirements:
 
-- Python 3.10 or newer
+- Python 3.14 or newer
 - Windows, Linux or macOS
 - Internet access (netsleuth is a network tool; it degrades gracefully but cannot do much offline)
 - Optional: the native Ookla `speedtest` binary on `PATH` for the best bandwidth tier
@@ -62,8 +62,13 @@ None of this is required — netsleuth degrades gracefully without any of it —
 - **DNS leak test** — enumerates resolvers *per network adapter*, so it catches the classic case where the tunnel adapter is clean but the Wi-Fi adapter still holds the ISP resolver. Also detects EDNS Client Subnet leakage.
 - **BGP intelligence** — upstreams, peers, downstreams, announced prefixes, route stability, IXP presence, and CAIDA ASRank customer-cone size.
 - **Reputation** — locally cached FireHOL blocklists (no query leaves your machine), Shodan InternetDB exposure, and optional classic DNSBL zones.
-- **Latency & path** — per-host ping statistics with real jitter/loss/mdev, and a traceroute that never needs administrator rights.
+- **Latency & path** — per-host ping statistics with real jitter/loss/mdev/p95/p99, and a traceroute that never needs administrator rights.
 - **Bandwidth** — a cascading speedtest (Ookla binary → Cloudflare → fast.com → optional M-Lab NDT7) with separate download and upload bufferbloat grades.
+- **TLS handshake RTT** (`--tls`) — TCP RTT, TLS 1.3 handshake time and time-to-first-byte to reference services, flagging servers whose handshake is disproportionately slow relative to the network (CPU-bound TLS termination, not a network problem).
+- **DNS: system vs DoH** (`--dns-advanced`) — compares your system resolver's answers and latency against Cloudflare/Google/Quad9 DoH, and probes a bogus resolver IP to detect a transparent DNS proxy intercepting port 53.
+- **Path diversity / Anycast** (`--path-diversity`) — reads Cloudflare's `CF-RAY` edge code to find which PoP is actually serving your traffic, and flags an international routing loop when it's in a different country than you are.
+- **AS prefix benchmark** (`--prefix-bench`) — pings the first host of a handful of your own AS's announced prefixes to find the lowest-latency PoP. Capped at 256 prefixes and off by default — this samples your own network, it does not scan it.
+- **DPI / port self-check** (`--my-server <host>`) — a single-host TCP probe across 6 fixed ports on **a server you own**, classifying TCP RST injection vs silent filtering vs a clean response. Not a port scanner: one host per run, a fixed short port list, and it never reads its target from your own egress IP or from BGP data — see [ARCHITECTURE.md](ARCHITECTURE.md) for why.
 
 ## Handy things
 
@@ -77,6 +82,11 @@ None of this is required — netsleuth degrades gracefully without any of it —
 | `--watch` | Continuous monitoring with a live dashboard — for catching intermittent drops. Writes one `logs/watch_*.json` time series per session, not one report per tick |
 | `--compare a.json b.json` | Diff two earlier reports: before/after a VPN switch, before/after an ISP call. Read-only — no probing, no network calls. Reads reports produced with `--format json` |
 | `--dnsbl` | Opt in to classic DNSBL reputation zones |
+| `--tls` | Measure TCP/TLS handshake RTT and TTFB to reference services. Included in `--full` |
+| `--dns-advanced` | Compare system DNS vs DoH and probe for a transparent DNS proxy. Included in `--full` |
+| `--path-diversity` | Compare client geo against the Cloudflare edge PoP actually serving traffic. Included in `--full` |
+| `--prefix-bench` | Ping the first host of a handful of your own AS's announced prefixes to find the lowest-latency PoP. **Not** included in `--full` — opt in explicitly |
+| `--my-server <host>` | Check a server **you own** for TCP port blocking / RST injection. Single host only — rejects CIDR input outright. **Not** included in `--full` — opt in explicitly |
 | `--ndt7` | Opt in to M-Lab NDT7 (publishes your measurement, including your IP, as CC0 open data). On an interactive terminal it prints the consent notice and asks first; on a non-interactive one it proceeds without asking |
 | `--tcp-trace` | Opt in to a scapy TCP-SYN traceroute through ICMP-filtering middleboxes (needs the `tcptrace` extra plus Npcap on Windows or root on Unix). Falls through to the normal cascade when it cannot run |
 | `--format md,ru-md,json,all,none` | Choose which report artifacts to write (default: `md`). Repeatable and comma-separated (`--format md,json`); any use replaces the default instead of adding to it. `all` writes all three, `none` writes nothing. Ignored with `--watch`/`--compare` |
@@ -90,7 +100,7 @@ netsleuth never requires administrator or root. Where privileges would give bett
 
 ## For developers
 
-Stack: Python 3.10+, Typer, Rich, httpx, pydantic-settings, dnspython, psutil, icmplib, ctypes.
+Stack: Python 3.14+, Typer, Rich, httpx, pydantic-settings, dnspython, psutil, icmplib, ctypes.
 
 ```bash
 uv sync --all-extras --group dev

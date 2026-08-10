@@ -26,18 +26,23 @@ src/netsleuth/
   compare.py      --compare: diff two saved JSON reports.
   watch.py        --watch: periodic re-run loop with a live Rich dashboard.
   probes/
-    latency.py    Ping fan-out and jitter/loss/mdev statistics.
-    traceroute.py Cascade: mtr --json -> icmp_win -> icmplib -> system binary text, plus the opt-in tcp_trace tier.
-    icmp_win.py   ctypes IcmpSendEcho2 / Icmp6SendEcho2 engine (Windows only).
-    dns_leak.py   Per-adapter resolver enumeration, echo probes, ECS detection.
+    latency.py         Ping fan-out and jitter/loss/mdev/p95/p99 statistics.
+    traceroute.py      Cascade: mtr --json -> icmp_win -> icmplib -> system binary text, plus the opt-in tcp_trace tier.
+    icmp_win.py        ctypes IcmpSendEcho2 / Icmp6SendEcho2 engine (Windows only).
+    dns_leak.py        Per-adapter resolver enumeration, echo probes, ECS detection.
+    tls_rtt.py         --tls: TCP RTT + TLS 1.3 handshake + TTFB via two sequential connections.
+    dns_advanced.py    --dns-advanced: system DNS vs DoH, transparent-proxy probe on a bogon resolver IP.
+    bgp_path.py        --path-diversity: CF-RAY edge colo lookup, international-routing-loop detection.
+    prefix_benchmark.py --prefix-bench: ping the first host of a capped sample of the AS's announced prefixes.
+    dpi_check.py       --my-server: single-host TCP RST/filtering self-diagnostic. Not a scanner — see Key decisions.
 ```
 
 **File-size exceptions.** The ~200-line guideline (Global Constraints) held for most modules, but these grew past it during implementation and were kept as single files rather than split, because each one is a single cohesive responsibility that splitting would only scatter across more files with a thinner reason to draw the line anywhere in particular:
 
-- `exporter.py` (~680 lines) — JSON and both Markdown languages are renderers of the same report shape; keeping them together is what guarantees the English and Russian reports can never drift on which sections or rows exist. `render_markdown(report, lang="en"|"ru")` and a handful of inline `_t(lang, en, ru)` calls at each string site render both languages from one code path, deliberately, instead of a second renderer file that could silently fall out of sync.
-- `cli.py` (~475 lines) — the Typer app, every flag, and the full `diagnose()` phase pipeline; splitting flag parsing from what the flags toggle would just add an import hop.
-- `models.py` (~330 lines) — every shared dataclass plus `to_jsonable()`; this is deliberately the one place that defines the report's vocabulary.
-- `interpret.py` (~320 lines) — threshold bands, the latency/path/speed finding generators, VPN scoring and bufferbloat grading all reason over the same `Finding[]` shape.
+- `exporter.py` (~910 lines) — JSON and both Markdown languages are renderers of the same report shape; keeping them together is what guarantees the English and Russian reports can never drift on which sections or rows exist. `render_markdown(report, lang="en"|"ru")` and a handful of inline `_t(lang, en, ru)` calls at each string site render both languages from one code path, deliberately, instead of a second renderer file that could silently fall out of sync. This grew by five sections (TLS, DNS advanced, path diversity, prefix bench, DPI check) without changing that argument.
+- `cli.py` (~805 lines) — the Typer app, every flag, and the full `diagnose()` phase pipeline; splitting flag parsing from what the flags toggle would just add an import hop.
+- `models.py` (~490 lines) — every shared dataclass plus `to_jsonable()`; this is deliberately the one place that defines the report's vocabulary.
+- `interpret.py` (~600 lines) — threshold bands, the latency/path/speed/TLS/DNS/DPI/anycast/prefix finding generators, VPN scoring and bufferbloat grading all reason over the same `Finding[]` shape.
 - `bgp.py` (~305 lines) — four independent providers (RIPEstat, CAIDA ASRank, Team Cymru, PeeringDB) plus the disk cache they share.
 - `ip_geo.py` (~280 lines) — six independent provider normalizers plus the field-wise merge that reconciles them.
 - `netinfo.py`, `speed.py` (~260 lines each) — OS-specific capability probing and the four-tier speedtest cascade both fan out into several backends that don't split cleanly by single responsibility.
@@ -51,9 +56,13 @@ src/netsleuth/
                 |
   cli.py -------+-- ip_geo provider chain  ---> egress IP + ASN   [blocking: everything downstream needs the ASN]
                 |
-                +-- bgp || reputation || dns_leak        (parallel)
+                +-- bgp || reputation || dns_leak || dns_advanced || path_diversity   (parallel)
                 |
-                +-- latency || traceroute fan-out        (parallel, semaphore-bounded)
+                +-- latency || traceroute || tls fan-out        (parallel, semaphore-bounded)
+                |
+                +-- prefix_benchmark  (opt-in, sequential — isolated from the latency fan-out above)
+                |
+                +-- dpi_check         (opt-in, sequential — single-host, rate-limited)
                 |
                 +-- speed                                 (exclusive phase lock)
                 |
@@ -62,10 +71,11 @@ src/netsleuth/
                 +-- exporter   ---> logs/report_<ASN>_<ts>.{md,ru.md,json}
 ```
 
-Two hard concurrency constraints:
+Three hard concurrency constraints:
 
 1. **Measurement isolation.** The speedtest never overlaps traceroute, ping or API calls — it holds an exclusive phase lock. The single intentional exception is the bufferbloat probe, which overlaps saturation by design, inside `speed.py`.
 2. **Bounded traceroute fan-out.** Parallel traceroutes to different targets share early hops and inflate each other's latency, so concurrent traces are capped by a semaphore (`probing.trace_concurrency`, default 2).
+3. **The AS prefix benchmark never shares a phase with the reference-host latency fan-out.** Pinging up to `prefix_bench.max_prefixes` (capped at 256, default 32) hosts at once would both skew its own results and pollute the latency numbers measured for the fixed reference hosts in the same window, so it runs as its own sequential, opt-in step (`--prefix-bench`) after phase 3 finishes, never inside `--full`.
 
 ## Key decisions
 
@@ -93,6 +103,29 @@ Two hard concurrency constraints:
 
 **The JSON dump carries a `raw` section.** Every provider response is stored verbatim under its source key. The typed layer above it necessarily drops fields; `raw` is what actually satisfies "100% of collected data, no truncation".
 
+**Why the DPI check is not a port scanner.** `probes/dpi_check.py` is, mechanically, code that opens TCP connections to an IP on several ports — the same primitive a port scanner uses. The difference between a self-diagnostic and a scanner is the constraints wrapped around that primitive, and they are load-bearing, not cosmetic:
+
+1. **The target is only ever the string the user typed after `--my-server`.** `check_dpi(target, resolved_ip, ports, ...)` takes both as required positional-or-keyword arguments with no default — there is no code path that fills them in from `IpGeo.ip`, `CfTrace.ip`, `--target`, or `BgpIntel.announced_prefixes`. `tests/test_dpi_check.py` pins this via `inspect.signature`.
+2. **The port list is fixed and short.** `dpi_check.ports` in `config.yaml` defaults to six ports and is capped at 16 by a pydantic validator in `config.py` — there is no `--ports`/range flag, and raising the cap requires editing and redeploying the config, not passing a CLI argument.
+3. **One host per run.** `--my-server` takes a single value; CIDR input is rejected outright in `cli.py` before `Options` is even built (`"this is a single-host self-diagnostic, not a network scanner"`).
+4. **Rate-limited by construction.** `asyncio.Semaphore(dpi_check.concurrency)` (capped at 4) plus `asyncio.sleep(delay_between_ports_seconds)` between probe starts; one attempt per port, no retries.
+5. **Consent is printed, not just documented.** Before probing, `cli.py` prints which host and how many ports are about to be touched and that this must be a host the user owns or is authorised to test — the same pattern as the existing `--tcp-trace` warning, not the file-marker consent `--ndt7` uses, because there's no third-party data disclosure here, only a question of authorization.
+6. **The target is audited.** `meta["dpi_target"]` in every JSON report records exactly what was checked.
+
+The AS prefix benchmark (`probes/prefix_benchmark.py`) gets the same treatment for the same reason at a different scale: pinging the first host of *every* prefix a large ISP announces is mass probing of a network the user does not necessarily own. `prefix_bench.max_prefixes` is capped at 256 in a validator (default 32), the probe is ICMP-only (never TCP-connect), and it is never enabled by `--full` — only by explicit `--prefix-bench`.
+
+**TLS handshake timing uses two sequential connections, not `ssl.SSLObject.start_tls()` on one.** `probes/tls_rtt.py` opens a plain TCP connection first (`tcp_connect_rtt()`, already used by `latency.py`) to get a TCP-only baseline, then a second `asyncio.open_connection(..., ssl=...)` to the same host and subtracts the baseline from the second connection's total time to get `tls_handshake_ms`. This slightly overstates the true handshake time (a second TCP handshake happens too) but avoids the complexity of upgrading one live connection mid-flight, and the report says explicitly, in a footnote under the table, that the number is derived by subtraction — not presented as a lab-grade measurement.
+
+**`dns_advanced.py` and `dns_leak.py` answer different questions and must not merge.** `dns_leak.py` asks "where do my DNS queries physically exit to the internet" (echo probes, resolver-ASN-vs-egress-ASN comparison) and feeds the VPN-confidence scoring. `dns_advanced.py` asks "how fast and how honest are the answers" (system vs DoH timing and content) and feeds its own findings. They share nothing but `dnspython`; a shared helper (`resolver_for`-style) was deliberately not extracted, because the one place they'd overlap (resolver construction) is three lines each and not worth a coupling.
+
+**A resolver answering differently from DoH is not, by itself, evidence of anything.** Any CDN behind geo-DNS or ECS legitimately hands different resolvers different IPs for the same name. `dns_advanced.compare_answers()` records the difference as plain text; `detect_poisoning()` only escalates to a finding when the *system* resolver's answer is itself bogus (`0.0.0.0`, loopback, private, or RFC 5737) while DoH's answer is a normal public address — that specific asymmetry, not mere disagreement, is what a poisoned/hijacked response looks like.
+
+**The Cloudflare colo→city/country table is a curated ~30-entry dictionary, not a full IATA database.** Pulling in a full airport-code package for this one lookup would be a new dependency for a feature that only needs to answer "is the edge PoP in a different country than the client" for a modest, CIS/Europe-weighted set of colos. An unrecognized code renders as "unknown" rather than guessing.
+
+**The international-routing-loop check compares the client's own geolocated country against the edge PoP's country — nothing else.** An earlier version of `detect_international_loop()` also required the *target's* resolved-IP geolocation to match the client's country before it would fire, on the theory that this ruled out an unrelated confound. In practice nothing ever populated that field, so the check could never fire at all — caught by manually running `--path-diversity` end-to-end and inspecting the JSON output, not by any unit test, since the unit tests exercised the function directly and simply supplied the value the buggy production code path never provided. The lesson generalized: two inputs beat three when the third can't reliably be filled in, and a smoke run of new opt-in flags belongs in the same pass as the unit tests, not after them.
+
+**Python 3.14 is the floor, not 3.10.** The project moved off `>=3.10` when this batch of probes was added; none of the new code actually depends on a 3.11+-only construct (`ssl.SSLObject.start_tls()`, `asyncio.timeout()`, `datetime.UTC`) — the two-sequential-connection TLS design above was chosen independently of what the interpreter allows. The version floor moved because there was no longer a reason to hold it back, not because a specific new feature required it.
+
 ## Storage
 
 - `./logs/report_<ASN>_<YYYYMMDDTHHMMSSZ>.{md,ru.md,json}` — the artifacts selected by `--format`/`output.formats` (default: English Markdown only; `all` writes all three: English Markdown, a full Russian translation with identical structure, and the JSON dump — English only, no `.ru.json`). When both Markdown languages are written they cross-link each other at the top, the same way `README.md`/`README.ru.md` do; writing only one skips the cross-link rather than pointing at a file that doesn't exist. `<ASN>` is the target's subject in target mode (an ASN, IP or domain) and the local egress ASN in auto mode. Compact ISO timestamps because Windows forbids `:` in filenames. Falls back to `report_unknown_…` when the ASN lookup fails entirely. Written temp-file-plus-`os.replace()`, always atomic. Gitignored: reports contain the external IP, city, coordinates and ISP name.
@@ -105,6 +138,8 @@ Two hard concurrency constraints:
 
 `config.py` builds a pydantic-settings `Settings` object whose sources are ordered **init > environment > `.env` > `config.yaml` > field default**. The three API keys are `SecretStr | None = None` at the top level: a diagnostics tool must run with zero configuration, so a missing key downgrades the enrichment that needs it to `skipped` with a warning and never fails the run.
 
+Five sections back the L4-L7 probes, all opt-in at the CLI level and all with a validator-enforced ceiling where the feature could otherwise become mass probing: `tls`, `dns_advanced`, `path_diversity`, `prefix_bench` (`max_prefixes` capped at 256), `dpi_check` (`ports` capped at 16 entries, `concurrency` capped at 4).
+
 ## Tests
 
-`uv run pytest -q`. Roughly 385 tests covering the parsers, normalizers, verdict engine, DNSBL decoding, throughput math, ping statistics, serialization and the report diff. Glue is deliberately untested: live HTTP, real ICMP, Typer wiring, `psutil`/`ctypes` calls and the `--watch` timing loop. Traceroute fixtures live in `tests/fixtures/traceroute/{windows,linux,darwin}/` and include a cp866-encoded Russian Windows sample, because that encoding is exactly what breaks naive parsers.
+`uv run pytest -q`. Roughly 705 tests covering the parsers, normalizers, verdict engine, DNSBL decoding, throughput math, ping statistics, jitter percentiles, serialization and the report diff. Glue is deliberately untested: live HTTP, real ICMP, Typer wiring, `psutil`/`ctypes` calls and the `--watch` timing loop. Traceroute fixtures live in `tests/fixtures/traceroute/{windows,linux,darwin}/` and include a cp866-encoded Russian Windows sample, because that encoding is exactly what breaks naive parsers. DoH response fixtures (RFC 8484 JSON form) live in `tests/fixtures/api/doh_*.json` alongside the other provider fixtures.
