@@ -22,13 +22,18 @@ from netsleuth.exporter import build_report, dump_json, egress_asn, render_markd
 from netsleuth.iface import available_interfaces_hint, resolve_bind_target
 from netsleuth.interpret import (
     assess_vpn,
+    dns_advanced_findings,
+    dpi_findings,
     gather_vpn_signals,
     latency_findings,
+    path_diversity_findings,
     path_findings,
+    prefix_findings,
     speed_findings,
+    tls_findings,
 )
 from netsleuth.ip_geo import dual_stack_mismatch, gather_identity
-from netsleuth.models import BindTarget, Finding, IpGeo, LocalNet, ModuleResult, SpeedResult, VpnContext
+from netsleuth.models import BindTarget, Finding, IpGeo, LocalNet, ModuleResult, ProbeError, SpeedResult, VpnContext
 from netsleuth.netinfo import collect_local_net, detect_capabilities, iface_for_ip, is_tunnel_iface, primary_interface_ip
 from netsleuth.orchestration import gather_modules, run_module, utc_now_iso
 from netsleuth.probes.dns_leak import collect_dns_leak
@@ -62,6 +67,11 @@ class Options:
     dnsbl: bool = False
     ndt7: bool = False
     tcp_trace: bool = False
+    tls: bool = False
+    dns_advanced: bool = False
+    path_diversity: bool = False
+    prefix_bench: bool = False
+    dpi_target: str | None = None
     formats: frozenset[str] = frozenset({"md"})
     interface: str | None = None
     bind: BindTarget | None = None
@@ -250,6 +260,120 @@ async def _reputation_section(client, settings: Settings, options: Options, geo:
     )
 
 
+async def _tls_section(settings: Settings, options: Options) -> ModuleResult:
+    if not options.tls:
+        return ModuleResult(name="tls", status="skipped", warnings=["tls probe skipped: not requested"])
+    from netsleuth.probes.tls_rtt import tls_fanout
+
+    cfg = settings.tls
+    targets = [(t.label, t.host) for t in cfg.targets]
+    results = await tls_fanout(
+        targets,
+        port=cfg.port,
+        timeout=settings.timeouts.http_seconds,
+        concurrency=cfg.concurrency,
+        source_ip=options.bind.ipv4 if options.bind else None,
+    )
+    return ModuleResult(name="tls", status="ok", data=results)
+
+
+async def _dns_advanced_section(client, settings: Settings, options: Options) -> ModuleResult:
+    if not options.dns_advanced:
+        return ModuleResult(
+            name="dns_advanced", status="skipped", warnings=["dns advanced probe skipped: not requested"]
+        )
+    from netsleuth.probes.dns_advanced import collect_dns_advanced
+
+    cfg = settings.dns_advanced
+    adv = await collect_dns_advanced(
+        client, cfg.control_names, cfg.doh_endpoints, cfg.bogus_resolver_ip, cfg.bogus_probe_name, settings.timeouts.dns_seconds
+    )
+    return ModuleResult(name="dns_advanced", status="ok", data=adv)
+
+
+async def _path_diversity_section(client, settings: Settings, options: Options, client_country: str | None) -> ModuleResult:
+    if not options.path_diversity:
+        return ModuleResult(
+            name="path_diversity", status="skipped", warnings=["path diversity probe skipped: not requested"]
+        )
+    from netsleuth.probes.bgp_path import collect_path_diversity
+
+    cfg = settings.path_diversity
+    targets = [(t.label, t.host) for t in cfg.targets]
+    pd = await collect_path_diversity(
+        client,
+        targets,
+        client_country,
+        max_targets=cfg.max_targets,
+        timeout=settings.timeouts.http_seconds,
+        source_ip=options.bind.ipv4 if options.bind else None,
+    )
+    return ModuleResult(name="path_diversity", status="ok", data=pd)
+
+
+async def _prefix_bench_section(caps, settings: Settings, options: Options, bgp) -> ModuleResult:
+    if not options.prefix_bench:
+        return ModuleResult(
+            name="prefix_benchmark", status="skipped", warnings=["prefix benchmark skipped: not requested"]
+        )
+    if not bgp or not bgp.announced_prefixes:
+        return ModuleResult(
+            name="prefix_benchmark", status="skipped", warnings=["prefix benchmark skipped: no announced prefixes"]
+        )
+    from netsleuth.probes.prefix_benchmark import benchmark_prefixes
+
+    cfg = settings.prefix_bench
+    bench = await benchmark_prefixes(
+        bgp.announced_prefixes,
+        caps,
+        limit=cfg.max_prefixes,
+        count=cfg.ping_count,
+        interval=settings.probing.ping_interval_seconds,
+        timeout=settings.probing.ping_timeout_seconds,
+        concurrency=cfg.concurrency,
+        offset=cfg.host_offset,
+        family=cfg.family,
+        source_ip=options.bind.ipv4 if options.bind else None,
+    )
+    bench.asn = bgp.asn
+    return ModuleResult(name="prefix_benchmark", status="ok", data=bench)
+
+
+async def _dpi_section(settings: Settings, options: Options) -> ModuleResult:
+    if not options.dpi_target:
+        return ModuleResult(
+            name="dpi_check", status="skipped", warnings=["dpi check skipped: no explicit --my-server target"]
+        )
+    from netsleuth.probes.dpi_check import check_dpi
+
+    target = options.dpi_target
+    try:
+        loop = asyncio.get_running_loop()
+        infos = await loop.getaddrinfo(target, None)
+        resolved = infos[0][4][0]
+    except (OSError, IndexError) as exc:
+        return ModuleResult(
+            name="dpi_check",
+            status="failed",
+            errors=[ProbeError(source="dpi_check", kind="unavailable", message=f"could not resolve {target}: {exc}")],
+        )
+    cfg = settings.dpi_check
+    console.print(
+        f"[yellow]--my-server opens TCP connections to {target} ({resolved}) on {len(cfg.ports)} ports. "
+        "Use it only on hosts you own or are authorised to test.[/yellow]"
+    )
+    result = await check_dpi(
+        target,
+        resolved,
+        cfg.ports,
+        timeout=cfg.connect_timeout_seconds,
+        delay=cfg.delay_between_ports_seconds,
+        concurrency=cfg.concurrency,
+        source_ip=options.bind.ipv4 if options.bind else None,
+    )
+    return ModuleResult(name="dpi_check", status="ok", data=result)
+
+
 async def _traces(hosts, caps, settings: Settings, cycles: int, options: Options):
     semaphore = asyncio.Semaphore(settings.probing.trace_concurrency)
     return list(
@@ -362,8 +486,8 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         modules["ip_geo"].warnings.extend(identity_warnings)
         asn = geo.asn if options.target_kind != "asn" else options.target_value
 
-        # Phase 2 — bgp || reputation || dns_leak
-        bgp_result, rep_result, dns_result = await gather_modules(
+        # Phase 2 — bgp || reputation || dns_leak || dns_advanced || path_diversity
+        bgp_result, rep_result, dns_result, dns_advanced_result, path_diversity_result = await gather_modules(
             run_module("bgp", _bgp_section(client, settings, asn, raw), timeout=timeouts.module_seconds),
             run_module(
                 "reputation", _reputation_section(client, settings, options, geo, raw), timeout=timeouts.module_seconds
@@ -373,8 +497,15 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
                 collect_dns_leak(local, asn, settings.providers.cymru_origin_zone, timeouts.dns_seconds),
                 timeout=timeouts.module_seconds,
             ),
+            run_module("dns_advanced", _dns_advanced_section(client, settings, options), timeout=timeouts.module_seconds),
+            run_module(
+                "path_diversity",
+                _path_diversity_section(client, settings, options, geo.country_code),
+                timeout=timeouts.module_seconds,
+            ),
         )
         modules["bgp"], modules["reputation"] = bgp_result, rep_result
+        modules["dns_advanced"], modules["path_diversity"] = dns_advanced_result, path_diversity_result
         ctx = VpnContext(
             local=local,
             geo=geo,
@@ -409,7 +540,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
             hosts.append(("target", options.target_value))
         count = settings.probing.quick_ping_count if options.quick else settings.probing.ping_count
         cycles = settings.probing.quick_mtr_cycles if options.quick else settings.probing.mtr_cycles
-        modules["latency"], modules["path"] = await gather_modules(
+        modules["latency"], modules["path"], modules["tls"] = await gather_modules(
             run_module(
                 "latency",
                 ping_fanout(
@@ -423,6 +554,19 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
                 timeout=timeouts.subprocess_seconds,
             ),
             run_module("path", _traces(hosts, caps, settings, cycles, options), timeout=timeouts.subprocess_seconds),
+            run_module("tls", _tls_section(settings, options), timeout=timeouts.module_seconds),
+        )
+
+        # Phase 3b — prefix benchmark and DPI check, opt-in and exclusive: each is a
+        # single-target/self-scoped probe that should not share the wire with the
+        # reference-host latency fanout above.
+        modules["prefix_benchmark"] = await run_module(
+            "prefix_benchmark",
+            _prefix_bench_section(caps, settings, options, bgp_result.data),
+            timeout=timeouts.subprocess_seconds,
+        )
+        modules["dpi_check"] = await run_module(
+            "dpi_check", _dpi_section(settings, options), timeout=timeouts.module_seconds
         )
 
         # Phase 4 — speed, exclusive: nothing else is in flight at this point.
@@ -442,10 +586,20 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
 
     # Phase 5 — interpret
     speed = modules["speed"].data or SpeedResult()
+    l7_findings: list[Finding] = list(tls_findings(modules["tls"].data or [], settings.thresholds))
+    if modules["prefix_benchmark"].data is not None:
+        l7_findings += prefix_findings(modules["prefix_benchmark"].data, settings.thresholds)
+    if modules["dpi_check"].data is not None:
+        l7_findings += dpi_findings(modules["dpi_check"].data)
+    if modules["dns_advanced"].data is not None:
+        l7_findings += dns_advanced_findings(modules["dns_advanced"].data, settings.thresholds)
+    if modules["path_diversity"].data is not None:
+        l7_findings += path_diversity_findings(modules["path_diversity"].data)
     findings = _dedupe(
         latency_findings(pings, settings.thresholds)
         + [f for trace in (modules["path"].data or []) for f in path_findings(trace)]
         + speed_findings(speed, settings.thresholds.bufferbloat_ms)
+        + l7_findings
     )
 
     # Phase 6 — export
@@ -462,7 +616,12 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
             "ndt7": options.ndt7,
             "tcp_trace": options.tcp_trace,
             "interface": options.interface,
+            "tls": options.tls,
+            "dns_advanced": options.dns_advanced,
+            "path_diversity": options.path_diversity,
+            "prefix_bench": options.prefix_bench,
         },
+        "dpi_target": options.dpi_target,
         "formats": sorted(options.formats),
         "host_os": f"{platform.system()} {platform.release()}",
         "capabilities": caps,
@@ -527,6 +686,23 @@ def run(
     dnsbl: bool = typer.Option(False, "--dnsbl", help="Also query classic DNSBL zones."),
     ndt7: bool = typer.Option(False, "--ndt7", help="Add the M-Lab NDT7 speedtest tier (publishes your IP)."),
     tcp_trace: bool = typer.Option(False, "--tcp-trace", help="Add a scapy TCP-SYN traceroute tier."),
+    tls: bool = typer.Option(False, "--tls", help="Measure TCP/TLS handshake RTT and TTFB to reference services."),
+    dns_advanced: bool = typer.Option(
+        False, "--dns-advanced", help="Compare system DNS vs DoH and probe for a transparent DNS proxy."
+    ),
+    path_diversity: bool = typer.Option(
+        False, "--path-diversity", help="Compare client geo against the Cloudflare edge PoP actually serving traffic."
+    ),
+    prefix_bench: bool = typer.Option(
+        False,
+        "--prefix-bench",
+        help="Ping the first host of a handful of your own AS's announced prefixes to find the lowest-latency PoP.",
+    ),
+    my_server: Optional[str] = typer.Option(
+        None,
+        "--my-server",
+        help="Check a server YOU OWN for TCP port blocking / RST injection. Single host only — never a CIDR or someone else's server.",
+    ),
     format_: List[str] = typer.Option(
         [],
         "--format",
@@ -550,6 +726,10 @@ def run(
         console.print(render_diff(diff_reports(before, after), emoji=settings.output.emoji))
         raise typer.Exit(0)
 
+    if my_server and "/" in my_server:
+        raise typer.BadParameter(
+            "this is a single-host self-diagnostic, not a network scanner", param_hint="--my-server"
+        )
     kind, value = parse_target(target) if target else (None, None)
     formats = parse_formats(format_, ru=ru, json_flag=json_flag, default=frozenset(settings.output.formats))
     options = Options(
@@ -563,6 +743,11 @@ def run(
         dnsbl=dnsbl,
         ndt7=ndt7,
         tcp_trace=tcp_trace,
+        tls=tls or full,
+        dns_advanced=dns_advanced or full,
+        path_diversity=path_diversity or full,
+        prefix_bench=prefix_bench,
+        dpi_target=my_server,
         formats=formats,
     )
     if interface:
