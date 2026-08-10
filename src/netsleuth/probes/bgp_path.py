@@ -62,12 +62,8 @@ def colo_location(code: str | None) -> tuple[str | None, str | None]:
     return COLO_LOCATIONS.get(code.upper(), (None, None))
 
 
-def detect_international_loop(
-    client_country: str | None, ip_country: str | None, edge_country: str | None
-) -> tuple[bool, list[str]]:
-    if not client_country or not ip_country or client_country != ip_country:
-        return False, []
-    if not edge_country or edge_country == client_country:
+def detect_international_loop(client_country: str | None, edge_country: str | None) -> tuple[bool, list[str]]:
+    if not client_country or not edge_country or edge_country == client_country:
         return False, []
     return True, [edge_country]
 
@@ -79,7 +75,7 @@ def build_path_diversity(client_country: str | None, hops: list[AnycastHop]) -> 
     international_loop = False
     detour_countries: list[str] = []
     for hop in hops:
-        is_loop, countries = detect_international_loop(client_country, hop.ip_country, hop.edge_country)
+        is_loop, countries = detect_international_loop(client_country, hop.edge_country)
         if is_loop:
             international_loop = True
             for country in countries:
