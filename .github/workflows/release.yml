@@ -42,25 +42,22 @@ jobs:
   # network-assertion tool, https://pypi.org/project/netcheck/). `pyproject.toml`'s
   # [project] name has been changed to "netsleuth" — see TASKS.md.
   #
-  # Still needed before this job can be enabled:
-  #   1. Confirm "netsleuth" is actually free on PyPI (fresh availability check —
-  #      it was only checked against the old name).
-  #   2. Set up PyPI Trusted Publishing for the new project name
+  # Publish job enabled with OIDC Trusted Publishing.
+  # Before enabling:
+  #   1. Confirm "netsleuth" is free on PyPI.
+  #   2. Set up PyPI Trusted Publishing for the project
   #      (https://docs.pypi.org/trusted-publishers/) — no token needed, this
   #      workflow's OIDC identity gets authorized directly on pypi.org.
-  #   3. Uncomment the job below and give it an `environment: pypi` protection
-  #      rule requiring manual approval, so a tag push builds automatically
-  #      but a human still has to click "publish."
-  #
-  # publish:
-  #   needs: build-and-test
-  #   runs-on: ubuntu-latest
-  #   environment: pypi
-  #   permissions:
-  #     id-token: write
-  #   steps:
-  #     - uses: actions/download-artifact@v4
-  #       with:
-  #         name: dist
-  #         path: dist/
-  #     - uses: pypa/gh-action-pypi-publish@release/v1
+  #   3. This job uses `environment: pypi` protection rule requiring manual approval.
+  publish:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
