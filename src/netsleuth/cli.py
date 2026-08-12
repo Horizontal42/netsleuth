@@ -93,6 +93,7 @@ class Options:
     formats: frozenset[str] = frozenset({"md"})
     interface: str | None = None
     bind: BindTarget | None = None
+    webhook: str | None = None
 
 
 def parse_formats(
@@ -764,6 +765,11 @@ def run(
     target_host: Optional[str] = typer.Option(None, "--target-host", help="Extra host for ping/traceroute."),
     speedtest_server: Optional[str] = typer.Option(None, "--speedtest-server", help="Pin the speedtest server."),
     watch: bool = typer.Option(False, "--watch", help="Continuous monitoring with a live dashboard."),
+    webhook: Optional[str] = typer.Option(
+        None,
+        "--webhook",
+        help="With --watch, POST a JSON alert to this URL on a verdict transition (overrides watch.webhook_url).",
+    ),
     compare: Optional[Tuple[Path, Path]] = typer.Option(
         None, "--compare", help="Diff two saved JSON reports — reads reports produced with --format json."
     ),
@@ -863,6 +869,7 @@ def run(
         prefix_bench=prefix_bench,
         dpi_target=my_server,
         formats=formats,
+        webhook=webhook,
     )
     if interface:
         addrs_by_iface = {

@@ -81,6 +81,27 @@ def test_summarize_cycle_records_a_dead_host_without_inventing_a_number():
     assert summary["hosts"]["google-dns"]["loss_pct"] == 100.0
 
 
+def test_summarize_cycle_reports_ok_verdict_for_a_healthy_tick():
+    summary = summarize_cycle(1, "2026-08-08T19:12:00Z", [ping("cloudflare-dns", 12.4)], None)
+    assert summary["status"] == "ok"
+    assert summary["score"] == 100
+    assert summary["finding_ids"] == []
+
+
+def test_summarize_cycle_reports_a_degraded_verdict_with_finding_ids():
+    summary = summarize_cycle(1, "2026-08-08T19:12:00Z", [ping("cloudflare-dns", None, loss=100.0)], None)
+    assert summary["status"] == "crit"
+    assert summary["score"] < 100
+    assert any(fid.startswith("latency.unreachable") for fid in summary["finding_ids"])
+
+
+def test_summarize_cycle_verdict_considers_a_bad_speed_cycle_too():
+    speed = SpeedResult(method="cloudflare", download_mbps=100.0, upload_mbps=20.0, bufferbloat_down_ms=250.0)
+    summary = summarize_cycle(1, "2026-08-08T19:12:00Z", [ping("cloudflare-dns", 12.4)], speed)
+    assert summary["status"] in ("warn", "crit")
+    assert any(fid.startswith("speed.bufferbloat") for fid in summary["finding_ids"])
+
+
 def test_session_history_returns_the_series_for_one_host_with_gaps_preserved():
     session = WatchSession(started_at="2026-08-08T19:12:00Z", asn="AS64500")
     session.add(summarize_cycle(1, "t1", [ping("cloudflare-dns", 12.0)], None))

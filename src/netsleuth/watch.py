@@ -12,8 +12,10 @@ from rich.live import Live
 from rich.table import Table
 
 from netsleuth import __version__
-from netsleuth.config import Settings
+from netsleuth.alerting import build_payload, post_webhook, should_fire
+from netsleuth.config import Settings, Thresholds
 from netsleuth.exporter import atomic_write, compact_timestamp, dump_json, sanitize_name, sparkline
+from netsleuth.interpret import latency_findings, overall_verdict, speed_findings
 from netsleuth.ip_geo import gather_identity
 from netsleuth.models import PingResult, SpeedResult, to_jsonable
 from netsleuth.netinfo import detect_capabilities
@@ -41,7 +43,13 @@ def summarize_cycle(
     at: str,
     pings: list[PingResult],
     speed: SpeedResult | None,
+    thresholds: Thresholds | None = None,
 ) -> dict[str, Any]:
+    thresholds = thresholds or Thresholds()
+    findings = latency_findings(pings, thresholds) + (
+        speed_findings(speed, thresholds.bufferbloat_ms) if speed is not None else []
+    )
+    status, score, _summary = overall_verdict(findings)
     return {
         "cycle": cycle,
         "at": at,
@@ -63,6 +71,9 @@ def summarize_cycle(
             "upload_mbps": speed.upload_mbps,
             "bufferbloat_grade": speed.bufferbloat_grade,
         },
+        "status": status,
+        "score": score,
+        "finding_ids": [f.id for f in findings],
     }
 
 
@@ -75,6 +86,7 @@ class WatchSession:
     interface: str | None = None
     bind_ipv4: str | None = None
     cycles: list[dict] = field(default_factory=list)
+    alerts_fired: int = 0
 
     def add(self, summary: dict) -> None:
         self.cycles.append(summary)
@@ -106,6 +118,7 @@ class WatchSession:
                 "cycle_count": len(self.cycles),
                 "interface": self.interface,
                 "bind_ipv4": self.bind_ipv4,
+                "alerts_fired": self.alerts_fired,
             },
             "cycles": to_jsonable(self.cycles),
         }
@@ -129,12 +142,18 @@ def render_dashboard(session: WatchSession) -> Table:
             f"{row.get('loss_pct', 0)}%",
             sparkline(session.history(label)[-40:]),
         )
+    caption_parts: list[str] = []
+    if session.cycles:
+        last = session.cycles[-1]
+        caption_parts.append(f"verdict: {last.get('status', '?')} ({last.get('score', '?')}/100)")
     speed = next((c["speed"] for c in reversed(session.cycles) if c["speed"]), None)
     if speed:
-        table.caption = (
+        caption_parts.append(
             f"last speedtest: {speed['download_mbps']} / {speed['upload_mbps']} Mbps "
             f"via {speed['method']} · bufferbloat {speed['bufferbloat_grade']}"
         )
+    if caption_parts:
+        table.caption = " · ".join(caption_parts)
     return table
 
 
@@ -157,6 +176,16 @@ async def run_watch(settings: Settings, options) -> Path:
         hosts.append(("target-host", options.extra_host))
     console = Console()
     console.print(f"netsleuth {__version__} · watching every {session.interval_seconds}s · Ctrl-C to stop")
+
+    webhook_url = options.webhook or settings.watch.webhook_url
+    fire_on = set(settings.watch.webhook_on)
+    if webhook_url:
+        console.print(
+            f"[yellow]--watch will POST your ASN and finding titles to {webhook_url} "
+            f"on a verdict transition into {sorted(fire_on)}.[/yellow]"
+        )
+    previous_status: str | None = None
+    last_fired_at: float | None = None
 
     transport = httpx.AsyncHTTPTransport(local_address=bind.ipv4) if bind else None
     async with httpx.AsyncClient(
@@ -192,7 +221,27 @@ async def run_watch(settings: Settings, options) -> Path:
                             timeout=settings.timeouts.speedtest_seconds,
                         )
                         speed = result.data if result.status == "ok" else None
-                    session.add(summarize_cycle(cycle, utc_now_iso(), pings, speed))
+                    cycle_summary = summarize_cycle(cycle, utc_now_iso(), pings, speed, settings.thresholds)
+                    session.add(cycle_summary)
+                    current_status = cycle_summary["status"]
+                    if webhook_url and should_fire(
+                        previous_status,
+                        current_status,
+                        last_fired_at,
+                        time.perf_counter(),
+                        settings.watch.webhook_min_interval_seconds,
+                        fire_on,
+                    ):
+                        payload = build_payload(
+                            {"asn": session.asn, "interface": session.interface},
+                            cycle_summary,
+                            previous_status,
+                            current_status,
+                        )
+                        if await post_webhook(client, webhook_url, payload, settings.timeouts.http_seconds):
+                            last_fired_at = time.perf_counter()
+                            session.alerts_fired += 1
+                    previous_status = current_status
                     live.update(render_dashboard(session))
                     await asyncio.sleep(next_delay(began, time.perf_counter(), session.interval_seconds))
                     cycle += 1

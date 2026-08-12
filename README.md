@@ -80,7 +80,8 @@ None of this is required — netsleuth degrades gracefully without any of it —
 | `--target AS64500` / `--target 64500` / `--target 1.2.3.4` / `--target example.com` | Investigate a specific network instead of your own connection — the `AS` prefix on a bare ASN is optional |
 | `--target-host <ip\|domain>` | Add an extra host to the ping and traceroute fan-out |
 | `--speedtest-server <id\|url>` | Pin the speedtest to a specific server |
-| `--watch` | Continuous monitoring with a live dashboard — for catching intermittent drops. Writes one `logs/watch_*.json` time series per session, not one report per tick |
+| `--watch` | Continuous monitoring with a live dashboard — for catching intermittent drops. Writes one `logs/watch_*.json` time series per session, not one report per tick. Each tick gets a verdict (same scoring engine as a one-shot report) shown in the dashboard caption |
+| `--webhook <url>` | With `--watch`, POST a JSON alert to this URL on a verdict transition (into `warn`/`crit`, or into recovery if `watch.webhook_on` includes `"recovered"`). Debounced by `watch.webhook_min_interval_seconds` (floor 30s) so a flapping link can't spam it. Overrides `watch.webhook_url` in `config.yaml` |
 | `--compare a.json b.json` | Diff two earlier reports: before/after a VPN switch, before/after an ISP call. Read-only — no probing, no network calls. Reads reports produced with `--format json` |
 | `--trend N` | Sparkline trend across the last N saved JSON reports for this network. Read-only — resolves which network from the newest report already on disk, no probing needed |
 | `--no-auto-diff` | Skip the one-line vs-previous-run summary a run otherwise prints automatically when it writes JSON and an earlier JSON report for the same network exists |

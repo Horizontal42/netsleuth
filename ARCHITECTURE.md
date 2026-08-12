@@ -23,6 +23,7 @@ src/netsleuth/
   speed.py        Cascading speedtest, throughput math, cfL4 header parsing, bufferbloat probe.
   exporter.py     JSON and Markdown rendering, atomic writes into ./logs/. Which
                   artifacts get written is decided by the caller (cli.py), not here.
+  alerting.py     Pure webhook-transition contract (should_fire debounce) plus a plain httpx POST for --watch alerts.
   compare.py      --compare: diff two saved JSON reports; render_diff_brief() feeds the automatic vs-previous-run summary.
   history.py      Same-ASN report lookup by filename convention: report_key(), find_previous(), latest_key().
   trend.py        --trend N: aggregates N saved JSON reports into per-label sparkline series.
@@ -154,6 +155,12 @@ The AS prefix benchmark (`probes/prefix_benchmark.py`) gets the same treatment f
 
 **`--trend` needs no live network call to find "this network's" history.** Rather than re-running identity detection just to know which ASN's reports to load, `history.latest_key()` reads it back off the newest `report_*.json` filename already on disk — the same file-naming convention already encodes it, and a read-only historical view has no reason to touch the network at all.
 
+**`--watch` had no verdict at all before this, and giving it one came first.** `watch.py::run_watch()` only ever fanned out pings (plus an occasional speedtest) and rendered raw numbers — `interpret` was never imported. Wiring alerting to "a verdict transition" was impossible until there was a verdict to transition between, so `summarize_cycle()` now reuses the exact same pure `latency_findings()`/`speed_findings()`/`overall_verdict()` functions the one-shot report already uses, gaining `status`/`score`/`finding_ids` on every tick — a real improvement to the dashboard on its own, independent of whether a webhook is ever configured.
+
+**The whole webhook debounce contract lives in one pure function.** `alerting.should_fire(previous, current, last_fired_at, now, min_interval_s, fire_on)` decides everything: fires only on an actual transition (never on the first tick, since there's nothing to transition from), only into a state the user opted into (`watch.webhook_on`), and only after `webhook_min_interval_seconds` (floored at 30 in a validator) has elapsed since the last firing — a flapping link cannot spam the endpoint every tick. Recovery (`crit`/`warn` → `ok`/`info`) is its own opt-in token (`"recovered"`), not implied by configuring `"crit"`, because a user who wants to know about outages doesn't necessarily want a second ping when they end.
+
+**The webhook payload is a flat JSON body, not shaped for any particular chat platform.** `alerting.build_payload()` returns `{tool, asn, at, previous, current, score, findings, host}` — Slack/Discord-specific formatting is a concern for whatever receives the POST, not for netsleuth. `post_webhook()` swallows every `httpx`/`OSError` failure and returns `False`; a dead webhook endpoint must never interrupt the monitoring loop it's supposed to be watching.
+
 **Python 3.14 is the floor, not 3.10.** The project moved off `>=3.10` when this batch of probes was added; none of the new code actually depends on a 3.11+-only construct (`ssl.SSLObject.start_tls()`, `asyncio.timeout()`, `datetime.UTC`) — the two-sequential-connection TLS design above was chosen independently of what the interpreter allows. The version floor moved because there was no longer a reason to hold it back, not because a specific new feature required it.
 
 ## Storage
@@ -172,4 +179,4 @@ Five sections back the L4-L7 probes, all opt-in at the CLI level and all with a 
 
 ## Tests
 
-`uv run pytest -q`. Roughly 807 tests covering the parsers, normalizers, verdict engine, DNSBL decoding, throughput math, ping statistics, jitter percentiles, serialization and the report diff. Glue is deliberately untested: live HTTP, real ICMP, Typer wiring, `psutil`/`ctypes` calls and the `--watch` timing loop. Traceroute fixtures live in `tests/fixtures/traceroute/{windows,linux,darwin}/` and include a cp866-encoded Russian Windows sample, because that encoding is exactly what breaks naive parsers. DoH response fixtures (RFC 8484 JSON form) live in `tests/fixtures/api/doh_*.json` alongside the other provider fixtures.
+`uv run pytest -q`. Roughly 825 tests covering the parsers, normalizers, verdict engine, DNSBL decoding, throughput math, ping statistics, jitter percentiles, serialization and the report diff. Glue is deliberately untested: live HTTP, real ICMP, Typer wiring, `psutil`/`ctypes` calls and the `--watch` timing loop. Traceroute fixtures live in `tests/fixtures/traceroute/{windows,linux,darwin}/` and include a cp866-encoded Russian Windows sample, because that encoding is exactly what breaks naive parsers. DoH response fixtures (RFC 8484 JSON form) live in `tests/fixtures/api/doh_*.json` alongside the other provider fixtures.

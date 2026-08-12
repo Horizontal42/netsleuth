@@ -293,6 +293,35 @@ class Watch(BaseModel):
     interval_seconds: int = 60
     speedtest_every_n_cycles: int = 10
     dashboard_refresh_hz: int = 4
+    webhook_url: str | None = None
+    webhook_min_interval_seconds: int = 300
+    webhook_on: list[str] = Field(default_factory=lambda: ["warn", "crit"])
+
+    @field_validator("webhook_min_interval_seconds")
+    @classmethod
+    def _min_interval_floor(cls, value: int) -> int:
+        if value < 30:
+            raise ValueError(
+                "watch.webhook_min_interval_seconds may not be below 30 "
+                "(a flapping link must not be able to fire the webhook every tick)"
+            )
+        return value
+
+    @field_validator("webhook_on")
+    @classmethod
+    def _validate_webhook_on(cls, value: list[str]) -> list[str]:
+        allowed = {"ok", "info", "warn", "crit", "recovered"}
+        unknown = sorted(set(value) - allowed)
+        if unknown:
+            raise ValueError(f"watch.webhook_on has unknown entries {unknown}; expected a subset of {sorted(allowed)}")
+        return value
+
+    @field_validator("webhook_url")
+    @classmethod
+    def _validate_webhook_url(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith(("http://", "https://")):
+            raise ValueError("watch.webhook_url must start with http:// or https://")
+        return value
 
 
 class Settings(BaseSettings):

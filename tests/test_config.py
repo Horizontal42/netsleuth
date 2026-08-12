@@ -224,6 +224,34 @@ def test_tls_pinned_fingerprints_are_capped_at_32_entries(tmp_path):
         load_settings(config_path=path, env_file=tmp_path / "nope.env")
 
 
+def test_watch_webhook_min_interval_rejects_below_the_floor(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("watch:\n  webhook_min_interval_seconds: 29\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="below 30"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
+def test_watch_webhook_min_interval_accepts_the_floor(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("watch:\n  webhook_min_interval_seconds: 30\n", encoding="utf-8")
+    s = load_settings(config_path=path, env_file=tmp_path / "nope.env")
+    assert s.watch.webhook_min_interval_seconds == 30
+
+
+def test_watch_webhook_url_rejects_a_bad_scheme(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text('watch:\n  webhook_url: "ftp://example.com/hook"\n', encoding="utf-8")
+    with pytest.raises(ValidationError, match="http"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
+def test_watch_webhook_on_rejects_an_unknown_entry(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text('watch:\n  webhook_on: ["crit", "banana"]\n', encoding="utf-8")
+    with pytest.raises(ValidationError, match="banana"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
 def test_history_trend_default_reports_is_capped(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text("history:\n  trend_default_reports: 500\n", encoding="utf-8")

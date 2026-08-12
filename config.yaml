@@ -152,3 +152,9 @@ watch:
   interval_seconds: 60
   speedtest_every_n_cycles: 10
   dashboard_refresh_hz: 4
+  # Optional: POST a JSON alert on a verdict transition during --watch. Overridable
+  # per run with --webhook. min_interval_seconds is floored at 30 in code so a
+  # flapping link cannot fire the webhook every tick.
+  webhook_url: null
+  webhook_min_interval_seconds: 300
+  webhook_on: ["warn", "crit"]
