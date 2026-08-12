@@ -28,6 +28,7 @@ from netsleuth.interpret import (
     dual_stack_findings,
     gather_vpn_signals,
     latency_findings,
+    path_asn_findings,
     path_diversity_findings,
     path_findings,
     prefix_findings,
@@ -39,6 +40,7 @@ from netsleuth.models import BindTarget, Finding, IpGeo, LocalNet, ModuleResult,
 from netsleuth.netinfo import collect_local_net, detect_capabilities, iface_for_ip, is_tunnel_iface, primary_interface_ip
 from netsleuth.orchestration import gather_modules, run_module, utc_now_iso
 from netsleuth.probes.dns_leak import collect_dns_leak
+from netsleuth.probes.hop_asn import enrich_hops
 from netsleuth.probes.latency import ping_fanout, tcp_connect_rtt
 from netsleuth.probes.nat64 import detect_nat64
 from netsleuth.probes.traceroute import filter_trace_tiers, tier_order, traceroute
@@ -574,6 +576,22 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
             "dpi_check", _dpi_section(settings, options), timeout=timeouts.module_seconds
         )
 
+        # Phase 3c — per-hop ASN/AS-name/country enrichment. Mutates the trace hops
+        # in place; a lookup failure must never downgrade the trace itself, so only
+        # its warnings (not its status) get folded into modules["path"].
+        enrich_result = await run_module(
+            "path_enrich",
+            enrich_hops(
+                modules["path"].data or [],
+                origin_zone=settings.providers.cymru_origin_zone,
+                origin6_zone=settings.providers.cymru_origin6_zone,
+                asn_zone=settings.providers.cymru_asn_zone,
+                timeout=timeouts.dns_seconds,
+            ),
+            timeout=timeouts.module_seconds,
+        )
+        modules["path"].warnings.extend(enrich_result.warnings)
+
         # Phase 4 — speed, exclusive: nothing else is in flight at this point.
         pings = modules["latency"].data or []
         idle_rtt = min((p.avg_ms for p in pings if p.avg_ms is not None), default=None)
@@ -604,6 +622,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
     findings = _dedupe(
         latency_findings(pings, settings.thresholds)
         + [f for trace in traces for f in path_findings(trace, local, settings.thresholds)]
+        + [f for trace in traces for f in path_asn_findings(trace, geo.country_code)]
         + speed_findings(speed, settings.thresholds.bufferbloat_ms)
         + l7_findings
         + cgnat_findings(local, traces)

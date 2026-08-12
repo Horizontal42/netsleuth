@@ -36,6 +36,7 @@ src/netsleuth/
     prefix_benchmark.py --prefix-bench: ping the first host of a capped sample of the AS's announced prefixes.
     dpi_check.py       --my-server: single-host TCP RST/filtering self-diagnostic. Not a scanner — see Key decisions.
     nat64.py           One RFC 7050 AAAA query (ipv4only.arpa) to detect NAT64/464XLAT translation.
+    hop_asn.py         Per-hop ASN/AS-name/country/PTR enrichment via Team Cymru DNS, in-run deduped.
 ```
 
 **File-size exceptions.** The ~200-line guideline (Global Constraints) held for most modules, but these grew past it during implementation and were kept as single files rather than split, because each one is a single cohesive responsibility that splitting would only scatter across more files with a thinner reason to draw the line anywhere in particular:
@@ -131,6 +132,8 @@ The AS prefix benchmark (`probes/prefix_benchmark.py`) gets the same treatment f
 
 **The first traceroute hop is diagnosed separately from the rest of the path.** Loss or latency at hop 1 means the user's own router or Wi-Fi, not the ISP or anything downstream — `path_findings()` takes an optional `LocalNet` and, when supplied, compares the first hop's IP against the OS-observed default gateway before running the existing mid-path loss-jump logic, so the two questions ("is my LAN fine" vs "where does the wider path degrade") stay structurally separate rather than one drowning out the other.
 
+**Per-hop ASN enrichment is a separate phase after the trace completes, not folded into traceroute itself.** `TraceHop.asn`/`as_name` existed in the model since the original design but were never populated by any writer — `probes/hop_asn.py::enrich_hops()` fills them (plus a new `country` field and a PTR fallback for backends that don't resolve hostnames themselves) by collecting the unique set of hop IPs across every trace and firing one Team Cymru DNS query pair per IP, deduped in-run. This runs as its own `run_module("path_enrich", ...)` step in `cli.py` after the latency/path/TLS fan-out and before speed, and mutates the already-collected `TraceHop` objects in place; a lookup failure folds into that step's warnings only; it can never downgrade the trace's own `ModuleResult.status`. Team Cymru's DNS service has no rate limit (unlike the `cached_json()`-wrapped RIPEstat/CAIDA calls), so no disk cache is needed — only in-run dedup of repeated hop IPs.
+
 **Python 3.14 is the floor, not 3.10.** The project moved off `>=3.10` when this batch of probes was added; none of the new code actually depends on a 3.11+-only construct (`ssl.SSLObject.start_tls()`, `asyncio.timeout()`, `datetime.UTC`) — the two-sequential-connection TLS design above was chosen independently of what the interpreter allows. The version floor moved because there was no longer a reason to hold it back, not because a specific new feature required it.
 
 ## Storage
@@ -149,4 +152,4 @@ Five sections back the L4-L7 probes, all opt-in at the CLI level and all with a 
 
 ## Tests
 
-`uv run pytest -q`. Roughly 723 tests covering the parsers, normalizers, verdict engine, DNSBL decoding, throughput math, ping statistics, jitter percentiles, serialization and the report diff. Glue is deliberately untested: live HTTP, real ICMP, Typer wiring, `psutil`/`ctypes` calls and the `--watch` timing loop. Traceroute fixtures live in `tests/fixtures/traceroute/{windows,linux,darwin}/` and include a cp866-encoded Russian Windows sample, because that encoding is exactly what breaks naive parsers. DoH response fixtures (RFC 8484 JSON form) live in `tests/fixtures/api/doh_*.json` alongside the other provider fixtures.
+`uv run pytest -q`. Roughly 740 tests covering the parsers, normalizers, verdict engine, DNSBL decoding, throughput math, ping statistics, jitter percentiles, serialization and the report diff. Glue is deliberately untested: live HTTP, real ICMP, Typer wiring, `psutil`/`ctypes` calls and the `--watch` timing loop. Traceroute fixtures live in `tests/fixtures/traceroute/{windows,linux,darwin}/` and include a cp866-encoded Russian Windows sample, because that encoding is exactly what breaks naive parsers. DoH response fixtures (RFC 8484 JSON form) live in `tests/fixtures/api/doh_*.json` alongside the other provider fixtures.

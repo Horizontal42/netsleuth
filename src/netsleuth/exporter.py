@@ -609,9 +609,12 @@ def _path(report: dict, lang: str = "en") -> list[str]:
         ]
         for hop in hops:
             marker = " <<" if jump is not None and hop.get("ttl") == jump else ""
+            asn = hop.get("asn") or ""
+            country = hop.get("country") or ""
             lines.append(
                 f"{hop.get('ttl', 0):>3}  {(hop.get('ip') or '*'):<39} "
-                f"{_num(hop.get('avg_ms')):>8} ms  {hop.get('loss_pct', 0):>5}%  {_bar(hop.get('avg_ms'))}{marker}"
+                f"{_num(hop.get('avg_ms')):>8} ms  {hop.get('loss_pct', 0):>5}%  "
+                f"{asn:<8} {country:<2}  {_bar(hop.get('avg_ms'))}{marker}"
             )
         lines += ["```", ""]
     return lines

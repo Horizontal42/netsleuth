@@ -292,6 +292,7 @@ class TraceHop:
     reverse_dns: str | None = None
     asn: str | None = None
     as_name: str | None = None
+    country: str | None = None
     probes: list[float | None] = field(default_factory=list)
     loss_pct: float = 0.0
     min_ms: float | None = None

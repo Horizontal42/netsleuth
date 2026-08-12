@@ -77,6 +77,7 @@ class Providers(BaseModel):
     internetdb_url: str = "https://internetdb.shodan.io/"
     abuseipdb_url: str = "https://api.abuseipdb.com/api/v2/check"
     cymru_origin_zone: str = "origin.asn.cymru.com"
+    cymru_origin6_zone: str = "origin6.asn.cymru.com"
     cymru_asn_zone: str = "asn.cymru.com"
     ripestat_max_rows: int = 200
     ripestat_timeframe_days: int = 14

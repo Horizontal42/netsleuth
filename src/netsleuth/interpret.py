@@ -284,6 +284,38 @@ def dual_stack_findings(nat64_prefix: str | None, local: LocalNet) -> list[Findi
     ]
 
 
+def path_asn_findings(trace: TraceResult, client_country: str | None) -> list[Finding]:
+    if not client_country or len(trace.hops) < 2:
+        return []
+    final_country = trace.hops[-1].country
+    run: list[TraceHop] = []
+    for hop in trace.hops:
+        detour = bool(hop.country) and hop.country != client_country and hop.country != final_country
+        if not detour:
+            run = []
+            continue
+        run.append(hop)
+        if len(run) < 2:
+            continue
+        countries = ", ".join(dict.fromkeys(h.country for h in run if h.country))
+        first, last = run[0], run[-1]
+        return [
+            Finding(
+                id="path.detour_country",
+                severity="info",
+                title=f"Route to {trace.target} detours through {countries}",
+                detail=f"Hops {first.ttl}-{last.ttl} are in {countries}, neither your country ({client_country}) nor the destination's.",
+                metric="detour_countries",
+                value=countries,
+                advice="Not necessarily a problem, but it explains extra latency if the detour is geographically far.",
+                title_ru=f"Маршрут до {trace.target} идёт через {countries}",
+                detail_ru=f"Хопы {first.ttl}-{last.ttl} находятся в {countries} — не в вашей стране ({client_country}) и не в стране назначения.",
+                advice_ru="Не обязательно проблема, но объясняет дополнительную задержку, если крюк географически большой.",
+            )
+        ]
+    return []
+
+
 SIGNAL_WEIGHTS: dict[str, float] = {
     "tunnel_iface": 0.35,
     "cf_warp": 0.50,
