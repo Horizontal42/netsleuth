@@ -69,6 +69,20 @@ def rtt_stats(samples: list[float | None]) -> RttStats:
 
 
 def percentile(values: list[float], p: float) -> float:
+    """Return the p-th percentile of values.
+
+    Args:
+        values: A list of numeric values.
+        p: Percentile to compute (0-100).
+
+    Returns:
+        The p-th percentile value, or 0.0 if values is empty.
+
+    Raises:
+        ValueError: If p is outside the range [0, 100].
+    """
+    if not (0 <= p <= 100):
+        raise ValueError(f"percentile p must be in range [0, 100], got {p}")
     if not values:
         return 0.0
     ordered = sorted(values)
@@ -81,6 +95,16 @@ def percentile(values: list[float], p: float) -> float:
 
 
 class JitterMatrix(NamedTuple):
+    """Extended jitter statistics including percentiles and outlier analysis.
+
+    Attributes:
+        p50_ms: 50th percentile (median) RTT in milliseconds, or None.
+        p95_ms: 95th percentile RTT in milliseconds, or None.
+        p99_ms: 99th percentile RTT in milliseconds, or None.
+        stdev_ms: Standard deviation of RTT in milliseconds, or None.
+        cv: Coefficient of variation (stdev/mean), or None.
+        outlier_pct: Percentage of samples exceeding the 95th percentile (0-100).
+    """
     p50_ms: float | None
     p95_ms: float | None
     p99_ms: float | None
@@ -90,6 +114,20 @@ class JitterMatrix(NamedTuple):
 
 
 def jitter_matrix(samples: list[float | None]) -> JitterMatrix:
+    """Compute extended jitter statistics from RTT samples.
+
+    Calculates percentile distribution (p50/p95/p99), standard deviation,
+    coefficient of variation, and outlier percentage.
+
+    Args:
+        samples: A list of RTT measurements in milliseconds, where None represents
+            a lost/timeout probe.
+
+    Returns:
+        A JitterMatrix named tuple with percentile, stdev, CV, and outlier stats.
+        All fields except outlier_pct are None if no valid samples exist.
+        For a single sample, stdev, cv, and outlier_pct are 0.0.
+    """
     got = [s for s in samples if s is not None]
     if not got:
         return JitterMatrix(None, None, None, None, None, 0.0)
