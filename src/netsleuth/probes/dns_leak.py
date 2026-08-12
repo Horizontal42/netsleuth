@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 
-from netsleuth.models import AdapterLeakResult, DnsLeak
+import dns.asyncresolver
+import dns.exception
+
+from netsleuth.bgp import parse_cymru_origin
+from netsleuth.models import AdapterLeakResult, DnsLeak, LocalNet
 
 _LEAK_NOTE = (
     "This test only sees resolvers configured at the OS level. A browser using DoH "
@@ -91,14 +96,6 @@ def build_dns_leak(results: list[AdapterLeakResult], ecs_leaked: bool) -> DnsLea
         note_ru=" ".join(parts_ru),
     )
 
-
-import asyncio
-
-import dns.asyncresolver
-import dns.exception
-
-from netsleuth.bgp import parse_cymru_origin
-from netsleuth.models import LocalNet
 
 MYADDR_NAME = "o-o.myaddr.l.google.com"
 AKAHELP_NAME = "whoami.ds.akahelp.net"

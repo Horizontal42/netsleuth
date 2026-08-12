@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+from dataclasses import fields as dataclass_fields
 import ipaddress
 import re
 
+import httpx
+
+from netsleuth.config import Providers
 from netsleuth.models import CfTrace, IpGeo
 
 _AS_PREFIX_RE = re.compile(r"^AS(\d+)\s*(?P<name>.*)$", re.IGNORECASE)
@@ -168,8 +173,6 @@ def parse_cf_trace(text: str) -> CfTrace:
     )
 
 
-from dataclasses import fields as dataclass_fields
-
 _MERGE_SKIP = {"sources", "ip_type"}
 
 
@@ -209,13 +212,6 @@ def dual_stack_mismatch(v4: IpGeo | None, v6: IpGeo | None) -> tuple[str, str] |
         f"{v6.asn} ({v6.country_code}); два стека выходят через разные сети."
     )
     return en, ru
-
-
-import asyncio
-
-import httpx
-
-from netsleuth.config import Providers
 
 
 async def _json(client: httpx.AsyncClient, url: str, **kwargs) -> dict:

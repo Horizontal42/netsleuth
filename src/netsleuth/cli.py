@@ -131,10 +131,10 @@ def format_siblings(
 
 def _is_private_or_reserved_ip(ip: str) -> bool:
     """Проверяет, является ли IP адрес частным или зарезервированным.
-    
+
     Args:
         ip: IP адрес для проверки
-        
+
     Returns:
         True если IP частный/зарезервированный, False иначе
     """
@@ -172,18 +172,18 @@ def _is_private_or_reserved_ip(ip: str) -> bool:
 
 def parse_target(value: str) -> tuple[str, str]:
     """Парсит и валидирует целевой хост для диагностики.
-    
+
     Args:
         value: Строка с целью (IP, домен, ASN)
-        
+
     Returns:
         Кортеж (тип_цели, значение)
-        
+
     Raises:
         typer.BadParameter: Если цель невалидна или запрещена
     """
     text = value.strip()
-    
+
     # Проверка на частные/зарезервированные IP
     if all(part.isdigit() for part in text.split(".")) and text.count(".") == 3:
         if _is_private_or_reserved_ip(text):
@@ -191,7 +191,7 @@ def parse_target(value: str) -> tuple[str, str]:
                 f"Target IP {text} is private or reserved; "
                 "please use a public IP address or domain name"
             )
-    
+
     if text.upper().startswith("AS") and text[2:].isdigit():
         return "asn", text.upper()
     if text.isdigit():

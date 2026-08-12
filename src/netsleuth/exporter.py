@@ -105,7 +105,6 @@ def write_report(report: dict[str, Any], artifacts: dict[str, str], logs_dir: Pa
         for fmt, text in artifacts.items()
     ]
 
-from netsleuth.interpret import bufferbloat_consequence
 
 SPARK_CHARS = "▁▂▃▅▇"
 _BADGES = {"ok": "🟢", "info": "🟢", "warn": "🟡", "crit": "🔴"}

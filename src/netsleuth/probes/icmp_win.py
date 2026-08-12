@@ -25,7 +25,7 @@ if _IS_WINDOWS:
 
 class IcmpReply(NamedTuple):
     """ICMP echo reply data.
-    
+
     Attributes:
         address: Responder IP address or None
         status: Windows ICMP status code
@@ -40,10 +40,10 @@ class IcmpReply(NamedTuple):
 
 def classify_status(status: int) -> str:
     """Classify ICMP status code into human-readable category.
-    
+
     Args:
         status: Windows ICMP status code
-        
+
     Returns:
         One of: 'ok', 'ttl_expired', 'timeout', 'unreachable', 'error'
     """
@@ -60,14 +60,14 @@ def classify_status(status: int) -> str:
 
 def parse_echo_reply(buffer: bytes, pointer_size: int = 8) -> IcmpReply:
     """Parse Windows ICMP echo reply buffer.
-    
+
     Layout after the fixed head: the Data pointer is aligned to its own width,
     then IP_OPTION_INFORMATION starts with Ttl as its first byte.
-    
+
     Args:
         buffer: Raw buffer from IcmpSendEcho2
         pointer_size: Size of pointer on current architecture (4 or 8)
-        
+
     Returns:
         IcmpReply with parsed data
     """
@@ -96,7 +96,7 @@ class _IpOptionInformation(ctypes.Structure):
 
 def win_icmp_available() -> bool:
     """Check if Windows ICMP API is available.
-    
+
     Returns:
         True if running on Windows with Iphlpapi.dll available
     """
@@ -111,10 +111,10 @@ def win_icmp_available() -> bool:
 
 def _handle():
     """Create and configure Windows ICMP handle.
-    
+
     Returns:
         Tuple of (iphlpapi DLL, handle)
-        
+
     Raises:
         OSError: If not running on Windows or handle creation fails
     """
@@ -166,14 +166,14 @@ def echo_once(
     dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth", source_ip: str | None = None
 ) -> IcmpReply:
     """Send single ICMP echo request and parse reply.
-    
+
     Args:
         dest: Destination IP address
         ttl: Time-to-live value
         timeout_ms: Timeout in milliseconds
         payload: Echo payload bytes
         source_ip: Optional source IP to bind to
-        
+
     Returns:
         IcmpReply with response data
     """
@@ -223,14 +223,14 @@ def ping_samples_win(
     host: str, count: int, interval: float, timeout: float, source_ip: str | None = None
 ) -> list[float | None]:
     """Perform series of pings on Windows.
-    
+
     Args:
         host: Target hostname or IP
         count: Number of pings to send
         interval: Time between pings in seconds
         timeout: Per-ping timeout in seconds
         source_ip: Optional source IP to bind to
-        
+
     Returns:
         List of RTT values in ms (None for timeouts)
     """
@@ -254,17 +254,17 @@ def trace_hops_win(
     dest: str, max_hops: int, timeout_ms: int, source_ip: str | None = None
 ) -> list[tuple[int, IcmpReply]]:
     """Perform Windows ICMP traceroute.
-    
+
     timeout_ms is the TOTAL budget for the whole trace (all hops combined), not
     a per-hop timeout - a caller-supplied 60s budget across 30 hops must not turn
     into 30 minutes of blocking IcmpSendEcho2 calls.
-    
+
     Args:
         dest: Target hostname or IP
         max_hops: Maximum TTL/hops to probe
         timeout_ms: Total timeout budget for entire trace in milliseconds
         source_ip: Optional source IP to bind to
-        
+
     Returns:
         List of (ttl, IcmpReply) tuples for each hop
     """

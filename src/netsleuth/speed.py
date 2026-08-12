@@ -19,11 +19,11 @@ _CFL4_RE = re.compile(r'cfL4\s*;\s*desc\s*=\s*"?\??(?P<query>[^",]*)"?')
 
 def mbps(bytes_transferred: int, seconds: float) -> float:
     """Convert bytes transferred over duration to Mbps.
-    
+
     Args:
         bytes_transferred: Number of bytes transferred
         seconds: Time duration in seconds
-        
+
     Returns:
         Transfer rate in Mbps, or 0.0 if invalid input
     """
@@ -34,11 +34,11 @@ def mbps(bytes_transferred: int, seconds: float) -> float:
 
 def throughput_from_samples(samples: list[tuple[int, float]], p: float = 90.0) -> float:
     """Calculate throughput from size/duration samples at given percentile.
-    
+
     Args:
         samples: List of (bytes, seconds) tuples
         p: Percentile to use (default 90th)
-        
+
     Returns:
         Throughput in Mbps at the specified percentile
     """
@@ -65,10 +65,10 @@ def _us_to_ms(value: str | None) -> float | None:
 
 def parse_server_timing_cfl4(header: str) -> CfL4Stats | None:
     """Parse Cloudflare L4 stats from Server-Timing header.
-    
+
     Args:
         header: Server-Timing HTTP header value
-        
+
     Returns:
         CfL4Stats object or None if parsing fails
     """
@@ -89,11 +89,11 @@ def parse_server_timing_cfl4(header: str) -> CfL4Stats | None:
 
 def bufferbloat_delta(idle_rtt_ms: float | None, loaded_rtts_ms: list[float]) -> float | None:
     """Calculate bufferbloat as difference between loaded and idle RTT.
-    
+
     Args:
         idle_rtt_ms: Idle round-trip time in milliseconds
         loaded_rtts_ms: List of RTT measurements under load
-        
+
     Returns:
         Bufferbloat delta in ms, or None if insufficient data
     """
@@ -142,11 +142,11 @@ async def run_speed_cascade(
 
 def ookla_interface_args(iface_name: str | None, ipv4: str | None) -> list[str]:
     """Build Ookla CLI arguments for interface/IP selection.
-    
+
     Args:
         iface_name: Network interface name
         ipv4: IPv4 address to bind to
-        
+
     Returns:
         List of command-line arguments
     """
@@ -279,12 +279,12 @@ async def probe_while(
     interval: float,
 ) -> list[float]:
     """Run probes concurrently with a background task.
-    
+
     Args:
         coro: Background coroutine to run (e.g., download/upload)
         probe: Async function that returns RTT measurement or None
         interval: Time between probes in seconds
-        
+
     Returns:
         List of RTT measurements collected during execution
     """
@@ -309,10 +309,10 @@ async def measure_with_bufferbloat(
     interval: float,
 ) -> SpeedResult:
     """Measure bufferbloat by sampling RTT during saturated transfers.
-    
+
     This is the one place a measurement is allowed to overlap another: the
     whole point is to see what latency does while the link is saturated.
-    
+
     Args:
         result: SpeedResult to update with bufferbloat metrics
         idle_rtt_ms: Idle RTT baseline in milliseconds
@@ -321,7 +321,7 @@ async def measure_with_bufferbloat(
         run_upload: Coroutine to saturate upload
         probe: Function to measure RTT
         interval: Probe interval in seconds
-        
+
     Returns:
         Updated SpeedResult with bufferbloat metrics
     """

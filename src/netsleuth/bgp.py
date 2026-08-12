@@ -113,10 +113,10 @@ async def ripestat(
 
 def parse_asrank(payload: dict) -> tuple[int | None, int | None, int | None]:
     """Parse ASRank GraphQL response.
-    
+
     Args:
         payload: JSON response from ASRank API
-        
+
     Returns:
         Tuple of (rank, cone_asns, cone_prefixes) or None values
     """
@@ -127,10 +127,10 @@ def parse_asrank(payload: dict) -> tuple[int | None, int | None, int | None]:
 
 def parse_cymru_origin(txt_record: str) -> dict[str, str]:
     """Parse Team Cymru WHOIS TXT record.
-    
+
     Args:
         txt_record: Raw TXT record string with pipe-separated fields
-        
+
     Returns:
         Dict with asn, prefix, country, registry, allocated_at
     """
@@ -148,10 +148,10 @@ def parse_cymru_origin(txt_record: str) -> dict[str, str]:
 
 def parse_peeringdb_net(payload: dict) -> tuple[str | None, str | None, int | None]:
     """Parse PeeringDB network record.
-    
+
     Args:
         payload: JSON response from PeeringDB net endpoint
-        
+
     Returns:
         Tuple of (info_type, info_traffic, id)
     """
@@ -164,10 +164,10 @@ def parse_peeringdb_net(payload: dict) -> tuple[str | None, str | None, int | No
 
 def parse_peeringdb_netixlan(payload: dict) -> list[IxpPresence]:
     """Parse PeeringDB netixlan records into IXP presence list.
-    
+
     Args:
         payload: JSON response from PeeringDB netixlan endpoint
-        
+
     Returns:
         List of IxpPresence for operational exchanges
     """
@@ -190,13 +190,13 @@ async def cached_json(
     fetch: Callable[[], Awaitable[dict]],
 ) -> dict:
     """Fetch and cache JSON response with TTL.
-    
+
     Args:
         cache_dir: Directory to store cache files
         key: Cache key (used as filename)
         ttl_hours: Time-to-live in hours
         fetch: Async function to fetch data
-        
+
     Returns:
         Cached or fresh JSON payload
     """
@@ -231,10 +231,10 @@ class BgpContext:
 
 def build_bgp_intel(ctx: BgpContext) -> BgpIntel:
     """Build BgpIntel from collected context data.
-    
+
     Args:
         ctx: BgpContext with all raw API responses
-        
+
     Returns:
         Populated BgpIntel object
     """
