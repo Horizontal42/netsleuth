@@ -39,6 +39,7 @@ src/netsleuth/
     bgp_path.py        --path-diversity: CF-RAY edge colo lookup, international-routing-loop detection.
     prefix_benchmark.py --prefix-bench: ping the first host of a capped sample of the AS's announced prefixes.
     dpi_check.py       --my-server: single-host TCP RST/filtering self-diagnostic. Not a scanner — see Key decisions.
+    ecmp.py            --ecmp: pure N-run traceroute diff to spot per-hop load balancing. Backend-agnostic by design.
     nat64.py           One RFC 7050 AAAA query (ipv4only.arpa) to detect NAT64/464XLAT translation.
     hop_asn.py         Per-hop ASN/AS-name/country/PTR enrichment via Team Cymru DNS, in-run deduped.
     captive_portal.py  Phase-0 gate: three generate_204-style probes for a public-wifi login wall.
@@ -161,6 +162,10 @@ The AS prefix benchmark (`probes/prefix_benchmark.py`) gets the same treatment f
 
 **The webhook payload is a flat JSON body, not shaped for any particular chat platform.** `alerting.build_payload()` returns `{tool, asn, at, previous, current, score, findings, host}` — Slack/Discord-specific formatting is a concern for whatever receives the POST, not for netsleuth. `post_webhook()` swallows every `httpx`/`OSError` failure and returns `False`; a dead webhook endpoint must never interrupt the monitoring loop it's supposed to be watching.
 
+**ECMP detection diffs N independent traceroute runs, not one run's per-hop annotations.** BSD's `traceparse.py` already records a same-TTL-different-router signal as an `alt:` annotation, but that concept can't generalize: mtr's JSON aggregates cycles and discards per-cycle next-hop variance, `icmp_win`/`icmplib` send exactly one probe per TTL by construction, and the Linux system-traceroute parser doesn't model multi-IP hops even though the text can contain them. A finding that only ever fires on macOS and Linux-with-the-system-binary would be worse than not having it. `probes/ecmp.py::detect_ecmp()` instead takes N independently-run `TraceResult`s for the same target and diffs which IP appeared at each TTL across runs — this works identically regardless of which backend produced each trace, and the function itself never touches capability detection or backend choice at all.
+
+**`--ecmp` is opt-in and capped, and never joins `--full`.** It multiplies traceroute traffic against the same target by `ecmp.runs` (default 3, capped at 5) — per the trace-concurrency reasoning already established (parallel traces to the *same* target inflate each other's latency worse than parallel traces to different targets), this is deliberately sequential per target and shares one fresh semaphore across `ecmp.max_targets` (capped at 3) targets, run only after the main latency/path/TLS fan-out has already finished.
+
 **Python 3.14 is the floor, not 3.10.** The project moved off `>=3.10` when this batch of probes was added; none of the new code actually depends on a 3.11+-only construct (`ssl.SSLObject.start_tls()`, `asyncio.timeout()`, `datetime.UTC`) — the two-sequential-connection TLS design above was chosen independently of what the interpreter allows. The version floor moved because there was no longer a reason to hold it back, not because a specific new feature required it.
 
 ## Storage
@@ -179,4 +184,4 @@ Five sections back the L4-L7 probes, all opt-in at the CLI level and all with a 
 
 ## Tests
 
-`uv run pytest -q`. Roughly 825 tests covering the parsers, normalizers, verdict engine, DNSBL decoding, throughput math, ping statistics, jitter percentiles, serialization and the report diff. Glue is deliberately untested: live HTTP, real ICMP, Typer wiring, `psutil`/`ctypes` calls and the `--watch` timing loop. Traceroute fixtures live in `tests/fixtures/traceroute/{windows,linux,darwin}/` and include a cp866-encoded Russian Windows sample, because that encoding is exactly what breaks naive parsers. DoH response fixtures (RFC 8484 JSON form) live in `tests/fixtures/api/doh_*.json` alongside the other provider fixtures.
+`uv run pytest -q`. Roughly 837 tests covering the parsers, normalizers, verdict engine, DNSBL decoding, throughput math, ping statistics, jitter percentiles, serialization and the report diff. Glue is deliberately untested: live HTTP, real ICMP, Typer wiring, `psutil`/`ctypes` calls and the `--watch` timing loop. Traceroute fixtures live in `tests/fixtures/traceroute/{windows,linux,darwin}/` and include a cp866-encoded Russian Windows sample, because that encoding is exactly what breaks naive parsers. DoH response fixtures (RFC 8484 JSON form) live in `tests/fixtures/api/doh_*.json` alongside the other provider fixtures.

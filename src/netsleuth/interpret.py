@@ -8,6 +8,7 @@ from netsleuth.models import (
     DnsAdvanced,
     DnsLeak,
     DpiCheckResult,
+    EcmpReport,
     Finding,
     IpGeo,
     LocalNet,
@@ -315,6 +316,50 @@ def dual_stack_findings(nat64_prefix: str | None, local: LocalNet) -> list[Findi
             else "IPv4-only ресурсы доступны через трансляцию NAT64, хотя хост dual-stack.",
         )
     ]
+
+
+_ECMP_ASYMMETRIC_MS = 20.0
+
+
+def ecmp_findings(report: EcmpReport) -> list[Finding]:
+    if not report.divergent_ttls:
+        return []
+    findings: list[Finding] = [
+        Finding(
+            id=f"path.ecmp.{report.target}",
+            severity="info",
+            title=f"Multiple paths observed to {report.target}",
+            detail=report.note,
+            metric="divergent_ttls",
+            value=", ".join(str(t) for t in report.divergent_ttls),
+            advice="Normal on a load-balanced network; it just means repeated traceroutes to the same "
+            "target can legitimately show different hops at the same distance.",
+            title_ru=f"Обнаружено несколько маршрутов до {report.target}",
+            detail_ru=report.note_ru or report.note,
+            advice_ru="Нормально для сети с балансировкой нагрузки; означает лишь, что повторные "
+            "трассировки до одной цели могут честно показывать разные хопы на одном расстоянии.",
+        )
+    ]
+    worst = max(report.hops, key=lambda h: h.rtt_spread_ms or 0.0)
+    if (worst.rtt_spread_ms or 0.0) > _ECMP_ASYMMETRIC_MS:
+        findings.append(
+            Finding(
+                id=f"path.ecmp_asymmetric.{report.target}",
+                severity="warn",
+                title=f"Load-balanced paths to {report.target} are not equal",
+                detail=f"At TTL {worst.ttl}, next hops {worst.ips} differ by {worst.rtt_spread_ms} ms.",
+                metric="rtt_spread_ms",
+                value=worst.rtt_spread_ms,
+                threshold=_ECMP_ASYMMETRIC_MS,
+                advice="One branch of a load-balanced pair is degraded; this shows up as intermittent "
+                "slowness that a single traceroute run would never catch.",
+                title_ru=f"Балансируемые маршруты до {report.target} неравноценны",
+                detail_ru=f"На TTL {worst.ttl} следующие хопы {worst.ips} отличаются на {worst.rtt_spread_ms} мс.",
+                advice_ru="Одна из веток балансировки нагрузки деградировала; это проявляется как "
+                "прерывистая медлительность, которую один прогон трассировки никогда не поймает.",
+            )
+        )
+    return findings
 
 
 def path_asn_findings(trace: TraceResult, client_country: str | None) -> list[Finding]:

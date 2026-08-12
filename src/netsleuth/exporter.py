@@ -22,6 +22,7 @@ SECTION_ORDER = (
     "latency",
     "tls",
     "path",
+    "ecmp",
     "path_diversity",
     "prefix_benchmark",
     "dpi_check",
@@ -127,6 +128,7 @@ _WARNING_RU = {
     "speedtest skipped in target mode": "speedtest пропущен в режиме цели",
     "no throughput measured": "пропускная способность не измерена",
     "captive portal check disabled in config": "проверка captive portal отключена в конфиге",
+    "ecmp probe skipped: not requested": "проверка ECMP пропущена: не запрошена",
 }
 
 
@@ -255,6 +257,7 @@ _SECTION_TITLES = {
     "latency": "## Latency",
     "tls": "## TLS handshake",
     "path": "## Path",
+    "ecmp": "## ECMP / multipath",
     "path_diversity": "## Path diversity (Anycast)",
     "prefix_benchmark": "## AS prefix benchmark",
     "dpi_check": "## DPI / port check",
@@ -272,6 +275,7 @@ _SECTION_TITLES_RU = {
     "latency": "## Задержки",
     "tls": "## TLS-рукопожатие",
     "path": "## Маршрут",
+    "ecmp": "## ECMP / несколько маршрутов",
     "path_diversity": "## Диверсификация маршрута (Anycast)",
     "prefix_benchmark": "## Бенчмарк префиксов AS",
     "dpi_check": "## Проверка DPI / портов",
@@ -658,6 +662,33 @@ def _path(report: dict, lang: str = "en") -> list[str]:
     return lines
 
 
+def _ecmp(report: dict, lang: str = "en") -> list[str]:
+    title = _section_title("ecmp", lang)
+    note = unavailable(report, "ecmp", lang)
+    if note:
+        return [title, "", note, ""]
+    reports = _data(report, "ecmp") or []
+    lines = [title, ""]
+    for r in reports:
+        target = r.get("target") or "?"
+        if not r.get("divergent_ttls"):
+            lines += [f"- {target}: {_t(lang, 'single path across', 'единый маршрут во всех')} {r.get('runs', 0)} {_t(lang, 'runs', 'прогонах')}"]
+            continue
+        note_text = (r.get("note_ru") or r.get("note") or "") if lang == "ru" else (r.get("note") or "")
+        lines += [f"### {target}", "", note_text, ""]
+        lines += _table(
+            [_t(lang, "TTL", "TTL"), _t(lang, "Next hops", "Следующие хопы"), _t(lang, "RTT spread (ms)", "Разброс RTT (мс)")],
+            [
+                [str(h.get("ttl", "")), ", ".join(h.get("ips") or []), _num(h.get("rtt_spread_ms"))]
+                for h in r.get("hops") or []
+                if len(h.get("ips") or []) > 1
+            ],
+            lang,
+        )
+        lines.append("")
+    return lines + [""]
+
+
 def _speed(report: dict, lang: str = "en") -> list[str]:
     title = _section_title("speed", lang)
     note = unavailable(report, "speed", lang)
@@ -961,6 +992,7 @@ def render_markdown(
     lines += _latency(report, lang)
     lines += _tls(report, lang)
     lines += _path(report, lang)
+    lines += _ecmp(report, lang)
     lines += _path_diversity(report, lang)
     lines += _prefix_benchmark(report, lang)
     lines += _dpi_check(report, lang)

@@ -252,6 +252,20 @@ def test_watch_webhook_on_rejects_an_unknown_entry(tmp_path):
         load_settings(config_path=path, env_file=tmp_path / "nope.env")
 
 
+def test_ecmp_runs_are_capped(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("ecmp:\n  runs: 10\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="not exceed 5"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
+def test_ecmp_max_targets_are_capped(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("ecmp:\n  max_targets: 10\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="not exceed 3"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
 def test_history_trend_default_reports_is_capped(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text("history:\n  trend_default_reports: 500\n", encoding="utf-8")

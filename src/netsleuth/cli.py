@@ -28,6 +28,7 @@ from netsleuth.interpret import (
     dns_advanced_findings,
     dpi_findings,
     dual_stack_findings,
+    ecmp_findings,
     gather_vpn_signals,
     latency_findings,
     path_asn_findings,
@@ -89,6 +90,7 @@ class Options:
     dns_advanced: bool = False
     path_diversity: bool = False
     prefix_bench: bool = False
+    ecmp: bool = False
     dpi_target: str | None = None
     formats: frozenset[str] = frozenset({"md"})
     interface: str | None = None
@@ -397,6 +399,35 @@ async def _dpi_section(settings: Settings, options: Options) -> ModuleResult:
     return ModuleResult(name="dpi_check", status="ok", data=result)
 
 
+async def _ecmp_section(caps, settings: Settings, options: Options, cycles: int) -> ModuleResult:
+    if not options.ecmp:
+        return ModuleResult(name="ecmp", status="skipped", warnings=["ecmp probe skipped: not requested"])
+    from netsleuth.probes.ecmp import detect_ecmp
+
+    cfg = settings.ecmp
+    targets = [(h.label, h.host) for h in settings.probing.reference_hosts[: cfg.max_targets]]
+    semaphore = asyncio.Semaphore(settings.probing.trace_concurrency)
+    reports = []
+    for _label, host in targets:
+        runs = await asyncio.gather(
+            *(
+                traceroute(
+                    host,
+                    caps,
+                    max_hops=settings.probing.max_hops,
+                    cycles=cycles,
+                    timeout=settings.timeouts.subprocess_seconds,
+                    semaphore=semaphore,
+                    tcp_trace=options.tcp_trace,
+                    source_ip=options.bind.ipv4 if options.bind else None,
+                )
+                for _ in range(cfg.runs)
+            )
+        )
+        reports.append(detect_ecmp(list(runs)))
+    return ModuleResult(name="ecmp", status="ok", data=reports)
+
+
 async def _traces(hosts, caps, settings: Settings, cycles: int, options: Options):
     semaphore = asyncio.Semaphore(settings.probing.trace_concurrency)
     return list(
@@ -608,6 +639,9 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         modules["dpi_check"] = await run_module(
             "dpi_check", _dpi_section(settings, options), timeout=timeouts.module_seconds
         )
+        modules["ecmp"] = await run_module(
+            "ecmp", _ecmp_section(caps, settings, options, cycles), timeout=timeouts.subprocess_seconds
+        )
 
         # Phase 3c — per-hop ASN/AS-name/country enrichment. Mutates the trace hops
         # in place; a lookup failure must never downgrade the trace itself, so only
@@ -661,6 +695,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         + cgnat_findings(local, traces)
         + dual_stack_findings(bundle.get("nat64_prefix"), local)
         + captive_portal_findings(modules["captive_portal"].data or CaptivePortal())
+        + [f for report in (modules["ecmp"].data or []) for f in ecmp_findings(report)]
     )
 
     # Phase 6 — export
@@ -796,6 +831,11 @@ def run(
         "--prefix-bench",
         help="Ping the first host of a handful of your own AS's announced prefixes to find the lowest-latency PoP.",
     ),
+    ecmp: bool = typer.Option(
+        False,
+        "--ecmp",
+        help="Trace a handful of reference hosts multiple times to detect per-hop load balancing (ECMP).",
+    ),
     my_server: Optional[str] = typer.Option(
         None,
         "--my-server",
@@ -867,6 +907,7 @@ def run(
         dns_advanced=dns_advanced or full,
         path_diversity=path_diversity or full,
         prefix_bench=prefix_bench,
+        ecmp=ecmp,
         dpi_target=my_server,
         formats=formats,
         webhook=webhook,

@@ -504,6 +504,24 @@ class CaptivePortal:
             raise ValueError(f"unknown CaptivePortal verdict: {self.verdict!r}")
 
 
+@dataclass
+class EcmpHop:
+    ttl: int
+    ips: list[str] = field(default_factory=list)
+    asns: list[str] = field(default_factory=list)
+    rtt_spread_ms: float | None = None
+
+
+@dataclass
+class EcmpReport:
+    target: str | None = None
+    runs: int = 0
+    hops: list[EcmpHop] = field(default_factory=list)
+    divergent_ttls: list[int] = field(default_factory=list)
+    note: str = ""
+    note_ru: str | None = None
+
+
 def to_jsonable(obj: Any) -> Any:
     if obj is None or isinstance(obj, (str, bool, int)):
         return obj

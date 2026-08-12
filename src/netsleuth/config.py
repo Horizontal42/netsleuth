@@ -222,6 +222,25 @@ class DnsAdvancedConfig(BaseModel):
     bogus_probe_name: str = "cloudflare.com"
 
 
+class EcmpConfig(BaseModel):
+    runs: int = 3
+    max_targets: int = 2
+
+    @field_validator("runs")
+    @classmethod
+    def _cap_runs(cls, value: int) -> int:
+        if value > 5:
+            raise ValueError("ecmp.runs may not exceed 5 (this diffs a handful of runs, not a path-sampling campaign)")
+        return value
+
+    @field_validator("max_targets")
+    @classmethod
+    def _cap_max_targets(cls, value: int) -> int:
+        if value > 3:
+            raise ValueError("ecmp.max_targets may not exceed 3")
+        return value
+
+
 class CaptivePortalConfig(BaseModel):
     enabled: bool = True
     check_urls: list[str] = Field(
@@ -348,6 +367,7 @@ class Settings(BaseSettings):
     dns_advanced: DnsAdvancedConfig = DnsAdvancedConfig()
     path_diversity: PathDiversityConfig = PathDiversityConfig()
     captive_portal: CaptivePortalConfig = CaptivePortalConfig()
+    ecmp: EcmpConfig = EcmpConfig()
 
     ipinfo_token: SecretStr | None = Field(default=None, alias="IPINFO_TOKEN")
     peeringdb_api_key: SecretStr | None = Field(default=None, alias="PEERINGDB_API_KEY")
