@@ -17,13 +17,76 @@ ERROR_KINDS = (
     "no_privilege",
     "not_applicable",
 )
-STATUSES = ("ok", "partial", "failed", "skipped")
-SEVERITIES = ("ok", "info", "warn", "crit")
-DIRECTIONS = ("vpn", "clean")
-PORT_STATES = ("open", "closed", "filtered", "reset", "error")
-DPI_VERDICTS = ("clean", "partial_filtering", "reset_injection", "unreachable", "unknown")
-RESOLVER_KINDS = ("system", "doh")
-EDGE_SOURCES = ("cf_ray", "cf_trace", "server_timing", "none")
+
+
+class StatusEnum(str, Enum):
+    """Module execution status."""
+
+    OK = "ok"
+    PARTIAL = "partial"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class SeverityEnum(str, Enum):
+    """Finding severity levels."""
+
+    OK = "ok"
+    INFO = "info"
+    WARN = "warn"
+    CRIT = "crit"
+
+
+class DirectionEnum(str, Enum):
+    """Signal direction for VPN detection."""
+
+    VPN = "vpn"
+    CLEAN = "clean"
+
+
+class PortStateEnum(str, Enum):
+    """Port probe states."""
+
+    OPEN = "open"
+    CLOSED = "closed"
+    FILTERED = "filtered"
+    RESET = "reset"
+    ERROR = "error"
+
+
+class DpiVerdictEnum(str, Enum):
+    """DPI check verdicts."""
+
+    CLEAN = "clean"
+    PARTIAL_FILTERING = "partial_filtering"
+    RESET_INJECTION = "reset_injection"
+    UNREACHABLE = "unreachable"
+    UNKNOWN = "unknown"
+
+
+class ResolverKindEnum(str, Enum):
+    """DNS resolver kinds."""
+
+    SYSTEM = "system"
+    DOH = "doh"
+
+
+class EdgeSourceEnum(str, Enum):
+    """Edge source types for anycast path analysis."""
+
+    CF_RAY = "cf_ray"
+    CF_TRACE = "cf_trace"
+    SERVER_TIMING = "server_timing"
+    NONE = "none"
+
+
+STATUSES = tuple(e.value for e in StatusEnum)
+SEVERITIES = tuple(e.value for e in SeverityEnum)
+DIRECTIONS = tuple(e.value for e in DirectionEnum)
+PORT_STATES = tuple(e.value for e in PortStateEnum)
+DPI_VERDICTS = tuple(e.value for e in DpiVerdictEnum)
+RESOLVER_KINDS = tuple(e.value for e in ResolverKindEnum)
+EDGE_SOURCES = tuple(e.value for e in EdgeSourceEnum)
 
 
 @dataclass
