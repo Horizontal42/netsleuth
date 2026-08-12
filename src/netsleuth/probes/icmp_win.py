@@ -8,6 +8,8 @@ IP_DEST_NET_UNREACHABLE = 11002
 IP_DEST_HOST_UNREACHABLE = 11003
 IP_REQ_TIMED_OUT = 11010
 IP_TTL_EXPIRED_TRANSIT = 11013
+IP_PACKET_TOO_BIG = 11009
+IP_FLAG_DF = 0x02
 
 _UNREACHABLE = {IP_DEST_NET_UNREACHABLE, IP_DEST_HOST_UNREACHABLE, 11001, 11004}
 _HEAD = struct.Struct("<4BIIHH")
@@ -27,6 +29,8 @@ def classify_status(status: int) -> str:
         return "ttl_expired"
     if status == IP_REQ_TIMED_OUT:
         return "timeout"
+    if status == IP_PACKET_TOO_BIG:
+        return "packet_too_big"
     if status in _UNREACHABLE:
         return "unreachable"
     return "error"
@@ -125,11 +129,18 @@ def _handle():
 
 
 def echo_once(
-    dest: str, ttl: int, timeout_ms: int, payload: bytes = b"netsleuth", source_ip: str | None = None
+    dest: str,
+    ttl: int,
+    timeout_ms: int,
+    payload: bytes = b"netsleuth",
+    source_ip: str | None = None,
+    df: bool = False,
 ) -> IcmpReply:
     iphlpapi, handle = _handle()
     try:
-        options = _IpOptionInformation(Ttl=ttl, Tos=0, Flags=0, OptionsSize=0, OptionsData=None)
+        options = _IpOptionInformation(
+            Ttl=ttl, Tos=0, Flags=IP_FLAG_DF if df else 0, OptionsSize=0, OptionsData=None
+        )
         buffer = ctypes.create_string_buffer(_REPLY_BUFFER_SIZE)
         address = struct.unpack("<I", socket.inet_aton(dest))[0]
         if source_ip:

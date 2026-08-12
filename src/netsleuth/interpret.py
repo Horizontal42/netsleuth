@@ -14,6 +14,7 @@ from netsleuth.models import (
     LocalNet,
     PathDiversity,
     PingResult,
+    PmtuResult,
     PrefixBenchmark,
     Signal,
     SpeedResult,
@@ -373,6 +374,67 @@ def dual_stack_findings(nat64_prefix: str | None, local: LocalNet) -> list[Findi
     ]
 
 
+def pmtud_findings(result: PmtuResult) -> list[Finding]:
+    findings: list[Finding] = []
+    if result.verdict == "blackhole":
+        findings.append(
+            Finding(
+                id=f"path.pmtu_blackhole.{result.host}",
+                severity="crit",
+                title=f"Path MTU to {result.host} is blackholed",
+                detail=result.note,
+                metric="discovered_mtu",
+                value=result.discovered_mtu,
+                advice="Symptom: SSH connects then hangs, some sites load partially. "
+                "Clamp MSS on the router or lower the tunnel MTU.",
+                title_ru=f"MTU пути до {result.host} — чёрная дыра",
+                detail_ru=result.note_ru or result.note,
+                advice_ru="Симптом: SSH подключается и зависает, некоторые сайты грузятся частично. "
+                "Зажмите MSS на роутере или снизьте MTU туннеля.",
+            )
+        )
+    elif result.verdict == "reduced":
+        below = _STANDARD_MTU - (result.discovered_mtu or _STANDARD_MTU)
+        findings.append(
+            Finding(
+                id=f"path.pmtu_reduced.{result.host}",
+                severity="warn" if below > 100 else "info",
+                title=f"Path MTU to {result.host} is reduced",
+                detail=result.note,
+                metric="discovered_mtu",
+                value=result.discovered_mtu,
+                threshold=_STANDARD_MTU,
+                advice="Expected behind a VPN/tunnel; if unexpected, a middlebox on the path is clamping MTU.",
+                title_ru=f"MTU пути до {result.host} снижен",
+                detail_ru=result.note_ru or result.note,
+                advice_ru="Ожидаемо за VPN/туннелем; если неожиданно — на пути есть middlebox, урезающий MTU.",
+            )
+        )
+    if (
+        result.discovered_mtu is not None
+        and result.iface_mtu is not None
+        and result.discovered_mtu < result.iface_mtu
+    ):
+        findings.append(
+            Finding(
+                id=f"path.pmtu_below_iface_mtu.{result.host}",
+                severity="info",
+                title=f"Path MTU to {result.host} is narrower than the local interface",
+                detail=f"Path MTU is {result.discovered_mtu} bytes, local interface MTU is {result.iface_mtu} bytes.",
+                metric="discovered_mtu",
+                value=result.discovered_mtu,
+                advice="This is exactly what makes a path MTU problem invisible locally — "
+                "everything on this machine looks fine.",
+                title_ru=f"MTU пути до {result.host} уже, чем у локального интерфейса",
+                detail_ru=f"MTU пути — {result.discovered_mtu} байт, MTU локального интерфейса — {result.iface_mtu} байт.",
+                advice_ru="Именно поэтому проблема MTU пути невидима локально — "
+                "на этой машине всё выглядит нормально.",
+            )
+        )
+    return findings
+
+
+_STANDARD_MTU = 1500
 _ECMP_ASYMMETRIC_MS = 20.0
 
 

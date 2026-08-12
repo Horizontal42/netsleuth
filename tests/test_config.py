@@ -267,6 +267,30 @@ def test_probing_ipv6_accepts_each_known_value(tmp_path):
         assert s.probing.ipv6 == value
 
 
+def test_pmtud_targets_are_capped(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        'pmtud:\n  targets: [{label: a, host: a.com}, {label: b, host: b.com}, {label: c, host: c.com}]\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError, match="at most 2"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
+def test_pmtud_max_bytes_is_capped_at_jumbo_frame_ceiling(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("pmtud:\n  max_bytes: 20000\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="9000"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
+def test_pmtud_max_bytes_must_exceed_min_bytes(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("pmtud:\n  min_bytes: 1000\n  max_bytes: 900\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="greater than"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
 def test_ecmp_runs_are_capped(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text("ecmp:\n  runs: 10\n", encoding="utf-8")

@@ -23,6 +23,7 @@ SECTION_ORDER = (
     "tls",
     "path",
     "ecmp",
+    "pmtud",
     "path_diversity",
     "prefix_benchmark",
     "dpi_check",
@@ -129,6 +130,7 @@ _WARNING_RU = {
     "no throughput measured": "пропускная способность не измерена",
     "captive portal check disabled in config": "проверка captive portal отключена в конфиге",
     "ecmp probe skipped: not requested": "проверка ECMP пропущена: не запрошена",
+    "pmtud probe skipped: not requested": "проверка PMTUD пропущена: не запрошена",
 }
 
 
@@ -258,6 +260,7 @@ _SECTION_TITLES = {
     "tls": "## TLS handshake",
     "path": "## Path",
     "ecmp": "## ECMP / multipath",
+    "pmtud": "## Path MTU discovery",
     "path_diversity": "## Path diversity (Anycast)",
     "prefix_benchmark": "## AS prefix benchmark",
     "dpi_check": "## DPI / port check",
@@ -276,6 +279,7 @@ _SECTION_TITLES_RU = {
     "tls": "## TLS-рукопожатие",
     "path": "## Маршрут",
     "ecmp": "## ECMP / несколько маршрутов",
+    "pmtud": "## Обнаружение MTU пути",
     "path_diversity": "## Диверсификация маршрута (Anycast)",
     "prefix_benchmark": "## Бенчмарк префиксов AS",
     "dpi_check": "## Проверка DPI / портов",
@@ -689,6 +693,38 @@ def _ecmp(report: dict, lang: str = "en") -> list[str]:
     return lines + [""]
 
 
+_PMTU_VERDICT_RU = {"ok": "ок", "reduced": "снижен", "blackhole": "чёрная дыра", "unknown": "неизвестно"}
+
+
+def _pmtud(report: dict, lang: str = "en") -> list[str]:
+    title = _section_title("pmtud", lang)
+    note = unavailable(report, "pmtud", lang)
+    if note:
+        return [title, "", note, ""]
+    results = _data(report, "pmtud") or []
+    lines = [title, ""] + _table(
+        [
+            _t(lang, "Host", "Хост"),
+            _t(lang, "Verdict", "Вердикт"),
+            _t(lang, "Discovered MTU", "Найденный MTU"),
+            _t(lang, "Iface MTU", "MTU интерфейса"),
+            _t(lang, "Note", "Примечание"),
+        ],
+        [
+            [
+                r.get("host", ""),
+                r.get("verdict", "unknown") if lang == "en" else _PMTU_VERDICT_RU.get(r.get("verdict"), r.get("verdict")),
+                _num(r.get("discovered_mtu")),
+                _num(r.get("iface_mtu")),
+                (r.get("note_ru") or r.get("note") or "") if lang == "ru" else (r.get("note") or ""),
+            ]
+            for r in results
+        ],
+        lang,
+    )
+    return lines + [""]
+
+
 def _speed(report: dict, lang: str = "en") -> list[str]:
     title = _section_title("speed", lang)
     note = unavailable(report, "speed", lang)
@@ -993,6 +1029,7 @@ def render_markdown(
     lines += _tls(report, lang)
     lines += _path(report, lang)
     lines += _ecmp(report, lang)
+    lines += _pmtud(report, lang)
     lines += _path_diversity(report, lang)
     lines += _prefix_benchmark(report, lang)
     lines += _dpi_check(report, lang)

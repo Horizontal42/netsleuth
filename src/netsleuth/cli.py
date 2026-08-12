@@ -35,6 +35,7 @@ from netsleuth.interpret import (
     path_asn_findings,
     path_diversity_findings,
     path_findings,
+    pmtud_findings,
     prefix_findings,
     speed_findings,
     tls_findings,
@@ -92,6 +93,7 @@ class Options:
     path_diversity: bool = False
     prefix_bench: bool = False
     ecmp: bool = False
+    pmtud: bool = False
     ipv6: Optional[bool] = None
     dpi_target: str | None = None
     formats: frozenset[str] = frozenset({"md"})
@@ -401,6 +403,27 @@ async def _dpi_section(settings: Settings, options: Options) -> ModuleResult:
     return ModuleResult(name="dpi_check", status="ok", data=result)
 
 
+async def _pmtud_section(settings: Settings, options: Options, iface_mtu: int | None) -> ModuleResult:
+    if not options.pmtud:
+        return ModuleResult(name="pmtud", status="skipped", warnings=["pmtud probe skipped: not requested"])
+    from netsleuth.probes.pmtud import probe_pmtu
+
+    cfg = settings.pmtud
+    results = []
+    for target in cfg.targets:
+        results.append(
+            await probe_pmtu(
+                target.host,
+                low=cfg.min_bytes,
+                high=cfg.max_bytes,
+                timeout=cfg.probe_timeout_seconds,
+                iface_mtu=iface_mtu,
+                source_ip=options.bind.ipv4 if options.bind else None,
+            )
+        )
+    return ModuleResult(name="pmtud", status="ok", data=results)
+
+
 async def _ecmp_section(caps, settings: Settings, options: Options, cycles: int) -> ModuleResult:
     if not options.ecmp:
         return ModuleResult(name="ecmp", status="skipped", warnings=["ecmp probe skipped: not requested"])
@@ -663,6 +686,9 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         modules["ecmp"] = await run_module(
             "ecmp", _ecmp_section(caps, settings, options, cycles), timeout=timeouts.subprocess_seconds
         )
+        modules["pmtud"] = await run_module(
+            "pmtud", _pmtud_section(settings, options, local.iface_mtu), timeout=timeouts.subprocess_seconds
+        )
 
         # Phase 3c — per-hop ASN/AS-name/country enrichment. Mutates the trace hops
         # in place; a lookup failure must never downgrade the trace itself, so only
@@ -717,6 +743,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         + dual_stack_findings(bundle.get("nat64_prefix"), local)
         + captive_portal_findings(modules["captive_portal"].data or CaptivePortal())
         + [f for report in (modules["ecmp"].data or []) for f in ecmp_findings(report)]
+        + [f for result in (modules["pmtud"].data or []) for f in pmtud_findings(result)]
         + dual_family_findings(pings)
     )
 
@@ -863,6 +890,11 @@ def run(
         "--ipv6/--no-ipv6",
         help="Also measure latency to IPv6 reference hosts (default: auto, only on a dual-stack connection).",
     ),
+    pmtud: bool = typer.Option(
+        False,
+        "--pmtud",
+        help="Binary-search the largest DF-set packet that reaches each pmtud.target, to catch a PMTUD blackhole.",
+    ),
     my_server: Optional[str] = typer.Option(
         None,
         "--my-server",
@@ -935,6 +967,7 @@ def run(
         path_diversity=path_diversity or full,
         prefix_bench=prefix_bench,
         ecmp=ecmp,
+        pmtud=pmtud,
         ipv6=ipv6,
         dpi_target=my_server,
         formats=formats,

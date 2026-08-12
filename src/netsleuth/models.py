@@ -25,6 +25,7 @@ DPI_VERDICTS = ("clean", "partial_filtering", "reset_injection", "unreachable", 
 RESOLVER_KINDS = ("system", "doh")
 EDGE_SOURCES = ("cf_ray", "cf_trace", "server_timing", "none")
 PORTAL_VERDICTS = ("clean", "portal", "suspect", "error")
+PMTU_VERDICTS = ("ok", "reduced", "blackhole", "unknown")
 
 
 @dataclass
@@ -520,6 +521,23 @@ class EcmpReport:
     divergent_ttls: list[int] = field(default_factory=list)
     note: str = ""
     note_ru: str | None = None
+
+
+@dataclass
+class PmtuResult:
+    host: str
+    resolved_ip: str | None = None
+    method: str = "none"
+    discovered_mtu: int | None = None
+    iface_mtu: int | None = None
+    verdict: str = "unknown"
+    probes: list[tuple[int, bool]] = field(default_factory=list)
+    note: str = ""
+    note_ru: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.verdict not in PMTU_VERDICTS:
+            raise ValueError(f"unknown PmtuResult verdict: {self.verdict!r}")
 
 
 def to_jsonable(obj: Any) -> Any:

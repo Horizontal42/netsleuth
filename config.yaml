@@ -132,6 +132,17 @@ path_diversity:
 # Runs first, before any other probe. Checks a handful of known generate_204-style
 # endpoints for a redirect/tampered response, the classic signature of a public-wifi
 # login wall. check_urls is capped at 4 in code.
+# Opt-in via --pmtud. Binary-searches for the largest DF-set packet that gets
+# through to each target, to catch a VPN/PPPoE-style PMTUD blackhole. targets is
+# capped at 2 in code: this is a path-MTU sweep, not a scan.
+pmtud:
+  targets:
+    - { label: "cloudflare", host: "cloudflare.com" }
+    - { label: "google", host: "google.com" }
+  min_bytes: 576
+  max_bytes: 1500
+  probe_timeout_seconds: 2.0
+
 # Opt-in via --ecmp. Traces the first few reference hosts multiple times to spot
 # per-TTL load balancing (different next hops across runs). runs/max_targets are
 # capped in code: this diffs a handful of runs, not a path-sampling campaign.

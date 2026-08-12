@@ -6,6 +6,7 @@ import pytest
 
 from netsleuth.probes.icmp_win import (
     IP_DEST_HOST_UNREACHABLE,
+    IP_PACKET_TOO_BIG,
     IP_REQ_TIMED_OUT,
     IP_SUCCESS,
     IP_TTL_EXPIRED_TRANSIT,
@@ -76,6 +77,7 @@ def test_a_truncated_buffer_is_reported_as_an_error_not_an_exception():
         (IP_TTL_EXPIRED_TRANSIT, "ttl_expired"),
         (IP_REQ_TIMED_OUT, "timeout"),
         (IP_DEST_HOST_UNREACHABLE, "unreachable"),
+        (IP_PACKET_TOO_BIG, "packet_too_big"),
         (-1, "error"),
         (11050, "error"),
     ],

@@ -238,6 +238,35 @@ class DnsAdvancedConfig(BaseModel):
     bogus_probe_name: str = "cloudflare.com"
 
 
+class PmtudConfig(BaseModel):
+    targets: list[HostSpec] = Field(
+        default_factory=lambda: [
+            HostSpec(label="cloudflare", host="cloudflare.com"),
+            HostSpec(label="google", host="google.com"),
+        ]
+    )
+    min_bytes: int = 576
+    max_bytes: int = 1500
+    probe_timeout_seconds: float = 2.0
+
+    @field_validator("targets")
+    @classmethod
+    def _cap_targets(cls, value: list[HostSpec]) -> list[HostSpec]:
+        if len(value) > 2:
+            raise ValueError("pmtud.targets may list at most 2 hosts (this is a path-MTU sweep, not a scan)")
+        return value
+
+    @field_validator("max_bytes")
+    @classmethod
+    def _validate_max_bytes(cls, value: int, info) -> int:
+        if value > 9000:
+            raise ValueError("pmtud.max_bytes may not exceed 9000 (jumbo-frame ceiling)")
+        min_bytes = info.data.get("min_bytes")
+        if min_bytes is not None and value <= min_bytes:
+            raise ValueError("pmtud.max_bytes must be greater than pmtud.min_bytes")
+        return value
+
+
 class EcmpConfig(BaseModel):
     runs: int = 3
     max_targets: int = 2
@@ -384,6 +413,7 @@ class Settings(BaseSettings):
     path_diversity: PathDiversityConfig = PathDiversityConfig()
     captive_portal: CaptivePortalConfig = CaptivePortalConfig()
     ecmp: EcmpConfig = EcmpConfig()
+    pmtud: PmtudConfig = PmtudConfig()
 
     ipinfo_token: SecretStr | None = Field(default=None, alias="IPINFO_TOKEN")
     peeringdb_api_key: SecretStr | None = Field(default=None, alias="PEERINGDB_API_KEY")
