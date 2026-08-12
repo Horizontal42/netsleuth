@@ -57,12 +57,12 @@ None of this is required — netsleuth degrades gracefully without any of it —
 
 ## What it does
 
-- **Identity** — egress IPv4 *and* IPv6, reverse DNS, ASN, organisation, geo, and whether the address looks residential, mobile, hosting or business. Cross-checked across six independent providers so one rate limit does not blank the answer.
+- **Identity** — egress IPv4 *and* IPv6, reverse DNS, ASN, organisation, geo, and whether the address looks residential, mobile, hosting or business. Cross-checked across six independent providers so one rate limit does not blank the answer. Also flags carrier-grade NAT (RFC 6598) and NAT64/464XLAT translation (RFC 7050) when present.
 - **VPN / proxy assessment** — a weighted verdict (`none` / `likely` / `confirmed`) built from tunnel interfaces, MTU anomalies, gateway-vs-egress mismatch, Cloudflare WARP flags, provider proxy/hosting flags, PeeringDB network type, timezone-vs-geo mismatch, and DNS resolver ASN mismatch.
 - **DNS leak test** — enumerates resolvers *per network adapter*, so it catches the classic case where the tunnel adapter is clean but the Wi-Fi adapter still holds the ISP resolver. Also detects EDNS Client Subnet leakage.
 - **BGP intelligence** — upstreams, peers, downstreams, announced prefixes, route stability, IXP presence, and CAIDA ASRank customer-cone size.
 - **Reputation** — locally cached FireHOL blocklists (no query leaves your machine), Shodan InternetDB exposure, and optional classic DNSBL zones.
-- **Latency & path** — per-host ping statistics with real jitter/loss/mdev/p95/p99, and a traceroute that never needs administrator rights.
+- **Latency & path** — per-host ping statistics with real jitter/loss/mdev/p95/p99, and a traceroute that never needs administrator rights. The first hop is diagnosed separately from the rest of the route, so loss or slowness there is correctly attributed to your own router/Wi-Fi rather than the ISP.
 - **Bandwidth** — a cascading speedtest (Ookla binary → Cloudflare → fast.com → optional M-Lab NDT7) with separate download and upload bufferbloat grades.
 - **TLS handshake RTT** (`--tls`) — TCP RTT, TLS 1.3 handshake time and time-to-first-byte to reference services, flagging servers whose handshake is disproportionately slow relative to the network (CPU-bound TLS termination, not a network problem).
 - **DNS: system vs DoH** (`--dns-advanced`) — compares your system resolver's answers and latency against Cloudflare/Google/Quad9 DoH, and probes a bogus resolver IP to detect a transparent DNS proxy intercepting port 53.

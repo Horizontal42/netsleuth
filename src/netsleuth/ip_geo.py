@@ -35,6 +35,24 @@ def _ip_version(ip: str | None) -> int | None:
         return None
 
 
+# RFC 7050: ipv4only.arpa's A records are these two fixed addresses. A resolver
+# sitting behind NAT64/DNS64 synthesizes an AAAA answer by embedding one of them
+# in its local /96 prefix; a real dual-stack network returns no AAAA at all.
+_IPV4ONLY_ARPA_A = (ipaddress.ip_address("192.0.0.170"), ipaddress.ip_address("192.0.0.171"))
+
+
+def nat64_prefix_from_aaaa(answers: list[str]) -> str | None:
+    for answer in answers:
+        try:
+            addr = ipaddress.IPv6Address(answer)
+        except ValueError:
+            continue
+        embedded = ipaddress.IPv4Address(addr.packed[12:16])
+        if embedded in _IPV4ONLY_ARPA_A:
+            return str(ipaddress.ip_network(f"{addr}/96", strict=False))
+    return None
+
+
 def classify_ip_type(mobile: bool, proxy: bool, hosting: bool, known: bool) -> str:
     if not known:
         return "unknown"

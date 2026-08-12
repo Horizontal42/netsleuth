@@ -6,6 +6,7 @@ bugs.md
 llm_context*
 TASKS.md
 docs/superpowers/
+plans/
 
 .venv/
 __pycache__/

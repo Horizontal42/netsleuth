@@ -16,11 +16,12 @@ from netsleuth.models import (
     Signal,
     SpeedResult,
     TlsResult,
+    TraceHop,
     TraceResult,
     VpnAssessment,
     VpnContext,
 )
-from netsleuth.netinfo import is_tunnel_iface, mtu_anomaly
+from netsleuth.netinfo import is_cgnat, is_tunnel_iface, mtu_anomaly
 
 _SEVERITY_ORDER = {"ok": 0, "info": 1, "warn": 2, "crit": 3}
 
@@ -113,7 +114,64 @@ def latency_findings(pings: list[PingResult], t: Thresholds) -> list[Finding]:
     return findings
 
 
-def path_findings(trace: TraceResult) -> list[Finding]:
+def _first_hop_findings(hop: TraceHop, local: LocalNet, t: Thresholds) -> list[Finding]:
+    if not hop.ip:
+        return []
+    is_gateway = bool(local.default_gateway_v4) and hop.ip == local.default_gateway_v4
+    findings: list[Finding] = []
+    where = f"your LAN/Wi-Fi link to {hop.ip}" if is_gateway else f"the first hop ({hop.ip})"
+    where_ru = f"вашу локальную сеть/Wi-Fi до {hop.ip}" if is_gateway else f"первый хоп ({hop.ip})"
+    if hop.loss_pct >= 20.0 or hop.loss_pct > t.loss_pct.warn:
+        severity = "crit" if hop.loss_pct >= 20.0 else "warn"
+        findings.append(
+            Finding(
+                id="path.first_hop_loss",
+                severity=severity,
+                title="Loss starts at the first hop",
+                detail=f"{hop.loss_pct}% loss to {where}, before the rest of the path is even reached.",
+                metric="loss_pct",
+                value=hop.loss_pct,
+                threshold=20.0,
+                advice="This points at your own router or Wi-Fi link, not your ISP or anything further downstream.",
+                title_ru="Потери начинаются на первом хопе",
+                detail_ru=f"{hop.loss_pct}% потерь до {where_ru}, ещё до остального маршрута.",
+                advice_ru="Это указывает на ваш собственный роутер или Wi-Fi-канал, а не на провайдера или что-то дальше по маршруту.",
+            )
+        )
+    severity = severity_for(hop.avg_ms, t.first_hop_ms)
+    if severity not in ("ok", "info"):
+        findings.append(
+            Finding(
+                id="path.first_hop_slow",
+                severity=severity,
+                title="First hop is slow",
+                detail=f"{hop.avg_ms} ms to {where}.",
+                metric="avg_ms",
+                value=hop.avg_ms,
+                threshold=t.first_hop_ms.warn,
+                advice="A slow first hop is almost always local: a congested Wi-Fi link or an overloaded router.",
+                title_ru="Первый хоп медленный",
+                detail_ru=f"{hop.avg_ms} мс до {where_ru}.",
+                advice_ru="Медленный первый хоп почти всегда локальная проблема: перегруженный Wi-Fi или роутер.",
+            )
+        )
+    if local.default_gateway_v4 and not is_gateway:
+        findings.append(
+            Finding(
+                id="path.first_hop_unexpected",
+                severity="info",
+                title="First hop is not your default gateway",
+                detail=f"Traceroute's first hop is {hop.ip}, but the OS default gateway is {local.default_gateway_v4}.",
+                advice="A double NAT, a bridged modem, or a VPN intercepting traffic before it reaches the real gateway can cause this.",
+                title_ru="Первый хоп — не ваш шлюз по умолчанию",
+                detail_ru=f"Первый хоп трассировки — {hop.ip}, а шлюз ОС по умолчанию — {local.default_gateway_v4}.",
+                advice_ru="Причиной может быть двойной NAT, модем в режиме моста, либо VPN, перехватывающий трафик до настоящего шлюза.",
+            )
+        )
+    return findings
+
+
+def path_findings(trace: TraceResult, local: LocalNet | None = None, t: Thresholds | None = None) -> list[Finding]:
     if not trace.hops:
         return [
             Finding(
@@ -128,6 +186,8 @@ def path_findings(trace: TraceResult) -> list[Finding]:
             )
         ]
     findings: list[Finding] = []
+    if local is not None:
+        findings += _first_hop_findings(trace.hops[0], local, t or Thresholds())
     # A run of lossy hops that clears before the last hop we have data for is ICMP
     # rate limiting on those routers, not a real problem, no matter how many hops
     # in a row stayed silent; only loss that persists all the way to the end is real.
@@ -164,6 +224,64 @@ def path_findings(trace: TraceResult) -> list[Finding]:
             )
         )
     return findings
+
+
+def cgnat_findings(local: LocalNet, traces: list[TraceResult]) -> list[Finding]:
+    evidence = local.cgnat_evidence
+    detected = local.cgnat
+    if not detected:
+        for trace in traces:
+            for hop in trace.hops:
+                if is_cgnat(hop.ip):
+                    detected = True
+                    evidence = f"traceroute hop {hop.ttl} ({hop.ip}) is in 100.64.0.0/10"
+                    break
+            if detected:
+                break
+    if not detected:
+        return []
+    return [
+        Finding(
+            id="net.cgnat",
+            severity="warn",
+            title="Behind carrier-grade NAT (CGNAT)",
+            detail=evidence or "An address in 100.64.0.0/10 (RFC 6598) was observed.",
+            metric="cgnat",
+            value=True,
+            advice="No inbound port forwarding is possible; P2P and game/server hosting may not work. "
+            "Ask your ISP for a public IPv4 address, or use IPv6 where the destination supports it.",
+            title_ru="За carrier-grade NAT (CGNAT)",
+            detail_ru=evidence or "Обнаружен адрес из диапазона 100.64.0.0/10 (RFC 6598).",
+            advice_ru="Проброс входящих портов невозможен; P2P и хостинг игр/серверов могут не работать. "
+            "Запросите у провайдера публичный IPv4-адрес либо используйте IPv6, если целевой сервис его поддерживает.",
+        )
+    ]
+
+
+def dual_stack_findings(nat64_prefix: str | None, local: LocalNet) -> list[Finding]:
+    if not nat64_prefix:
+        return []
+    severity = "warn" if not local.is_dual_stack else "info"
+    return [
+        Finding(
+            id="net.nat64",
+            severity=severity,
+            title="IPv6 traffic is translated via NAT64",
+            detail=f"ipv4only.arpa resolved through a NAT64 synthesis prefix ({nat64_prefix}).",
+            metric="nat64_prefix",
+            value=nat64_prefix,
+            advice="This network is IPv6-only with 464XLAT/NAT64 translation to reach IPv4-only destinations; "
+            "this can add latency and occasionally breaks apps that assume native IPv4."
+            if not local.is_dual_stack
+            else "IPv4-only destinations are reached via NAT64 translation even though this host is dual-stack.",
+            title_ru="IPv6-трафик транслируется через NAT64",
+            detail_ru=f"ipv4only.arpa разрешился через префикс синтеза NAT64 ({nat64_prefix}).",
+            advice_ru="Сеть IPv6-only с трансляцией 464XLAT/NAT64 для доступа к IPv4-only ресурсам; "
+            "это может добавлять задержку и иногда ломает приложения, рассчитывающие на нативный IPv4."
+            if not local.is_dual_stack
+            else "IPv4-only ресурсы доступны через трансляцию NAT64, хотя хост dual-stack.",
+        )
+    ]
 
 
 SIGNAL_WEIGHTS: dict[str, float] = {

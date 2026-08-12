@@ -125,6 +125,7 @@ class Thresholds(BaseModel):
     dns_resolve_ms: Band = Band(good=30.0, warn=120.0)
     prefix_spread_ms: Band = Band(good=20.0, warn=80.0)
     tls_cpu_bound_ratio: float = 2.0
+    first_hop_ms: Band = Band(good=5.0, warn=25.0)
 
 
 class TlsConfig(BaseModel):

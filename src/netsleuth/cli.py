@@ -22,8 +22,10 @@ from netsleuth.exporter import build_report, dump_json, egress_asn, render_markd
 from netsleuth.iface import available_interfaces_hint, resolve_bind_target
 from netsleuth.interpret import (
     assess_vpn,
+    cgnat_findings,
     dns_advanced_findings,
     dpi_findings,
+    dual_stack_findings,
     gather_vpn_signals,
     latency_findings,
     path_diversity_findings,
@@ -38,6 +40,7 @@ from netsleuth.netinfo import collect_local_net, detect_capabilities, iface_for_
 from netsleuth.orchestration import gather_modules, run_module, utc_now_iso
 from netsleuth.probes.dns_leak import collect_dns_leak
 from netsleuth.probes.latency import ping_fanout, tcp_connect_rtt
+from netsleuth.probes.nat64 import detect_nat64
 from netsleuth.probes.traceroute import filter_trace_tiers, tier_order, traceroute
 from netsleuth.speed import NDT7_CONSENT_NOTICE
 
@@ -191,12 +194,14 @@ async def _identity(client: httpx.AsyncClient, settings: Settings, options: Opti
         except (httpx.HTTPError, OSError):
             v6 = None
     dual_stack = dual_stack_mismatch(merged, v6)
+    nat64_prefix = await detect_nat64(settings.timeouts.dns_seconds)
     return {
         "egress_v4": merged,
         "egress_v6": v6,
         "cf_trace": cf,
         "dual_stack_note": dual_stack[0] if dual_stack else None,
         "dual_stack_note_ru": dual_stack[1] if dual_stack else None,
+        "nat64_prefix": nat64_prefix,
         "_flags": flags,
         "_warnings": warnings,
     }
@@ -595,11 +600,14 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         l7_findings += dns_advanced_findings(modules["dns_advanced"].data, settings.thresholds)
     if modules["path_diversity"].data is not None:
         l7_findings += path_diversity_findings(modules["path_diversity"].data)
+    traces = modules["path"].data or []
     findings = _dedupe(
         latency_findings(pings, settings.thresholds)
-        + [f for trace in (modules["path"].data or []) for f in path_findings(trace)]
+        + [f for trace in traces for f in path_findings(trace, local, settings.thresholds)]
         + speed_findings(speed, settings.thresholds.bufferbloat_ms)
         + l7_findings
+        + cgnat_findings(local, traces)
+        + dual_stack_findings(bundle.get("nat64_prefix"), local)
     )
 
     # Phase 6 — export

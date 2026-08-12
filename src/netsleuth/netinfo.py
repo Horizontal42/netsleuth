@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import ctypes
+import ipaddress
 import os
 import platform
 import re
@@ -121,6 +122,15 @@ def iface_for_ip(ip: str, addrs_by_iface: dict[str, list[tuple[int, str]]]) -> s
     return None
 
 
+def is_cgnat(ip: str | None) -> bool:
+    if not ip:
+        return False
+    try:
+        return ipaddress.ip_address(ip) in ipaddress.ip_network("100.64.0.0/10")
+    except ValueError:
+        return False
+
+
 def mtu_anomaly(mtu: int | None) -> str | None:
     if mtu is None or mtu >= 1500:
         return None
@@ -222,15 +232,24 @@ def collect_local_net() -> LocalNet:
     }
     iface = iface_for_ip(v4, addrs_by_iface) if v4 else None
     stats = psutil.net_if_stats()
+    gateway_v4 = _default_gateway(socket.AF_INET)
+    cgnat = False
+    cgnat_evidence: str | None = None
+    if is_cgnat(v4):
+        cgnat, cgnat_evidence = True, f"local address {v4} is in 100.64.0.0/10"
+    elif is_cgnat(gateway_v4):
+        cgnat, cgnat_evidence = True, f"default gateway {gateway_v4} is in 100.64.0.0/10"
     return LocalNet(
         iface_name=iface,
         local_ipv4=v4,
         local_ipv6=v6,
         iface_mtu=stats[iface].mtu if iface and iface in stats else None,
-        default_gateway_v4=_default_gateway(socket.AF_INET),
+        default_gateway_v4=gateway_v4,
         default_gateway_v6=_default_gateway(socket.AF_INET6),
         dns_servers_per_adapter=_resolvers_per_adapter(),
         is_dual_stack=bool(v4 and v6),
+        cgnat=cgnat,
+        cgnat_evidence=cgnat_evidence,
     )
 
 

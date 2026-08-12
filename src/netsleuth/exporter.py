@@ -344,6 +344,11 @@ def _connection(report: dict, lang: str = "en") -> list[str]:
         ],
         [_t(lang, "Address type", "Тип адреса"), geo.get("ip_type") or _t(lang, "unknown", "неизвестно")],
         [_t(lang, "Cloudflare colo", "Дата-центр Cloudflare"), cf.get("colo") or "—"],
+        [
+            _t(lang, "CGNAT", "CGNAT"),
+            _t(lang, "yes", "да") if local.get("cgnat") else _t(lang, "no", "нет"),
+        ],
+        [_t(lang, "NAT64 prefix", "Префикс NAT64"), geo_bundle.get("nat64_prefix") or "—"],
     ]
     lines = [title, ""] + _table([_t(lang, "Field", "Поле"), _t(lang, "Value", "Значение")], rows, lang) + [""]
     note = geo_bundle.get("dual_stack_note_ru" if lang == "ru" else "dual_stack_note")

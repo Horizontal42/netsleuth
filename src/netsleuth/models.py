@@ -119,6 +119,8 @@ class LocalNet:
     default_gateway_v6: str | None = None
     dns_servers_per_adapter: dict[str, list[str]] = field(default_factory=dict)
     is_dual_stack: bool = False
+    cgnat: bool = False
+    cgnat_evidence: str | None = None
 
 
 @dataclass
