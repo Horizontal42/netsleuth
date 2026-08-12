@@ -1,5 +1,7 @@
 # netsleuth
 
+[![Test Commit](https://img.shields.io/badge/test-commit-blue)](https://github.com)
+
 [Русский](README.ru.md)
 
 Cross-platform CLI for deep network diagnostics: who your ISP actually is, whether a VPN is really carrying your traffic, where the path degrades, and what your line actually delivers.
