@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -7,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from netsleuth.config import FORMAT_EXTENSIONS
-from netsleuth.interpret import overall_verdict
+from netsleuth.interpret import bufferbloat_consequence, overall_verdict
 from netsleuth.models import Finding, ModuleResult, to_jsonable
 
 SCHEMA_VERSION = 1
@@ -103,9 +104,6 @@ def write_report(report: dict[str, Any], artifacts: dict[str, str], logs_dir: Pa
         atomic_write(base / report_filename(asn, started, FORMAT_EXTENSIONS[fmt]), text)
         for fmt, text in artifacts.items()
     ]
-
-
-import itertools
 
 from netsleuth.interpret import bufferbloat_consequence
 
