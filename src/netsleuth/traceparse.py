@@ -188,6 +188,19 @@ _BSD_CONTINUATION_RE = re.compile(r"^\s+\S")
 
 
 def parse_darwin(text: str) -> list[TraceHop]:
+    """Parse macOS/BSD traceroute output into structured hop data.
+
+    Handles BSD-style traceroute output, which differs from GNU traceroute by
+    printing continuation lines for multipath routes where probes return from
+    different routers at the same TTL.
+
+    Args:
+        text: Raw output from a macOS/BSD traceroute command.
+
+    Returns:
+        A list of TraceHop objects, one per hop found in the output.
+        Multipath hops are merged with alternate IPs recorded as annotations.
+    """
     hops: list[TraceHop] = []
     for line in text.splitlines():
         match = _HOP_LINE_RE.match(line)
@@ -222,6 +235,19 @@ def parse_darwin(text: str) -> list[TraceHop]:
 
 
 def parse_traceroute(text: str, os_name: str) -> list[TraceHop]:
+    """Dispatch traceroute output parsing based on the operating system.
+
+    Routes raw traceroute output to the appropriate parser (Windows, macOS/BSD,
+    or Linux/GNU) based on the OS name.
+
+    Args:
+        text: Raw output from a traceroute command.
+        os_name: The operating system name ('Windows', 'Darwin', or other).
+
+    Returns:
+        A list of TraceHop objects parsed using the OS-specific parser.
+        Falls back to the Linux parser for unknown OS names.
+    """
     if os_name == "Windows":
         return parse_windows(text)
     if os_name == "Darwin":
