@@ -129,8 +129,69 @@ def format_siblings(
     return None, None
 
 
+def _is_private_or_reserved_ip(ip: str) -> bool:
+    """Проверяет, является ли IP адрес частным или зарезервированным.
+    
+    Args:
+        ip: IP адрес для проверки
+        
+    Returns:
+        True если IP частный/зарезервированный, False иначе
+    """
+    forbidden_prefixes = [
+        "127.",      # localhost
+        "0.",        # current network
+        "10.",       # private class A
+        "192.168.",  # private class C
+        "172.16.",   # private class B (start)
+        "172.17.",
+        "172.18.",
+        "172.19.",
+        "172.20.",
+        "172.21.",
+        "172.22.",
+        "172.23.",
+        "172.24.",
+        "172.25.",
+        "172.26.",
+        "172.27.",
+        "172.28.",
+        "172.29.",
+        "172.30.",
+        "172.31.",
+        "169.254.",  # link-local
+        "224.",      # multicast
+        "240.",      # reserved
+        "::1",       # IPv6 localhost
+        "fe80:",     # IPv6 link-local
+        "fc00:",     # IPv6 unique local
+        "fd00:",     # IPv6 unique local
+    ]
+    return any(ip.startswith(prefix) for prefix in forbidden_prefixes)
+
+
 def parse_target(value: str) -> tuple[str, str]:
+    """Парсит и валидирует целевой хост для диагностики.
+    
+    Args:
+        value: Строка с целью (IP, домен, ASN)
+        
+    Returns:
+        Кортеж (тип_цели, значение)
+        
+    Raises:
+        typer.BadParameter: Если цель невалидна или запрещена
+    """
     text = value.strip()
+    
+    # Проверка на частные/зарезервированные IP
+    if all(part.isdigit() for part in text.split(".")) and text.count(".") == 3:
+        if _is_private_or_reserved_ip(text):
+            raise typer.BadParameter(
+                f"Target IP {text} is private or reserved; "
+                "please use a public IP address or domain name"
+            )
+    
     if text.upper().startswith("AS") and text[2:].isdigit():
         return "asn", text.upper()
     if text.isdigit():
@@ -138,6 +199,12 @@ def parse_target(value: str) -> tuple[str, str]:
     if all(part.isdigit() for part in text.split(".")) and text.count(".") == 3:
         return "ip", text
     if ":" in text:
+        # IPv6 проверка
+        if _is_private_or_reserved_ip(text):
+            raise typer.BadParameter(
+                f"Target IPv6 {text} is private or reserved; "
+                "please use a public IPv6 address"
+            )
         return "ip", text
     return "domain", text
 
