@@ -1,0 +1,73 @@
+name: Daily Checks
+
+on:
+  schedule:
+    # Запускается каждый день в 03:00 UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    if: github.repository == 'netsleuth/netsleuth'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+      
+      - name: Set up Python
+        run: uv python install 3.12
+      
+      - name: Install dependencies
+        run: uv sync --extra tcptrace --extra ndt7
+      
+      - name: Run integration tests (with real APIs)
+        run: uv run pytest tests/integration/ -v --integration
+        continue-on-error: true
+        env:
+          IPINFO_TOKEN: ${{ secrets.IPINFO_TOKEN }}
+      
+      - name: Check dependency updates
+        run: |
+          uv pip compile pyproject.toml -o requirements-new.txt
+          diff requirements.txt requirements-new.txt || true
+      
+      - name: Create issue if updates available
+        uses: peter-evans/create-issue-from-file@v4
+        with:
+          title: "Daily: Available dependency updates"
+          content-filepath: requirements-new.txt
+          labels: dependencies,automated
+        continue-on-error: true
+
+  performance-benchmarks:
+    runs-on: ubuntu-latest
+    if: github.repository == 'netsleuth/netsleuth'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+      
+      - name: Set up Python
+        run: uv python install 3.12
+      
+      - name: Install dependencies
+        run: uv sync --extra tcptrace --extra ndt7
+      
+      - name: Run benchmarks
+        run: uv run pytest tests/benchmarks/ -v --benchmark-json=benchmark.json
+        continue-on-error: true
+      
+      - name: Store benchmark results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Netsleuth Benchmarks
+          tool: 'pytest'
+          output-file-path: benchmark.json
+          auto-push: true
+          gh-repository: github.com/netsleuth/netsleuth
+        continue-on-error: true
