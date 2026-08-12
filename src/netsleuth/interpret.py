@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from netsleuth.config import Band, BufferbloatBands, Thresholds, VpnBands
 from netsleuth.models import (
+    CaptivePortal,
     CfTrace,
     DnsAdvanced,
     DnsLeak,
@@ -226,6 +227,38 @@ def path_findings(trace: TraceResult, local: LocalNet | None = None, t: Threshol
     return findings
 
 
+def captive_portal_findings(cp: CaptivePortal) -> list[Finding]:
+    if cp.detected:
+        return [
+            Finding(
+                id="net.captive_portal",
+                severity="crit",
+                title="Behind a captive portal",
+                detail=cp.note,
+                metric="portal_url",
+                value=cp.portal_url,
+                advice="Every measurement below was taken from behind the portal. Sign in through a browser, then rerun.",
+                title_ru="За captive portal",
+                detail_ru=cp.note_ru or cp.note,
+                advice_ru="Все измерения ниже сделаны из-за captive portal. Авторизуйтесь через браузер и перезапустите.",
+            )
+        ]
+    if cp.verdict == "suspect":
+        return [
+            Finding(
+                id="net.captive_portal_suspect",
+                severity="warn",
+                title="Captive portal check was inconclusive",
+                detail=cp.note,
+                advice="No check returned a clean expected response, but none looked like a portal redirect either; treat other findings with a grain of salt.",
+                title_ru="Проверка captive portal неоднозначна",
+                detail_ru=cp.note_ru or cp.note,
+                advice_ru="Ни одна проверка не вернула чистый ожидаемый ответ, но и на редирект портала не похоже; к остальным находкам стоит относиться с осторожностью.",
+            )
+        ]
+    return []
+
+
 def cgnat_findings(local: LocalNet, traces: list[TraceResult]) -> list[Finding]:
     evidence = local.cgnat_evidence
     detected = local.cgnat
@@ -445,7 +478,7 @@ def bufferbloat_consequence(grade: str, lang: str = "en") -> str:
     return table.get(grade, table["?"])
 
 
-def speed_findings(speed: SpeedResult, bands: BufferbloatBands) -> list[Finding]:
+def speed_findings(speed: SpeedResult, bands: BufferbloatBands, client_country: str | None = None) -> list[Finding]:
     if speed.method == "none":
         tried = ", ".join(a.tier for a in speed.tier_attempts) or "none"
         return [
@@ -484,6 +517,23 @@ def speed_findings(speed: SpeedResult, bands: BufferbloatBands) -> list[Finding]
                 detail_ru=f"Задержка выросла на {delta} мс при насыщении канала на {direction_ru}.",
                 advice_ru=bufferbloat_consequence(grade, lang="ru")
                 + " Включение SQM/fq_codel на роутере — стандартное решение.",
+            )
+        )
+    if client_country and speed.server_country and client_country.casefold() != speed.server_country.casefold():
+        findings.append(
+            Finding(
+                id="speed.server_other_country",
+                severity="info",
+                title="Speedtest server is in another country",
+                detail=f"The speedtest server is in {speed.server_country}, you are in {client_country}.",
+                metric="server_country",
+                value=speed.server_country,
+                advice="A distant server can understate real throughput and overstate latency; "
+                "pin a closer one with --speedtest-server if one exists.",
+                title_ru="Сервер speedtest в другой стране",
+                detail_ru=f"Сервер speedtest находится в {speed.server_country}, а вы — в {client_country}.",
+                advice_ru="Далёкий сервер может занижать реальную пропускную способность и завышать задержку; "
+                "закрепите более близкий через --speedtest-server, если такой есть.",
             )
         )
     return findings

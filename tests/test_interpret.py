@@ -387,6 +387,24 @@ def test_speed_findings_report_an_exhausted_cascade():
     assert findings[0].severity == "info"
 
 
+def test_speed_findings_flags_a_speedtest_server_in_another_country():
+    speed = SpeedResult(method="ookla_bin", download_mbps=100.0, upload_mbps=20.0, server_country="Germany")
+    findings = speed_findings(speed, BufferbloatBands(), client_country="Russia")
+    assert [f.id for f in findings] == ["speed.server_other_country"]
+    assert findings[0].severity == "info"
+
+
+def test_speed_findings_silent_when_server_country_matches_client():
+    speed = SpeedResult(method="ookla_bin", download_mbps=100.0, upload_mbps=20.0, server_country="Germany")
+    assert speed_findings(speed, BufferbloatBands(), client_country="Germany") == []
+
+
+def test_speed_findings_silent_when_either_country_is_unknown():
+    speed = SpeedResult(method="ookla_bin", download_mbps=100.0, upload_mbps=20.0, server_country=None)
+    assert speed_findings(speed, BufferbloatBands(), client_country="Russia") == []
+    assert speed_findings(speed, BufferbloatBands(), client_country=None) == []
+
+
 def test_overall_verdict_is_healthy_with_no_findings():
     status, score, summary = overall_verdict([])
     assert status == "ok"

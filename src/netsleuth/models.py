@@ -24,6 +24,7 @@ PORT_STATES = ("open", "closed", "filtered", "reset", "error")
 DPI_VERDICTS = ("clean", "partial_filtering", "reset_injection", "unreachable", "unknown")
 RESOLVER_KINDS = ("system", "doh")
 EDGE_SOURCES = ("cf_ray", "cf_trace", "server_timing", "none")
+PORTAL_VERDICTS = ("clean", "portal", "suspect", "error")
 
 
 @dataclass
@@ -347,6 +348,7 @@ class SpeedResult:
     bufferbloat_grade: str | None = None
     cfL4_stats: CfL4Stats | None = None
     netflix_oca_onnet: bool | None = None
+    server_country: str | None = None
 
 
 @dataclass
@@ -468,6 +470,32 @@ class PathDiversity:
     detour_countries: list[str] = field(default_factory=list)
     note: str = ""
     note_ru: str | None = None
+
+
+@dataclass
+class PortalCheck:
+    url: str
+    status: int | None = None
+    verdict: str = "error"
+    evidence: str = ""
+
+    def __post_init__(self) -> None:
+        if self.verdict not in PORTAL_VERDICTS:
+            raise ValueError(f"unknown PortalCheck verdict: {self.verdict!r}")
+
+
+@dataclass
+class CaptivePortal:
+    detected: bool = False
+    verdict: str = "clean"
+    checks: list[PortalCheck] = field(default_factory=list)
+    portal_url: str | None = None
+    note: str = ""
+    note_ru: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.verdict not in PORTAL_VERDICTS:
+            raise ValueError(f"unknown CaptivePortal verdict: {self.verdict!r}")
 
 
 def to_jsonable(obj: Any) -> Any:

@@ -191,6 +191,18 @@ def test_dpi_check_concurrency_is_capped_as_a_rate_limit(tmp_path):
         load_settings(config_path=path, env_file=tmp_path / "nope.env")
 
 
+def test_captive_portal_check_urls_are_capped(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "captive_portal:\n  check_urls: "
+        + str([f"http://example{i}.com/generate_204" for i in range(5)])
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError, match="at most 4"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
 def test_prefix_bench_max_prefixes_is_capped_so_it_cannot_scan_a_whole_as(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text("prefix_bench:\n  max_prefixes: 1000\n", encoding="utf-8")

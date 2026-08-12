@@ -81,6 +81,7 @@ def test_missing_modules_are_rendered_as_skipped_sections_not_dropped():
     assert report["bgp"]["status"] == "skipped"
     assert report["bgp"]["data"] is None
     assert set(SECTION_ORDER) == {
+        "captive_portal",
         "connection",
         "ip_geo",
         "vpn_assessment",
@@ -590,6 +591,7 @@ def test_markdown_has_every_section_from_the_spec_in_order():
     headings = [line for line in text.splitlines() if line.startswith("## ")]
     assert headings == [
         "## TL;DR",
+        "## Captive portal check",
         "## Connection & identity",
         "## VPN / proxy assessment",
         "## ASN & BGP intelligence",
@@ -800,7 +802,7 @@ def test_diagnostics_translates_module_warnings_into_russian():
 def test_an_all_modules_failed_run_still_renders_every_section():
     text = render_markdown(dead_report())
     headings = [line for line in text.splitlines() if line.startswith("## ")]
-    assert len(headings) == 15
+    assert len(headings) == 16
     assert text.count("Not available") == len(SECTION_ORDER)
 
 
@@ -897,6 +899,7 @@ def test_render_markdown_default_call_is_byte_identical_to_before_the_lang_featu
     headings = [line for line in text.splitlines() if line.startswith("## ")]
     assert headings == [
         "## TL;DR",
+        "## Captive portal check",
         "## Connection & identity",
         "## VPN / proxy assessment",
         "## ASN & BGP intelligence",

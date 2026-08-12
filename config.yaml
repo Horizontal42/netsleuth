@@ -117,6 +117,17 @@ path_diversity:
     - { label: "discord", host: "discord.com" }
   max_targets: 3
 
+# Runs first, before any other probe. Checks a handful of known generate_204-style
+# endpoints for a redirect/tampered response, the classic signature of a public-wifi
+# login wall. check_urls is capped at 4 in code.
+captive_portal:
+  enabled: true
+  check_urls:
+    - "http://cp.cloudflare.com/generate_204"
+    - "http://connectivitycheck.gstatic.com/generate_204"
+    - "http://clients3.google.com/generate_204"
+  expected_status: 204
+
 output:
   logs_dir: "./logs"
   cache_dir: "./.cache"

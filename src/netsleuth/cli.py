@@ -22,6 +22,7 @@ from netsleuth.exporter import build_report, dump_json, egress_asn, render_markd
 from netsleuth.iface import available_interfaces_hint, resolve_bind_target
 from netsleuth.interpret import (
     assess_vpn,
+    captive_portal_findings,
     cgnat_findings,
     dns_advanced_findings,
     dpi_findings,
@@ -36,9 +37,20 @@ from netsleuth.interpret import (
     tls_findings,
 )
 from netsleuth.ip_geo import dual_stack_mismatch, gather_identity
-from netsleuth.models import BindTarget, Finding, IpGeo, LocalNet, ModuleResult, ProbeError, SpeedResult, VpnContext
+from netsleuth.models import (
+    BindTarget,
+    CaptivePortal,
+    Finding,
+    IpGeo,
+    LocalNet,
+    ModuleResult,
+    ProbeError,
+    SpeedResult,
+    VpnContext,
+)
 from netsleuth.netinfo import collect_local_net, detect_capabilities, iface_for_ip, is_tunnel_iface, primary_interface_ip
 from netsleuth.orchestration import gather_modules, run_module, utc_now_iso
+from netsleuth.probes.captive_portal import check_captive_portal
 from netsleuth.probes.dns_leak import collect_dns_leak
 from netsleuth.probes.hop_asn import enrich_hops
 from netsleuth.probes.latency import ping_fanout, tcp_connect_rtt
@@ -476,6 +488,23 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         http2=True,
         headers={"User-Agent": f"netsleuth/{__version__}"},
     ) as client:
+        # Phase 0 — captive portal gate. Detect-and-tag, never short-circuit: every
+        # later phase still runs, and the report says plainly that it was measured
+        # from behind a portal rather than silently looking like a normal run.
+        cp_cfg = settings.captive_portal
+        if cp_cfg.enabled:
+            modules["captive_portal"] = await run_module(
+                "captive_portal",
+                check_captive_portal(
+                    client, cp_cfg.check_urls, expected_status=cp_cfg.expected_status, timeout=timeouts.http_seconds
+                ),
+                timeout=timeouts.module_seconds,
+            )
+        else:
+            modules["captive_portal"] = ModuleResult(
+                name="captive_portal", status="skipped", warnings=["captive portal check disabled in config"]
+            )
+
         # Phase 1 — local facts and identity. Blocking: everything below needs the ASN.
         modules["connection"] = await run_module(
             "connection", asyncio.to_thread(collect_local_net), timeout=timeouts.module_seconds
@@ -623,10 +652,11 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         latency_findings(pings, settings.thresholds)
         + [f for trace in traces for f in path_findings(trace, local, settings.thresholds)]
         + [f for trace in traces for f in path_asn_findings(trace, geo.country_code)]
-        + speed_findings(speed, settings.thresholds.bufferbloat_ms)
+        + speed_findings(speed, settings.thresholds.bufferbloat_ms, geo.country)
         + l7_findings
         + cgnat_findings(local, traces)
         + dual_stack_findings(bundle.get("nat64_prefix"), local)
+        + captive_portal_findings(modules["captive_portal"].data or CaptivePortal())
     )
 
     # Phase 6 — export
@@ -648,6 +678,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
             "path_diversity": options.path_diversity,
             "prefix_bench": options.prefix_bench,
         },
+        "captive_portal": bool((modules["captive_portal"].data or CaptivePortal()).detected),
         "dpi_target": options.dpi_target,
         "formats": sorted(options.formats),
         "host_os": f"{platform.system()} {platform.release()}",

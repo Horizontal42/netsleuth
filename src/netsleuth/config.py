@@ -201,6 +201,25 @@ class DnsAdvancedConfig(BaseModel):
     bogus_probe_name: str = "cloudflare.com"
 
 
+class CaptivePortalConfig(BaseModel):
+    enabled: bool = True
+    check_urls: list[str] = Field(
+        default_factory=lambda: [
+            "http://cp.cloudflare.com/generate_204",
+            "http://connectivitycheck.gstatic.com/generate_204",
+            "http://clients3.google.com/generate_204",
+        ]
+    )
+    expected_status: int = 204
+
+    @field_validator("check_urls")
+    @classmethod
+    def _cap_check_urls(cls, value: list[str]) -> list[str]:
+        if len(value) > 4:
+            raise ValueError("captive_portal.check_urls may list at most 4 URLs")
+        return value
+
+
 class PathDiversityConfig(BaseModel):
     targets: list[HostSpec] = Field(
         default_factory=lambda: [
@@ -263,6 +282,7 @@ class Settings(BaseSettings):
     dpi_check: DpiCheckConfig = DpiCheckConfig()
     dns_advanced: DnsAdvancedConfig = DnsAdvancedConfig()
     path_diversity: PathDiversityConfig = PathDiversityConfig()
+    captive_portal: CaptivePortalConfig = CaptivePortalConfig()
 
     ipinfo_token: SecretStr | None = Field(default=None, alias="IPINFO_TOKEN")
     peeringdb_api_key: SecretStr | None = Field(default=None, alias="PEERINGDB_API_KEY")

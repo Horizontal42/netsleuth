@@ -142,6 +142,7 @@ async def tier_ookla(
         upload_mbps=round(mbps(upload.get("bytes", 0), (upload.get("elapsed", 0) or 0) / 1000), 3),
         server=f"{server_info.get('name', '')} ({server_info.get('location', '')})".strip(),
         idle_rtt_ms=(payload.get("ping") or {}).get("latency"),
+        server_country=server_info.get("country") or None,
     )
 
 
@@ -198,6 +199,7 @@ async def tier_fastcom(client: httpx.AsyncClient, cfg: Speedtest, timeout: float
         upload_mbps=None,
         server=targets[0].get("url").split("/")[2] if targets and targets[0].get("url") else None,
         netflix_oca_onnet=on_net,
+        server_country=(targets[0].get("location") or {}).get("country") if targets else None,
     )
 
 
@@ -230,6 +232,7 @@ async def tier_ndt7(
         download_mbps=round(mbps(total, elapsed), 3),
         upload_mbps=None,
         server=results[0].get("machine"),
+        server_country=(results[0].get("location") or {}).get("country") or None,
     )
 
 

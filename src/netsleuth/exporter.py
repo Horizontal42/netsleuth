@@ -10,8 +10,9 @@ from netsleuth.config import FORMAT_EXTENSIONS
 from netsleuth.interpret import overall_verdict
 from netsleuth.models import Finding, ModuleResult, to_jsonable
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SECTION_ORDER = (
+    "captive_portal",
     "connection",
     "ip_geo",
     "vpn_assessment",
@@ -125,6 +126,7 @@ _WARNING_RU = {
     "speedtest skipped: --quick": "speedtest пропущен: --quick",
     "speedtest skipped in target mode": "speedtest пропущен в режиме цели",
     "no throughput measured": "пропускная способность не измерена",
+    "captive portal check disabled in config": "проверка captive portal отключена в конфиге",
 }
 
 
@@ -229,15 +231,21 @@ def _header(report: dict, emoji: bool, lang: str = "en") -> list[str]:
 def _tldr(report: dict, emoji: bool, lang: str = "en") -> list[str]:
     found = _findings(report)
     heading = _t(lang, "## TL;DR", "## Коротко")
+    banner = (
+        [_t(lang, "> ⚠️ Every measurement below was taken from behind a captive portal.", "> ⚠️ Все измерения ниже сделаны из-за captive portal."), ""]
+        if (report.get("meta") or {}).get("captive_portal")
+        else []
+    )
     if not found:
-        return [heading, "", _t(lang, "No problems found on this connection.", "Проблем на этом соединении не найдено."), ""]
-    return [heading, ""] + [
+        return banner + [heading, "", _t(lang, "No problems found on this connection.", "Проблем на этом соединении не найдено."), ""]
+    return banner + [heading, ""] + [
         f"- {badge(f.get('severity', 'info'), emoji, lang)} **{_f(f, 'title', lang)}** — {_f(f, 'detail', lang)}"
         for f in found[:5]
     ] + [""]
 
 
 _SECTION_TITLES = {
+    "captive_portal": "## Captive portal check",
     "connection": "## Connection & identity",
     "ip_geo": "## Connection & identity",
     "vpn_assessment": "## VPN / proxy assessment",
@@ -254,6 +262,7 @@ _SECTION_TITLES = {
 }
 
 _SECTION_TITLES_RU = {
+    "captive_portal": "## Проверка captive portal",
     "connection": "## Подключение и идентификация",
     "ip_geo": "## Подключение и идентификация",
     "vpn_assessment": "## Оценка VPN/прокси",
@@ -309,6 +318,35 @@ def _forced_interface_rows(meta: dict, lang: str = "en") -> list[list[str]]:
     if os_iface and (os_iface, os_ipv4) != (forced.get("resolved_iface"), forced.get("bind_ipv4")):
         rows.append([_t(lang, "OS default interface", "Интерфейс ОС по умолчанию"), f"{os_iface} — {os_ipv4 or '?'}"])
     return rows
+
+
+_PORTAL_VERDICT_RU = {"clean": "чисто", "portal": "портал", "suspect": "под вопросом", "error": "ошибка"}
+
+
+def _captive_portal(report: dict, lang: str = "en") -> list[str]:
+    title = _section_title("captive_portal", lang)
+    note = unavailable(report, "captive_portal", lang)
+    if note:
+        return [title, "", note, ""]
+    cp = _data(report, "captive_portal") or {}
+    checks = cp.get("checks") or []
+    lines = [title, ""] + _table(
+        [_t(lang, "URL", "URL"), _t(lang, "Status", "Статус"), _t(lang, "Verdict", "Вердикт"), _t(lang, "Evidence", "Доказательство")],
+        [
+            [
+                c.get("url", ""),
+                _num(c.get("status")),
+                c.get("verdict", "") if lang == "en" else _PORTAL_VERDICT_RU.get(c.get("verdict"), c.get("verdict", "")),
+                c.get("evidence") or "—",
+            ]
+            for c in checks
+        ],
+        lang,
+    )
+    verdict_word = cp.get("verdict", "clean") if lang == "en" else _PORTAL_VERDICT_RU.get(cp.get("verdict"), cp.get("verdict"))
+    note_text = (cp.get("note_ru") or cp.get("note") or "") if lang == "ru" else (cp.get("note") or "")
+    lines += ["", f"{_t(lang, 'Verdict', 'Вердикт')}: **{verdict_word}**" + (f" — {note_text}" if note_text else "")]
+    return lines + [""]
 
 
 def _connection(report: dict, lang: str = "en") -> list[str]:
@@ -637,6 +675,7 @@ def _speed(report: dict, lang: str = "en") -> list[str]:
     rows = [
         [_t(lang, "Method", "Метод"), method_word],
         [_t(lang, "Server", "Сервер"), speed.get("server") or "—"],
+        [_t(lang, "Server country", "Страна сервера"), speed.get("server_country") or "—"],
         [_t(lang, "Download", "Скачивание"), f"{_num(speed.get('download_mbps'))} {_t(lang, 'Mbps', 'Мбит/с')}"],
         [_t(lang, "Upload", "Отдача"), f"{_num(speed.get('upload_mbps'))} {_t(lang, 'Mbps', 'Мбит/с')}"],
         [_t(lang, "Idle RTT", "RTT в простое"), f"{_num(speed.get('idle_rtt_ms'))} {_t(lang, 'ms', 'мс')}"],
@@ -900,6 +939,7 @@ def render_markdown(
         link_text = "English" if lang == "ru" else "Русский"
         lines = [lines[0], "", f"[{link_text}]({sibling})"] + lines[1:]
     lines += _tldr(report, emoji, lang)
+    lines += _captive_portal(report, lang)
     lines += _connection(report, lang)
     lines += _vpn(report, lang)
     lines += _bgp(report, lang)

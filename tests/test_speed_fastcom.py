@@ -38,6 +38,7 @@ async def test_tier_fastcom_happy_path(httpx_mock):
     assert result.upload_mbps is None
     assert result.server == "server1.example.com"
     assert result.netflix_oca_onnet is True
+    assert result.server_country == "US"
 
 
 async def test_tier_fastcom_no_targets(httpx_mock):
