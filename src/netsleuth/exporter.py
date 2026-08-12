@@ -907,3 +907,98 @@ def render_markdown(
     lines += _problems(report, emoji, lang)
     lines += _diagnostics(report, lang)
     return "\n".join(lines).rstrip() + "\n"
+
+
+def to_prometheus(report: dict[str, Any]) -> str:
+    """Export diagnostic metrics in Prometheus text exposition format.
+
+    Args:
+        report: Full diagnostic report dictionary
+
+    Returns:
+        Prometheus-formatted metrics as string
+    """
+    lines = []
+    lines.append("# HELP netsleuth_diagnostic_duration_ms Module execution duration in milliseconds")
+    lines.append("# TYPE netsleuth_diagnostic_duration_ms gauge")
+
+    modules = report.get("modules", {})
+    for section, result in modules.items():
+        duration = result.get("duration_ms", 0)
+        status = result.get("status", "unknown")
+        status_code = {"ok": 1, "partial": 2, "failed": 3, "skipped": 4}.get(status, 0)
+        lines.append(f'netsleuth_diagnostic_duration_ms{{module="{section}"}} {duration}')
+        lines.append(f'netsleuth_diagnostic_status{{module="{section}"}} {status_code}')
+
+    # VPN assessment metrics
+    vpn = report.get("vpn_assessment", {}).get("data") or {}
+    if vpn:
+        confidence = vpn.get("confidence", 0.0)
+        verdict = vpn.get("verdict", "none")
+        lines.append("")
+        lines.append("# HELP netsleuth_vpn_confidence VPN detection confidence score (0.0-1.0)")
+        lines.append("# TYPE netsleuth_vpn_confidence gauge")
+        lines.append(f"netsleuth_vpn_confidence {confidence}")
+        lines.append("")
+        lines.append("# HELP netsleuth_vpn_verdict VPN verdict categorical metric")
+        lines.append("# TYPE netsleuth_vpn_verdict gauge")
+        verdict_map = {"none": 0, "likely": 1, "confirmed": 2}
+        lines.append(f'netsleuth_vpn_verdict{{verdict="{verdict}"}} {verdict_map.get(verdict, 0)}')
+
+    # Speed test metrics
+    speed = report.get("speed", {}).get("data") or {}
+    if speed:
+        download = speed.get("download_mbps")
+        upload = speed.get("upload_mbps")
+        bufferbloat = speed.get("bufferbloat_down_ms")
+        if download is not None:
+            lines.append("")
+            lines.append("# HELP netsleuth_speed_download_mbps Download speed in Mbps")
+            lines.append("# TYPE netsleuth_speed_download_mbps gauge")
+            lines.append(f"netsleuth_speed_download_mbps {download}")
+        if upload is not None:
+            lines.append("")
+            lines.append("# HELP netsleuth_speed_upload_mbps Upload speed in Mbps")
+            lines.append("# TYPE netsleuth_speed_upload_mbps gauge")
+            lines.append(f"netsleuth_speed_upload_mbps {upload}")
+        if bufferbloat is not None:
+            lines.append("")
+            lines.append("# HELP netsleuth_bufferbloat_ms Bufferbloat latency in milliseconds")
+            lines.append("# TYPE netsleuth_bufferbloat_ms gauge")
+            lines.append(f"netsleuth_bufferbloat_ms {bufferbloat}")
+
+    # Latency metrics
+    latency = report.get("latency", {}).get("data") or {}
+    if latency:
+        pings = latency.get("results") or []
+        for ping in pings:
+            label = ping.get("label", "unknown")
+            avg = ping.get("avg_ms")
+            loss = ping.get("loss_pct")
+            jitter = ping.get("jitter_ms")
+            if avg is not None:
+                lines.append("")
+                lines.append("# HELP netsleuth_latency_avg_ms Average latency to target")
+                lines.append("# TYPE netsleuth_latency_avg_ms gauge")
+                lines.append(f'netsleuth_latency_avg_ms{{target="{label}"}} {avg}')
+            if loss is not None:
+                lines.append("")
+                lines.append("# HELP netsleuth_latency_loss_pct Packet loss percentage")
+                lines.append("# TYPE netsleuth_latency_loss_pct gauge")
+                lines.append(f'netsleuth_latency_loss_pct{{target="{label}"}} {loss}')
+            if jitter is not None:
+                lines.append("")
+                lines.append("# HELP netsleuth_latency_jitter_ms Jitter in milliseconds")
+                lines.append("# TYPE netsleuth_latency_jitter_ms gauge")
+                lines.append(f'netsleuth_latency_jitter_ms{{target="{label}"}} {jitter}')
+
+    # Overall verdict metric
+    from netsleuth.interpret import overall_verdict
+    verdict = overall_verdict(report)
+    lines.append("")
+    lines.append("# HELP netsleuth_overall_severity Overall diagnostic severity")
+    lines.append("# TYPE netsleuth_overall_severity gauge")
+    severity_map = {"ok": 0, "info": 1, "warn": 2, "crit": 3}
+    lines.append(f'netsleuth_overall_severity{{severity="{verdict.severity}"}} {severity_map.get(verdict.severity, 0)}')
+
+    return "\n".join(lines) + "\n"
