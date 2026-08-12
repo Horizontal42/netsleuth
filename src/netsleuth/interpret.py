@@ -26,6 +26,18 @@ _SEVERITY_ORDER = {"ok": 0, "info": 1, "warn": 2, "crit": 3}
 
 
 def severity_for(value: float | None, band: Band, higher_is_worse: bool = True) -> str:
+    """Map a numeric metric to a severity level using threshold bands.
+
+    Args:
+        value: The measured value (None means unavailable).
+        band: A Band object with 'good' and 'warn' thresholds.
+        higher_is_worse: If True, values above thresholds are worse;
+            if False, values below thresholds are worse.
+
+    Returns:
+        A severity string: 'ok', 'info', 'warn', or 'crit'.
+        Returns 'info' for None values (unavailable data).
+    """
     if value is None:
         return "info"
     if higher_is_worse:
@@ -38,6 +50,16 @@ def severity_for(value: float | None, band: Band, higher_is_worse: bool = True) 
 
 
 def latency_findings(pings: list[PingResult], t: Thresholds) -> list[Finding]:
+    """Generate findings for latency probe results.
+
+    Args:
+        pings: List of PingResult objects from reference host probes.
+        t: Thresholds object containing latency, jitter, and loss bands.
+
+    Returns:
+        A list of Finding objects describing issues like unreachable hosts,
+        high latency, excessive jitter, or packet loss.
+    """
     findings: list[Finding] = []
     for p in pings:
         if p.received == 0:
