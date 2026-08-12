@@ -4,6 +4,18 @@ from typing import NamedTuple
 
 
 class RttStats(NamedTuple):
+    """Statistics computed from RTT samples.
+
+    Attributes:
+        sent: Number of probes sent.
+        received: Number of probes received.
+        loss_pct: Percentage of lost probes (0-100).
+        min_ms: Minimum RTT in milliseconds, or None if no samples.
+        avg_ms: Average RTT in milliseconds, or None if no samples.
+        max_ms: Maximum RTT in milliseconds, or None if no samples.
+        mdev_ms: Mean deviation of RTT in milliseconds, or None if no samples.
+        jitter_ms: Jitter (average inter-packet delay variation) in milliseconds, or None.
+    """
     sent: int
     received: int
     loss_pct: float
@@ -15,6 +27,21 @@ class RttStats(NamedTuple):
 
 
 def rtt_stats(samples: list[float | None]) -> RttStats:
+    """Compute RTT statistics from a list of samples.
+
+    Args:
+        samples: A list of RTT measurements in milliseconds, where None represents
+            a lost/timeout probe.
+
+    Returns:
+        A RttStats named tuple containing sent/received counts, loss percentage,
+        min/avg/max RTT, mean deviation, and jitter. All timing fields are None
+        if no samples were received.
+
+    Note:
+        Jitter is computed as the average absolute difference between consecutive
+        non-None samples. If fewer than two valid samples exist, jitter is 0.0.
+    """
     sent = len(samples)
     got = [s for s in samples if s is not None]
     received = len(got)
