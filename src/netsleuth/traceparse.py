@@ -14,6 +14,17 @@ _UNIX_HOSTIP_RE = re.compile(r"(?P<name>[A-Za-z0-9._-]+)\s+\((?P<ip>[0-9a-fA-F:.
 
 
 def finalize_hop(hop: TraceHop) -> TraceHop:
+    """Compute RTT statistics for a traceroute hop from its probe samples.
+
+    Updates the hop's loss_pct, min_ms, avg_ms, max_ms, and jitter_ms fields
+    based on the raw probe measurements in hop.probes.
+
+    Args:
+        hop: A TraceHop with raw probe data in the probes list.
+
+    Returns:
+        The same TraceHop object with computed statistics populated.
+    """
     s = rtt_stats(hop.probes)
     hop.loss_pct = s.loss_pct
     hop.min_ms = s.min_ms
@@ -24,6 +35,16 @@ def finalize_hop(hop: TraceHop) -> TraceHop:
 
 
 def _extract_ip(text: str) -> str | None:
+    """Extract the first IPv4 or IPv6 address from a string.
+
+    Searches for an IPv4 address first, then falls back to IPv6.
+
+    Args:
+        text: String potentially containing an IP address.
+
+    Returns:
+        The first IP address found (IPv4 preferred), or None if no match.
+    """
     v4 = IPV4_RE.search(text)
     if v4:
         return v4.group(0)
