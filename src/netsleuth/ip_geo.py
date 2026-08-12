@@ -2,13 +2,69 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import fields as dataclass_fields
+from functools import lru_cache
 import ipaddress
 import re
+import time
 
 import httpx
 
 from netsleuth.config import Providers
 from netsleuth.models import CfTrace, IpGeo
+
+
+# Кэш для API запросов (ключ: url+час, значение: ответ)
+# Инвалидируется автоматически каждый час благодаря timestamp_hour
+_API_CACHE: dict[tuple[str, int], tuple[dict, float]] = {}
+_CACHE_TTL_SECONDS = 3600  # 1 час
+
+
+def _get_cache_key(url: str) -> tuple[str, int]:
+    """Создает ключ кэша с округлением до часа для автоинвалидации."""
+    hour_timestamp = int(time.time()) // _CACHE_TTL_SECONDS
+    return (url, hour_timestamp)
+
+
+async def _cached_json(client: httpx.AsyncClient, url: str, **kwargs) -> dict:
+    """Загружает JSON с кэшированием ответов API.
+    
+    Args:
+        client: HTTP клиент
+        url: URL для запроса
+        **kwargs: Дополнительные аргументы для client.get()
+        
+    Returns:
+        JSON ответ от сервера
+        
+    Note:
+        Кэш автоматически инвалидируется каждый час.
+    """
+    cache_key = _get_cache_key(url)
+    
+    # Проверяем кэш
+    if cache_key in _API_CACHE:
+        cached_data, timestamp = _API_CACHE[cache_key]
+        if time.time() - timestamp < _CACHE_TTL_SECONDS:
+            return cached_data
+    
+    # Делаем запрос
+    response = await client.get(url, **kwargs)
+    response.raise_for_status()
+    data = response.json()
+    
+    # Сохраняем в кэш
+    _API_CACHE[cache_key] = (data, time.time())
+    
+    # Очистка старых записей (раз в 10 запросов)
+    if len(_API_CACHE) % 10 == 0:
+        current_time = time.time()
+        _API_CACHE.clear()
+        # Восстанавливаем только свежие записи
+        for key, value in list(_API_CACHE.items()):
+            if current_time - value[1] < _CACHE_TTL_SECONDS:
+                _API_CACHE[key] = value
+    
+    return data
 
 _AS_PREFIX_RE = re.compile(r"^AS(\d+)\s*(?P<name>.*)$", re.IGNORECASE)
 
@@ -215,9 +271,8 @@ def dual_stack_mismatch(v4: IpGeo | None, v6: IpGeo | None) -> tuple[str, str] |
 
 
 async def _json(client: httpx.AsyncClient, url: str, **kwargs) -> dict:
-    response = await client.get(url, **kwargs)
-    response.raise_for_status()
-    return response.json()
+    """Загружает JSON с кэшированием (обертка над _cached_json)."""
+    return await _cached_json(client, url, **kwargs)
 
 
 async def _text(client: httpx.AsyncClient, url: str) -> str:
