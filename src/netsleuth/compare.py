@@ -10,6 +10,15 @@ from netsleuth.exporter import badge
 
 @dataclass
 class Change:
+    """A single metric change between two reports.
+
+    Attributes:
+        label: Human-readable description of what changed.
+        before: Value before the change.
+        after: Value after the change.
+        delta: Numeric difference (after - before), or None if not applicable.
+    """
+
     label: str
     before: Any = None
     after: Any = None
@@ -18,6 +27,16 @@ class Change:
 
 @dataclass
 class ReportDiff:
+    """Collection of changes between two network diagnostic reports.
+
+    Attributes:
+        identity: Changes in network identity (IP, ASN, country, etc.).
+        latency: Changes in latency metrics for reference hosts.
+        speed: Changes in speedtest results.
+        new_findings: Findings present in the newer report but not the older.
+        resolved_findings: Findings present in the older report but cleared in the newer.
+    """
+
     identity: list[Change] = field(default_factory=list)
     latency: list[Change] = field(default_factory=list)
     speed: list[Change] = field(default_factory=list)
@@ -26,6 +45,18 @@ class ReportDiff:
 
 
 def load_report(path: Path) -> dict:
+    """Load a JSON report from disk.
+
+    Args:
+        path: Path to the JSON report file.
+
+    Returns:
+        Parsed report dictionary.
+
+    Raises:
+        FileNotFoundError: If the report file does not exist.
+        json.JSONDecodeError: If the file contains invalid JSON.
+    """
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
