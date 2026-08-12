@@ -1,0 +1,46 @@
+# Netsleuth Internationalization (i18n)
+# Copyright (C) 2024 netsleuth contributors
+# This file is distributed under the same license as the netsleuth package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2024.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: 0.1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-08-12 00:00+0000\n"
+"PO-Revision-Date: 2024-08-12 00:00+0000\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: Spanish\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/netsleuth/cli.py:20
+msgid "Network diagnostics tool"
+msgstr "Herramienta de diagnóstico de red"
+
+#: src/netsleuth/cli.py:25
+msgid "Target hostname or IP address"
+msgstr "Nombre de host o dirección IP objetivo"
+
+#: src/netsleuth/cli.py:30
+msgid "Starting with diagnosing host information..."
+msgstr "Comenzando con el diagnóstico de información del host..."
+
+#: src/netsleuth/core.py:50
+msgid "Running network diagnostics"
+msgstr "Ejecutando diagnóstico de red"
+
+#: src/netsleuth/core.py:75
+msgid "Diagnostics completed successfully"
+msgstr "Diagnóstico completado exitosamente"
+
+#: src/netsleuth/interpret.py:30
+msgid "Network performance analysis"
+msgstr "Análisis de rendimiento de red"
+
+#: src/netsleuth/exporter.py:40
+msgid "Exporting results to {format}"
+msgstr "Exportando resultados a {format}"
