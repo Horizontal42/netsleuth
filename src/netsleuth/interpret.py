@@ -136,6 +136,15 @@ def latency_findings(pings: list[PingResult], t: Thresholds) -> list[Finding]:
 
 
 def path_findings(trace: TraceResult) -> list[Finding]:
+    """Generate findings from traceroute results.
+
+    Args:
+        trace: A TraceResult object containing hops and metadata.
+
+    Returns:
+        A list of Finding objects describing issues like incomplete paths,
+        sustained packet loss starting at a specific hop, or missing data.
+    """
     if not trace.hops:
         return [
             Finding(
