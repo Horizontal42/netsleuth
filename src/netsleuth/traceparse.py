@@ -53,6 +53,18 @@ def _extract_ip(text: str) -> str | None:
 
 
 def _unix_host_and_ip(body: str) -> tuple[str | None, str | None]:
+    """Extract hostname and IP address from a Unix traceroute hop line.
+
+    Parses output like 'hostname (192.168.1.1)' or just an IP address,
+    returning the hostname only if it differs from the IP.
+
+    Args:
+        body: The text portion of a traceroute hop line after the TTL number.
+
+    Returns:
+        A tuple of (hostname_or_None, ip_address_or_None).
+        Hostname is None if it matches the IP or isn't present.
+    """
     match = _UNIX_HOSTIP_RE.search(body)
     if match:
         name, ip = match.group("name"), match.group("ip")
@@ -61,6 +73,16 @@ def _unix_host_and_ip(body: str) -> tuple[str | None, str | None]:
 
 
 def _unix_probes(body: str) -> list[float | None]:
+    """Extract RTT probe values from a Unix traceroute hop line.
+
+    Parses measurements like '1.234 ms' or '*' (timeout) from the hop body.
+
+    Args:
+        body: The text portion of a traceroute hop line containing probe results.
+
+    Returns:
+        A list of float RTT values in milliseconds, with None for timeouts (*).
+    """
     return [
         None if match.group("star") else float(match.group("rtt"))
         for match in _UNIX_PROBE_RE.finditer(body)
@@ -68,6 +90,17 @@ def _unix_probes(body: str) -> list[float | None]:
 
 
 def _unix_annotations(body: str) -> list[str]:
+    """Extract annotation markers from a Unix traceroute hop line.
+
+    Annotations are special codes like '!H' (host unreachable) or '!N'
+    (network unreachable) that appear in traceroute output.
+
+    Args:
+        body: The text portion of a traceroute hop line.
+
+    Returns:
+        A deduplicated list of annotation markers found in the body.
+    """
     return list(dict.fromkeys(ANNOTATION_RE.findall(body)))
 
 
