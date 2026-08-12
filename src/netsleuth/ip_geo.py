@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import ipaddress
 import re
+from functools import lru_cache
 
 from netsleuth.models import CfTrace, IpGeo
 
 _AS_PREFIX_RE = re.compile(r"^AS(\d+)\s*(?P<name>.*)$", re.IGNORECASE)
 
 
+@lru_cache(maxsize=256)
 def _as_number(value: object) -> str | None:
     if value is None or value == "":
         return None
@@ -20,6 +22,7 @@ def _as_number(value: object) -> str | None:
     return None
 
 
+@lru_cache(maxsize=256)
 def _as_label(value: object) -> str | None:
     match = _AS_PREFIX_RE.match(str(value or ""))
     name = (match.group("name") if match else "").strip()

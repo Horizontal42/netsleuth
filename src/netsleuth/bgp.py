@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 
 import httpx
 
@@ -15,6 +16,7 @@ BULK_CALLS = {"bgp-updates", "routing-history", "bgplay", "announced-prefixes"}
 _UNSTABLE_WITHDRAWALS_PER_DAY = 3.0
 
 
+@lru_cache(maxsize=256)
 def _as_label(asn: object) -> str:
     text = str(asn).upper()
     return text if text.startswith("AS") else f"AS{text}"
