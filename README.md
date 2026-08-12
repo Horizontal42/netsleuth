@@ -30,10 +30,10 @@ uv sync
 uv run netsleuth
 ```
 
-Want `--tcp-trace` and `--ndt7` too? They're optional extras, not installed by default:
+Want `--tcp-trace`, `--ndt7`, or `--quic` too? They're optional extras, not installed by default:
 
 ```bash
-uv sync --extra tcptrace --extra ndt7
+uv sync --extra tcptrace --extra ndt7 --extra quic
 ```
 
 Without `uv`:
@@ -69,6 +69,7 @@ None of this is required — netsleuth degrades gracefully without any of it —
 - **DNS: system vs DoH** (`--dns-advanced`) — compares your system resolver's answers and latency against Cloudflare/Google/Quad9 DoH, and probes a bogus resolver IP to detect a transparent DNS proxy intercepting port 53.
 - **Path diversity / Anycast** (`--path-diversity`) — reads Cloudflare's `CF-RAY` edge code to find which PoP is actually serving your traffic, and flags an international routing loop when it's in a different country than you are.
 - **ECMP / multipath detection** (`--ecmp`) — traces a couple of reference hosts multiple times and diffs which next hop showed up at each TTL, catching per-hop load balancing that makes traceroutes look inconsistent, and flagging when one branch of a load-balanced pair is measurably worse than the other.
+- **QUIC / HTTP3 handshake RTT** (`--quic`, needs the `quic` extra) — measures QUIC handshake time end-to-end and checks whether UDP/443 is reachable at all: when QUIC fails but a plain TCP connection to the same host succeeds, the network is specifically dropping or throttling QUIC, silently degrading Chrome/YouTube's HTTP/3 preference in a way no TCP-based diagnostic would ever catch.
 - **Path MTU discovery** (`--pmtud`) — binary-searches the largest packet with the Don't Fragment bit set that actually reaches a target, distinguishing a path that's simply narrower (a router correctly says "fragmentation needed") from a PMTUD blackhole (large packets vanish silently — the classic "SSH connects then hangs" VPN/PPPoE symptom).
 - **AS prefix benchmark** (`--prefix-bench`) — pings the first host of a handful of your own AS's announced prefixes to find the lowest-latency PoP. Capped at 256 prefixes and off by default — this samples your own network, it does not scan it.
 - **DPI / port self-check** (`--my-server <host>`) — a single-host TCP probe across 6 fixed ports on **a server you own**, classifying TCP RST injection vs silent filtering vs a clean response. Not a port scanner: one host per run, a fixed short port list, and it never reads its target from your own egress IP or from BGP data — see [ARCHITECTURE.md](ARCHITECTURE.md) for why.
@@ -95,6 +96,7 @@ None of this is required — netsleuth degrades gracefully without any of it —
 | `--ecmp` | Trace a couple of reference hosts multiple times (`ecmp.runs`, capped at 5) to detect per-hop load balancing and measure how unequal the branches are. **Not** included in `--full` — it multiplies traceroute traffic to the same targets, opt in explicitly |
 | `--ipv6` / `--no-ipv6` | Force IPv6 reference-host latency measurement on or off, overriding `probing.ipv6` (default `auto`: only on a dual-stack connection). Free to leave at auto — a no-op on a v4-only host |
 | `--pmtud` | Binary-search the largest DF-set packet that reaches each `pmtud.targets` host (default: 2 hosts) to catch a path-MTU blackhole. **Not** included in `--full` — opt in explicitly |
+| `--quic` | Measure QUIC/HTTP3 handshake time and check whether UDP/443 is blocked (needs `uv sync --extra quic`; degrades to a clear "not installed" note otherwise). Does not support `--interface` — aioquic has no source-address bind option. **Not** included in `--full` |
 | `--my-server <host>` | Check a server **you own** for TCP port blocking / RST injection. Single host only — rejects CIDR input outright. **Not** included in `--full` — opt in explicitly |
 | `--ndt7` | Opt in to M-Lab NDT7 (publishes your measurement, including your IP, as CC0 open data). On an interactive terminal it prints the consent notice and asks first; on a non-interactive one it proceeds without asking |
 | `--tcp-trace` | Opt in to a scapy TCP-SYN traceroute through ICMP-filtering middleboxes (needs the `tcptrace` extra plus Npcap on Windows or root on Unix). Falls through to the normal cascade when it cannot run |

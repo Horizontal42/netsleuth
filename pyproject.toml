@@ -22,6 +22,7 @@ dependencies = [
 [project.optional-dependencies]
 tcptrace = ["scapy>=2.5"]
 ndt7 = ["websockets>=12"]
+quic = ["aioquic>=1.2"]
 
 [project.scripts]
 netsleuth = "netsleuth.cli:main"

@@ -21,6 +21,7 @@ SECTION_ORDER = (
     "dns_advanced",
     "latency",
     "tls",
+    "quic",
     "path",
     "ecmp",
     "pmtud",
@@ -131,6 +132,9 @@ _WARNING_RU = {
     "captive portal check disabled in config": "проверка captive portal отключена в конфиге",
     "ecmp probe skipped: not requested": "проверка ECMP пропущена: не запрошена",
     "pmtud probe skipped: not requested": "проверка PMTUD пропущена: не запрошена",
+    "quic probe skipped: not requested": "проверка QUIC пропущена: не запрошена",
+    "quic probe skipped: aioquic not installed (uv sync --extra quic)": "проверка QUIC пропущена: aioquic не установлен (uv sync --extra quic)",
+    "quic probe ran over the OS default route: aioquic has no source-address bind option": "проверка QUIC выполнена через маршрут ОС по умолчанию: у aioquic нет опции привязки адреса-источника",
 }
 
 
@@ -258,6 +262,7 @@ _SECTION_TITLES = {
     "dns_advanced": "## DNS: system vs DoH",
     "latency": "## Latency",
     "tls": "## TLS handshake",
+    "quic": "## QUIC / HTTP3",
     "path": "## Path",
     "ecmp": "## ECMP / multipath",
     "pmtud": "## Path MTU discovery",
@@ -277,6 +282,7 @@ _SECTION_TITLES_RU = {
     "dns_advanced": "## DNS: системный резолвер vs DoH",
     "latency": "## Задержки",
     "tls": "## TLS-рукопожатие",
+    "quic": "## QUIC / HTTP3",
     "path": "## Маршрут",
     "ecmp": "## ECMP / несколько маршрутов",
     "pmtud": "## Обнаружение MTU пути",
@@ -835,6 +841,48 @@ def _tls(report: dict, lang: str = "en") -> list[str]:
     return lines + [""]
 
 
+def _quic(report: dict, lang: str = "en") -> list[str]:
+    title = _section_title("quic", lang)
+    note = unavailable(report, "quic", lang)
+    if note:
+        return [title, "", note, ""]
+    results = _data(report, "quic") or []
+    lines = [title, ""] + _table(
+        [
+            _t(lang, "Target", "Цель"),
+            _t(lang, "Handshake (ms)", "Рукопожатие (мс)"),
+            _t(lang, "ALPN", "ALPN"),
+            _t(lang, "Session resumed", "Сессия возобновлена"),
+            _t(lang, "TCP RTT (ms)", "TCP RTT (мс)"),
+        ],
+        [
+            [
+                r.get("label", ""),
+                _num(r.get("handshake_ms")),
+                r.get("alpn") or "—",
+                _t(lang, "yes", "да") if r.get("session_resumed") else _t(lang, "no", "нет"),
+                _num(r.get("tcp_rtt_ms")),
+            ]
+            for r in results
+        ],
+        lang,
+    )
+    blocked = [r for r in results if r.get("error") and r.get("tcp_rtt_ms") is not None]
+    if blocked:
+        lines += [""] + [
+            f"- ⚠️ {r.get('label')}: {_t(lang, 'QUIC failed while TCP succeeded', 'QUIC не прошёл, хотя TCP прошёл')} ({r.get('error')})"
+            for r in blocked
+        ]
+    errored = [r for r in results if r.get("error") and r.get("tcp_rtt_ms") is None]
+    if errored:
+        lines += [""] + [f"- {r.get('label')}: {r.get('error')}" for r in errored]
+    lines += [
+        "",
+        f"> {_t(lang, 'Unlike the TLS measurement above, the handshake time here is timed end-to-end by aioquic, not derived by subtraction.', 'В отличие от замера TLS выше, время рукопожатия здесь измерено aioquic целиком, а не получено вычитанием.')}",
+    ]
+    return lines + [""]
+
+
 def _dns_advanced(report: dict, lang: str = "en") -> list[str]:
     title = _section_title("dns_advanced", lang)
     note = unavailable(report, "dns_advanced", lang)
@@ -1027,6 +1075,7 @@ def render_markdown(
     lines += _dns_advanced(report, lang)
     lines += _latency(report, lang)
     lines += _tls(report, lang)
+    lines += _quic(report, lang)
     lines += _path(report, lang)
     lines += _ecmp(report, lang)
     lines += _pmtud(report, lang)

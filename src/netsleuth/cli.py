@@ -37,6 +37,7 @@ from netsleuth.interpret import (
     path_findings,
     pmtud_findings,
     prefix_findings,
+    quic_findings,
     speed_findings,
     tls_findings,
 )
@@ -94,6 +95,7 @@ class Options:
     prefix_bench: bool = False
     ecmp: bool = False
     pmtud: bool = False
+    quic: bool = False
     ipv6: Optional[bool] = None
     dpi_target: str | None = None
     formats: frozenset[str] = frozenset({"md"})
@@ -403,6 +405,31 @@ async def _dpi_section(settings: Settings, options: Options) -> ModuleResult:
     return ModuleResult(name="dpi_check", status="ok", data=result)
 
 
+async def _quic_section(settings: Settings, options: Options) -> ModuleResult:
+    if not options.quic:
+        return ModuleResult(name="quic", status="skipped", warnings=["quic probe skipped: not requested"])
+    try:
+        import aioquic  # noqa: F401
+    except ImportError:
+        return ModuleResult(
+            name="quic",
+            status="skipped",
+            warnings=["quic probe skipped: aioquic not installed (uv sync --extra quic)"],
+        )
+    from netsleuth.probes.quic_rtt import quic_fanout
+
+    warnings: list[str] = []
+    if options.bind:
+        # aioquic's connect() takes only local_port, never a source address, so a
+        # forced adapter cannot be honored here -- say so rather than silently
+        # measuring the OS-default path under a report claiming a forced interface.
+        warnings.append("quic probe ran over the OS default route: aioquic has no source-address bind option")
+    cfg = settings.quic
+    targets = [(t.label, t.host) for t in cfg.targets]
+    results = await quic_fanout(targets, port=cfg.port, timeout=cfg.timeout_seconds, concurrency=cfg.concurrency)
+    return ModuleResult(name="quic", status="ok", data=results, warnings=warnings)
+
+
 async def _pmtud_section(settings: Settings, options: Options, iface_mtu: int | None) -> ModuleResult:
     if not options.pmtud:
         return ModuleResult(name="pmtud", status="skipped", warnings=["pmtud probe skipped: not requested"])
@@ -689,6 +716,9 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         modules["pmtud"] = await run_module(
             "pmtud", _pmtud_section(settings, options, local.iface_mtu), timeout=timeouts.subprocess_seconds
         )
+        modules["quic"] = await run_module(
+            "quic", _quic_section(settings, options), timeout=timeouts.module_seconds
+        )
 
         # Phase 3c — per-hop ASN/AS-name/country enrichment. Mutates the trace hops
         # in place; a lookup failure must never downgrade the trace itself, so only
@@ -732,6 +762,8 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         l7_findings += dns_advanced_findings(modules["dns_advanced"].data, settings.thresholds)
     if modules["path_diversity"].data is not None:
         l7_findings += path_diversity_findings(modules["path_diversity"].data)
+    if modules["quic"].data is not None:
+        l7_findings += quic_findings(modules["quic"].data, settings.thresholds)
     traces = modules["path"].data or []
     findings = _dedupe(
         latency_findings(pings, settings.thresholds)
@@ -895,6 +927,11 @@ def run(
         "--pmtud",
         help="Binary-search the largest DF-set packet that reaches each pmtud.target, to catch a PMTUD blackhole.",
     ),
+    quic: bool = typer.Option(
+        False,
+        "--quic",
+        help="Measure QUIC/HTTP3 handshake time and check whether UDP/443 is blocked (needs the quic extra).",
+    ),
     my_server: Optional[str] = typer.Option(
         None,
         "--my-server",
@@ -968,6 +1005,7 @@ def run(
         prefix_bench=prefix_bench,
         ecmp=ecmp,
         pmtud=pmtud,
+        quic=quic,
         ipv6=ipv6,
         dpi_target=my_server,
         formats=formats,

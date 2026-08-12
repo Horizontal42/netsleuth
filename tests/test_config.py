@@ -267,6 +267,14 @@ def test_probing_ipv6_accepts_each_known_value(tmp_path):
         assert s.probing.ipv6 == value
 
 
+def test_quic_targets_are_capped(tmp_path):
+    path = tmp_path / "config.yaml"
+    entries = ", ".join(f"{{label: h{i}, host: h{i}.com}}" for i in range(5))
+    path.write_text(f"quic:\n  targets: [{entries}]\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="at most 4"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
 def test_pmtud_targets_are_capped(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text(

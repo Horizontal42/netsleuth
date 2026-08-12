@@ -524,6 +524,18 @@ class EcmpReport:
 
 
 @dataclass
+class QuicResult:
+    label: str = ""
+    host: str = ""
+    port: int = 443
+    handshake_ms: float | None = None
+    alpn: str | None = None
+    session_resumed: bool | None = None
+    tcp_rtt_ms: float | None = None
+    error: str | None = None
+
+
+@dataclass
 class PmtuResult:
     host: str
     resolved_ip: str | None = None

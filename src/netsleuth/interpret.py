@@ -15,6 +15,7 @@ from netsleuth.models import (
     PathDiversity,
     PingResult,
     PmtuResult,
+    QuicResult,
     PrefixBenchmark,
     Signal,
     SpeedResult,
@@ -25,6 +26,7 @@ from netsleuth.models import (
     VpnContext,
 )
 from netsleuth.netinfo import is_cgnat, is_tunnel_iface, mtu_anomaly
+from netsleuth.probes.quic_rtt import quic_verdict
 
 _SEVERITY_ORDER = {"ok": 0, "info": 1, "warn": 2, "crit": 3}
 
@@ -372,6 +374,55 @@ def dual_stack_findings(nat64_prefix: str | None, local: LocalNet) -> list[Findi
             else "IPv4-only ресурсы доступны через трансляцию NAT64, хотя хост dual-stack.",
         )
     ]
+
+
+def quic_findings(results: list[QuicResult], t: Thresholds) -> list[Finding]:
+    findings: list[Finding] = []
+    for r in results:
+        quic_ok = r.error is None and r.handshake_ms is not None
+        tcp_ok = r.tcp_rtt_ms is not None
+        if quic_verdict(quic_ok, tcp_ok) == "blocked":
+            findings.append(
+                Finding(
+                    id=f"quic.blocked.{r.label}",
+                    severity="warn",
+                    title=f"QUIC to {r.host} is blocked or filtered",
+                    detail=f"UDP/443 handshake to {r.host} failed ({r.error}) while TCP/443 succeeded "
+                    f"({r.tcp_rtt_ms} ms), so the host itself is reachable.",
+                    metric="error",
+                    value=r.error,
+                    advice="The network drops or throttles QUIC while allowing TCP; this silently degrades "
+                    "Chrome/YouTube and anything else that prefers HTTP/3, without ever showing up in a "
+                    "TCP-only diagnostic.",
+                    title_ru=f"QUIC до {r.host} заблокирован или отфильтрован",
+                    detail_ru=f"Рукопожатие UDP/443 с {r.host} не удалось ({r.error}), а TCP/443 прошёл "
+                    f"({r.tcp_rtt_ms} мс) — сам хост доступен.",
+                    advice_ru="Сеть роняет или дросселирует QUIC, пропуская TCP; это незаметно ухудшает "
+                    "Chrome/YouTube и всё, что предпочитает HTTP/3, никогда не проявляясь в TCP-only диагностике.",
+                )
+            )
+            continue
+        if quic_ok:
+            severity = severity_for(r.handshake_ms, t.quic_handshake_ms)
+            if severity not in ("ok", "info"):
+                findings.append(
+                    Finding(
+                        id=f"quic.handshake_slow.{r.label}",
+                        severity=severity,
+                        title=f"QUIC handshake to {r.host} above target",
+                        detail=f"QUIC handshake took {r.handshake_ms} ms.",
+                        metric="handshake_ms",
+                        value=r.handshake_ms,
+                        threshold=t.quic_handshake_ms.warn,
+                        advice="Unlike the TLS handshake measurement, this is timed end-to-end by aioquic, "
+                        "not derived by subtraction.",
+                        title_ru=f"QUIC-рукопожатие с {r.host} выше целевого",
+                        detail_ru=f"QUIC-рукопожатие заняло {r.handshake_ms} мс.",
+                        advice_ru="В отличие от замера TLS-рукопожатия, это время измерено aioquic целиком, "
+                        "а не получено вычитанием.",
+                    )
+                )
+    return findings
 
 
 def pmtud_findings(result: PmtuResult) -> list[Finding]:

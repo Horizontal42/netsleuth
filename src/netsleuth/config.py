@@ -144,6 +144,7 @@ class Thresholds(BaseModel):
     prefix_spread_ms: Band = Band(good=20.0, warn=80.0)
     tls_cpu_bound_ratio: float = 2.0
     first_hop_ms: Band = Band(good=5.0, warn=25.0)
+    quic_handshake_ms: Band = Band(good=150.0, warn=400.0)
 
 
 _SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -236,6 +237,25 @@ class DnsAdvancedConfig(BaseModel):
     )
     bogus_resolver_ip: str = "192.0.2.1"
     bogus_probe_name: str = "cloudflare.com"
+
+
+class QuicConfig(BaseModel):
+    targets: list[HostSpec] = Field(
+        default_factory=lambda: [
+            HostSpec(label="cloudflare", host="cloudflare.com"),
+            HostSpec(label="google", host="google.com"),
+        ]
+    )
+    port: int = 443
+    concurrency: int = 2
+    timeout_seconds: float = 5.0
+
+    @field_validator("targets")
+    @classmethod
+    def _cap_targets(cls, value: list[HostSpec]) -> list[HostSpec]:
+        if len(value) > 4:
+            raise ValueError("quic.targets may list at most 4 hosts")
+        return value
 
 
 class PmtudConfig(BaseModel):
@@ -414,6 +434,7 @@ class Settings(BaseSettings):
     captive_portal: CaptivePortalConfig = CaptivePortalConfig()
     ecmp: EcmpConfig = EcmpConfig()
     pmtud: PmtudConfig = PmtudConfig()
+    quic: QuicConfig = QuicConfig()
 
     ipinfo_token: SecretStr | None = Field(default=None, alias="IPINFO_TOKEN")
     peeringdb_api_key: SecretStr | None = Field(default=None, alias="PEERINGDB_API_KEY")

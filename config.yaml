@@ -82,6 +82,7 @@ thresholds:
   prefix_spread_ms: { good: 20.0, warn: 80.0 }
   tls_cpu_bound_ratio: 2.0
   first_hop_ms: { good: 5.0, warn: 25.0 }
+  quic_handshake_ms: { good: 150.0, warn: 400.0 }
 
 tls:
   targets:
@@ -132,6 +133,18 @@ path_diversity:
 # Runs first, before any other probe. Checks a handful of known generate_204-style
 # endpoints for a redirect/tampered response, the classic signature of a public-wifi
 # login wall. check_urls is capped at 4 in code.
+# Opt-in via --quic (needs the optional `quic` extra: uv sync --extra quic).
+# Measures QUIC/HTTP3 handshake time and checks whether UDP/443 is reachable at
+# all -- a network that silently drops or throttles QUIC degrades Chrome/YouTube
+# without ever showing up in an ordinary TCP-based diagnostic.
+quic:
+  targets:
+    - { label: "cloudflare", host: "cloudflare.com" }
+    - { label: "google", host: "google.com" }
+  port: 443
+  concurrency: 2
+  timeout_seconds: 5.0
+
 # Opt-in via --pmtud. Binary-searches for the largest DF-set packet that gets
 # through to each target, to catch a VPN/PPPoE-style PMTUD blackhole. targets is
 # capped at 2 in code: this is a path-MTU sweep, not a scan.

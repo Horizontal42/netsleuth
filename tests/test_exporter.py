@@ -90,6 +90,7 @@ def test_missing_modules_are_rendered_as_skipped_sections_not_dropped():
         "dns_advanced",
         "latency",
         "tls",
+        "quic",
         "path",
         "ecmp",
         "pmtud",
@@ -601,6 +602,7 @@ def test_markdown_has_every_section_from_the_spec_in_order():
         "## DNS: system vs DoH",
         "## Latency",
         "## TLS handshake",
+        "## QUIC / HTTP3",
         "## Path",
         "## ECMP / multipath",
         "## Path MTU discovery",
@@ -806,7 +808,7 @@ def test_diagnostics_translates_module_warnings_into_russian():
 def test_an_all_modules_failed_run_still_renders_every_section():
     text = render_markdown(dead_report())
     headings = [line for line in text.splitlines() if line.startswith("## ")]
-    assert len(headings) == 18
+    assert len(headings) == 19
     assert text.count("Not available") == len(SECTION_ORDER)
 
 
@@ -911,6 +913,7 @@ def test_render_markdown_default_call_is_byte_identical_to_before_the_lang_featu
         "## DNS: system vs DoH",
         "## Latency",
         "## TLS handshake",
+        "## QUIC / HTTP3",
         "## Path",
         "## ECMP / multipath",
         "## Path MTU discovery",

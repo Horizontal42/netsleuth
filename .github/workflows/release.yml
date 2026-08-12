@@ -15,7 +15,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Sync base + optional extras
-        run: uv sync --extra tcptrace --extra ndt7
+        run: uv sync --extra tcptrace --extra ndt7 --extra quic
 
       - name: Run test suite
         run: uv run pytest -q
@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           python -m venv /tmp/wheel-check
-          /tmp/wheel-check/Scripts/pip install "$(ls dist/*.whl)[tcptrace,ndt7]"
+          /tmp/wheel-check/Scripts/pip install "$(ls dist/*.whl)[tcptrace,ndt7,quic]"
           /tmp/wheel-check/Scripts/netsleuth --help
 
       - uses: actions/upload-artifact@v4
