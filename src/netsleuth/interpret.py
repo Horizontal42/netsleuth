@@ -357,6 +357,16 @@ _GRADE_SEVERITY = {"A": "ok", "B": "ok", "C": "warn", "D": "crit", "E": "crit", 
 
 
 def grade_bufferbloat(delta_ms: float | None, bands: BufferbloatBands) -> str:
+    """Assign a bufferbloat grade (A-F or ?) from RTT delta.
+
+    Args:
+        delta_ms: The increase in RTT under load (bufferbloat), in ms.
+            None means unmeasured.
+        bands: BufferbloatBands with thresholds for grades A through E.
+
+    Returns:
+        A single-letter grade: 'A' through 'F', or '?' if delta_ms is None.
+    """
     if delta_ms is None:
         return "?"
     delta = max(0.0, delta_ms)
@@ -367,11 +377,31 @@ def grade_bufferbloat(delta_ms: float | None, bands: BufferbloatBands) -> str:
 
 
 def bufferbloat_consequence(grade: str, lang: str = "en") -> str:
+    """Return a human-readable explanation of a bufferbloat grade.
+
+    Args:
+        grade: A bufferbloat grade ('A' through 'F', or '?').
+        lang: Language code ('en' or 'ru').
+
+    Returns:
+        A sentence describing the user impact of that grade in the
+        requested language, or the default message for unknown grades.
+    """
     table = _CONSEQUENCES_RU if lang == "ru" else _CONSEQUENCES
     return table.get(grade, table["?"])
 
 
 def speed_findings(speed: SpeedResult, bands: BufferbloatBands) -> list[Finding]:
+    """Generate findings from speedtest results and bufferbloat analysis.
+
+    Args:
+        speed: A SpeedResult object containing throughput and RTT data.
+        bands: BufferbloatBands with thresholds for grading bufferbloat.
+
+    Returns:
+        A list of Finding objects describing issues like missing measurements,
+        excessive bufferbloat during download or upload, or other anomalies.
+    """
     if speed.method == "none":
         tried = ", ".join(a.tier for a in speed.tier_attempts) or "none"
         return [
