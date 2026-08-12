@@ -1,35 +1,36 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+# Скрипт быстрой настройки окружения для разработчиков Netsleuth
 
-# Netsleuth Development Setup Script
-# This script sets up the development environment for netsleuth contributors
+set -e
 
-echo "🔧 Setting up netsleuth development environment..."
+echo "🚀 Настройка окружения Netsleuth..."
 
-# Check if uv is installed
+# Проверка наличия uv
 if ! command -v uv &> /dev/null; then
-    echo "❌ uv not found. Installing uv..."
+    echo "⚠️  uv не найден. Устанавливаю..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.local/bin:$PATH"
+    source $HOME/.local/bin/env 2>/dev/null || true
 fi
 
-echo "✅ uv found: $(uv --version)"
-
-# Install Python dependencies
-echo "📦 Installing dependencies..."
+# Создание виртуального окружения
+echo "📦 Установка зависимостей..."
 uv sync --extra tcptrace --extra ndt7
 
-# Install pre-commit hooks
-echo "🪝 Installing pre-commit hooks..."
+# Установка pre-commit хуков
+echo "🔧 Установка pre-commit хуков..."
 uv run pre-commit install
 
-# Run initial checks
-echo "🧪 Running initial tests..."
+# Запуск тестов для проверки
+echo "🧪 Запуск тестов для проверки установки..."
 uv run pytest -q
 
-echo "✅ Development environment ready!"
 echo ""
-echo "Next steps:"
-echo "  1. Review CONTRIBUTING.md for contribution guidelines"
-echo "  2. Run 'uv run pytest' to verify everything works"
-echo "  3. Start coding! 🚀"
+echo "✅ Настройка завершена!"
+echo ""
+echo "Полезные команды:"
+echo "  uv run pytest              - запустить все тесты"
+echo "  uv run pytest --cov        - тесты с покрытием"
+echo "  uv run flake8 src/netsleuth - проверка стиля"
+echo "  uv run mypy src/netsleuth   - проверка типов"
+echo "  uv run netsleuth --help    - справка по CLI"
+echo ""
