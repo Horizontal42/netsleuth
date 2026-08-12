@@ -730,6 +730,9 @@ def _tls(report: dict, lang: str = "en") -> list[str]:
             _t(lang, "TTFB (ms)", "TTFB (мс)"),
             _t(lang, "Version", "Версия"),
             _t(lang, "Cipher", "Шифр"),
+            _t(lang, "Cert SHA-256", "Отпечаток SHA-256"),
+            _t(lang, "Issuer", "Издатель"),
+            _t(lang, "Expires in (days)", "Истекает через (дней)"),
         ],
         [
             [
@@ -740,17 +743,27 @@ def _tls(report: dict, lang: str = "en") -> list[str]:
                 _num(r.get("ttfb_ms")),
                 r.get("tls_version") or "—",
                 r.get("cipher") or "—",
+                (r.get("cert_sha256") or "—")[:16] + ("…" if r.get("cert_sha256") else ""),
+                r.get("cert_issuer") or "—",
+                _num(r.get("cert_days_remaining")),
             ]
             for r in results
         ],
         lang,
     )
+    mismatches = [r for r in results if r.get("pin_verdict") == "mismatch"]
+    if mismatches:
+        lines += [""] + [
+            f"- ⚠️ {r.get('label')}: {_t(lang, 'pinned fingerprint mismatch', 'отпечаток не совпадает с закреплённым')}"
+            for r in mismatches
+        ]
     errored = [r for r in results if r.get("error")]
     if errored:
         lines += [""] + [f"- {r.get('label')}: {r.get('error')}" for r in errored]
     lines += [
         "",
         f"> {_t(lang, 'TLS handshake time is derived by subtracting a separate TCP-only baseline connection from a second, full TLS connection.', 'Время TLS-рукопожатия получено вычитанием отдельного базового TCP-соединения из времени второго, полного TLS-соединения.')}",
+        f"> {_t(lang, 'The certificate fingerprint is the SHA-256 of the full DER certificate, not the SPKI — compute it as `openssl x509 -outform DER | sha256sum` to compare against an externally-pinned value.', 'Отпечаток сертификата — это SHA-256 полного DER-сертификата, а не SPKI — считайте его как `openssl x509 -outform DER | sha256sum`, чтобы сравнить с внешне закреплённым значением.')}",
     ]
     return lines + [""]
 

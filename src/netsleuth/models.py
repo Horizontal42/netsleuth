@@ -364,6 +364,12 @@ class TlsResult:
     cipher: str | None = None
     alpn: str | None = None
     cert_verified: bool | None = None
+    cert_sha256: str | None = None
+    cert_subject: str | None = None
+    cert_issuer: str | None = None
+    cert_not_after: str | None = None
+    cert_days_remaining: int | None = None
+    pin_verdict: str = "unpinned"
     error: str | None = None
 
 

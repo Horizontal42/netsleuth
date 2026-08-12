@@ -82,6 +82,10 @@ tls:
   port: 443
   concurrency: 4
   ttfb_path: "/"
+  verify: true
+  # host -> expected SHA-256 of the full DER certificate (openssl x509 -outform DER
+  # | sha256sum). Colons/case are normalized. Capped at 32 entries in code.
+  pinned_fingerprints: {}
 
 # Opt-in via --prefix-bench. Pings the first host of a handful of your own AS's
 # announced prefixes to find the lowest-latency PoP. max_prefixes is capped at 256

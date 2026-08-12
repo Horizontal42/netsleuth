@@ -191,6 +191,39 @@ def test_dpi_check_concurrency_is_capped_as_a_rate_limit(tmp_path):
         load_settings(config_path=path, env_file=tmp_path / "nope.env")
 
 
+def test_tls_pinned_fingerprints_accepts_valid_hex_and_normalizes_case_and_colons(tmp_path):
+    path = tmp_path / "config.yaml"
+    fingerprint_with_colons = ":".join(["AB"] * 32)
+    path.write_text(
+        f'tls:\n  pinned_fingerprints: {{"example.com": "{fingerprint_with_colons}"}}\n',
+        encoding="utf-8",
+    )
+    s = load_settings(config_path=path, env_file=tmp_path / "nope.env")
+    assert s.tls.pinned_fingerprints["example.com"] == "ab" * 32
+
+
+def test_tls_pinned_fingerprints_rejects_a_short_value(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text('tls:\n  pinned_fingerprints: {"example.com": "aabbcc"}\n', encoding="utf-8")
+    with pytest.raises(ValidationError, match="64-character hex"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
+def test_tls_pinned_fingerprints_rejects_non_hex_characters(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text('tls:\n  pinned_fingerprints: {"example.com": "' + "zz" * 32 + '"}\n', encoding="utf-8")
+    with pytest.raises(ValidationError, match="64-character hex"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
+def test_tls_pinned_fingerprints_are_capped_at_32_entries(tmp_path):
+    path = tmp_path / "config.yaml"
+    entries = ", ".join(f'"host{i}.example.com": "{"aa" * 32}"' for i in range(33))
+    path.write_text("tls:\n  pinned_fingerprints: {" + entries + "}\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="at most 32"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
 def test_captive_portal_check_urls_are_capped(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text(

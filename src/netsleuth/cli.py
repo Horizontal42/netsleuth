@@ -292,6 +292,8 @@ async def _tls_section(settings: Settings, options: Options) -> ModuleResult:
         timeout=settings.timeouts.http_seconds,
         concurrency=cfg.concurrency,
         source_ip=options.bind.ipv4 if options.bind else None,
+        verify=cfg.verify,
+        pins=cfg.pinned_fingerprints,
     )
     return ModuleResult(name="tls", status="ok", data=results)
 

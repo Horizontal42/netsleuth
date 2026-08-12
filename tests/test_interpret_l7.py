@@ -99,6 +99,37 @@ def test_tls_findings_do_not_crash_on_a_result_with_no_measurements(thresholds):
     assert tls_findings([tls(tcp_rtt_ms=None, tls_handshake_ms=None, ttfb_ms=None)], thresholds) == []
 
 
+def test_pin_mismatch_fires_a_crit_finding(thresholds):
+    findings = tls_findings([tls(pin_verdict="mismatch", cert_sha256="a" * 64)], thresholds)
+    assert [f.id for f in findings] == ["tls.cert_pin_mismatch.cloudflare"]
+    assert findings[0].severity == "crit"
+
+
+def test_unverified_cert_without_a_pin_fires_a_warn_finding(thresholds):
+    findings = tls_findings([tls(cert_verified=False, cert_issuer="Corp Intercept CA")], thresholds)
+    assert [f.id for f in findings] == ["tls.cert_unverified.cloudflare"]
+    assert findings[0].severity == "warn"
+    assert "Corp Intercept CA" in findings[0].detail
+
+
+def test_a_verified_unpinned_cert_produces_neither_pin_nor_unverified_findings(thresholds):
+    findings = tls_findings([tls(cert_verified=True, pin_verdict="unpinned")], thresholds)
+    ids = [f.id for f in findings]
+    assert "tls.cert_pin_mismatch.cloudflare" not in ids
+    assert "tls.cert_unverified.cloudflare" not in ids
+
+
+def test_expiring_cert_fires_a_warn_finding(thresholds):
+    findings = tls_findings([tls(cert_days_remaining=5, cert_not_after="Jun  1 12:00:00 2026 GMT")], thresholds)
+    assert [f.id for f in findings] == ["tls.cert_expiring.cloudflare"]
+    assert findings[0].severity == "warn"
+
+
+def test_cert_with_plenty_of_days_left_does_not_fire(thresholds):
+    findings = tls_findings([tls(cert_days_remaining=120)], thresholds)
+    assert "tls.cert_expiring.cloudflare" not in [f.id for f in findings]
+
+
 def prefix_probe(**kw) -> PrefixProbe:
     base = dict(prefix="203.0.113.0/24", probe_ip="203.0.113.1", avg_ms=10.0, reachable=True)
     base.update(kw)

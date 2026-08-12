@@ -615,6 +615,56 @@ def tls_findings(results: list[TlsResult], t: Thresholds) -> list[Finding]:
                     advice_ru="Медленный TTFB при быстром рукопожатии указывает на обработку на стороне сервера, а не на сеть.",
                 )
             )
+        if r.pin_verdict == "mismatch":
+            findings.append(
+                Finding(
+                    id=f"tls.cert_pin_mismatch.{r.label}",
+                    severity="crit",
+                    title=f"Certificate for {r.host} does not match the pinned fingerprint",
+                    detail=f"Observed SHA-256 {r.cert_sha256}, which does not match the configured pin.",
+                    metric="cert_sha256",
+                    value=r.cert_sha256,
+                    advice="A corporate/ISP TLS-intercepting middlebox or a genuine MITM; "
+                    "compare against the fingerprint seen from another network before assuming the worst.",
+                    title_ru=f"Сертификат {r.host} не совпадает с закреплённым отпечатком",
+                    detail_ru=f"Наблюдаемый SHA-256 {r.cert_sha256} не совпадает с настроенным отпечатком.",
+                    advice_ru="Корпоративный/провайдерский TLS-перехватывающий middlebox или настоящий MITM; "
+                    "сравните с отпечатком, увиденным из другой сети, прежде чем делать выводы.",
+                )
+            )
+        elif r.cert_verified is False and r.pin_verdict == "unpinned":
+            findings.append(
+                Finding(
+                    id=f"tls.cert_unverified.{r.label}",
+                    severity="warn",
+                    title=f"Certificate chain for {r.host} did not validate",
+                    detail=f"Issuer: {r.cert_issuer or 'unknown'}.",
+                    metric="cert_issuer",
+                    value=r.cert_issuer,
+                    advice="Often the issuer of an interception appliance rather than the real service's CA; "
+                    "pin the expected fingerprint in tls.pinned_fingerprints to escalate this to a hard alert.",
+                    title_ru=f"Цепочка сертификатов {r.host} не прошла проверку",
+                    detail_ru=f"Издатель: {r.cert_issuer or 'неизвестен'}.",
+                    advice_ru="Часто это издатель перехватывающего устройства, а не настоящий CA сервиса; "
+                    "закрепите ожидаемый отпечаток в tls.pinned_fingerprints, чтобы превратить это в жёсткий алерт.",
+                )
+            )
+        if r.cert_days_remaining is not None and 0 <= r.cert_days_remaining < 14:
+            findings.append(
+                Finding(
+                    id=f"tls.cert_expiring.{r.label}",
+                    severity="warn",
+                    title=f"Certificate for {r.host} expires soon",
+                    detail=f"{r.cert_days_remaining} day(s) remaining ({r.cert_not_after}).",
+                    metric="cert_days_remaining",
+                    value=r.cert_days_remaining,
+                    threshold=14,
+                    advice="Renew before it lapses; an expired certificate breaks the service for every client.",
+                    title_ru=f"Сертификат {r.host} скоро истекает",
+                    detail_ru=f"Осталось {r.cert_days_remaining} дн. (до {r.cert_not_after}).",
+                    advice_ru="Продлите до истечения; просроченный сертификат сломает сервис для всех клиентов.",
+                )
+            )
     return findings
 
 

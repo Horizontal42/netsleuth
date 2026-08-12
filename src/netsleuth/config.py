@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -129,6 +130,9 @@ class Thresholds(BaseModel):
     first_hop_ms: Band = Band(good=5.0, warn=25.0)
 
 
+_SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
 class TlsConfig(BaseModel):
     targets: list[HostSpec] = Field(
         default_factory=lambda: [
@@ -139,6 +143,23 @@ class TlsConfig(BaseModel):
     port: int = 443
     concurrency: int = 4
     ttfb_path: str = "/"
+    verify: bool = True
+    pinned_fingerprints: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("pinned_fingerprints")
+    @classmethod
+    def _normalize_pins(cls, value: dict[str, str]) -> dict[str, str]:
+        if len(value) > 32:
+            raise ValueError("tls.pinned_fingerprints may list at most 32 entries")
+        normalized: dict[str, str] = {}
+        for host, fingerprint in value.items():
+            cleaned = fingerprint.replace(":", "").strip().lower()
+            if not _SHA256_HEX_RE.match(cleaned):
+                raise ValueError(
+                    f"tls.pinned_fingerprints[{host!r}] is not a 64-character hex SHA-256 digest: {fingerprint!r}"
+                )
+            normalized[host] = cleaned
+        return normalized
 
 
 class PrefixBenchConfig(BaseModel):
