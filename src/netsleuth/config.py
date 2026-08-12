@@ -39,6 +39,14 @@ class Probing(BaseModel):
             HostSpec(label="quad9-dns", host="9.9.9.9"),
         ]
     )
+    reference_hosts_v6: list[HostSpec] = Field(
+        default_factory=lambda: [
+            HostSpec(label="cloudflare-dns", host="2606:4700:4700::1111"),
+            HostSpec(label="google-dns", host="2001:4860:4860::8888"),
+            HostSpec(label="quad9-dns", host="2620:fe::fe"),
+        ]
+    )
+    ipv6: str = "auto"
     service_hosts: list[HostSpec] = Field(
         default_factory=lambda: [
             HostSpec(label="cloudflare", host="cloudflare.com"),
@@ -54,6 +62,14 @@ class Probing(BaseModel):
     quick_mtr_cycles: int = 1
     max_hops: int = 30
     trace_concurrency: int = 2
+
+    @field_validator("ipv6")
+    @classmethod
+    def _validate_ipv6_policy(cls, value: str) -> str:
+        allowed = {"auto", "on", "off"}
+        if value not in allowed:
+            raise ValueError(f"probing.ipv6 must be one of {sorted(allowed)}, got {value!r}")
+        return value
 
 
 class Speedtest(BaseModel):

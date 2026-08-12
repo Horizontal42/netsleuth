@@ -173,6 +173,61 @@ def _first_hop_findings(hop: TraceHop, local: LocalNet, t: Thresholds) -> list[F
     return findings
 
 
+_V6_LABEL_SUFFIX = "-v6"
+_V6_SLOWER_RATIO = 2.0
+_V6_SLOWER_ABSOLUTE_MS = 30.0
+
+
+def dual_family_findings(pings: list[PingResult]) -> list[Finding]:
+    by_label = {p.label: p for p in pings}
+    v6_labels = [label for label in by_label if label.endswith(_V6_LABEL_SUFFIX)]
+    if not v6_labels:
+        return []
+    if all(by_label[label].received == 0 for label in v6_labels):
+        return [
+            Finding(
+                id="net.ipv6_unreachable",
+                severity="info",
+                title="IPv6 reference hosts did not answer",
+                detail=f"{len(v6_labels)} IPv6 reference host(s) were tried and none replied.",
+                advice="Common and not necessarily a fault, but explains slow page loads where a browser's "
+                "happy-eyeballs logic falls back to IPv4 after a timeout.",
+                title_ru="Эталонные хосты IPv6 не ответили",
+                detail_ru=f"Опрошено {len(v6_labels)} эталонных хостов IPv6, ни один не ответил.",
+                advice_ru="Часто встречается и не обязательно неисправность, но объясняет медленную "
+                "загрузку страниц, когда happy-eyeballs в браузере откатывается на IPv4 после таймаута.",
+            )
+        ]
+    findings: list[Finding] = []
+    for v6_label in v6_labels:
+        base_label = v6_label[: -len(_V6_LABEL_SUFFIX)]
+        v4 = by_label.get(base_label)
+        v6 = by_label[v6_label]
+        if not v4 or v4.avg_ms is None or v6.avg_ms is None:
+            continue
+        gap = v6.avg_ms - v4.avg_ms
+        if v6.avg_ms > v4.avg_ms * _V6_SLOWER_RATIO and gap > _V6_SLOWER_ABSOLUTE_MS:
+            findings.append(
+                Finding(
+                    id=f"latency.v6_much_slower.{base_label}",
+                    severity="warn",
+                    title=f"IPv6 to {v6.host} is much slower than IPv4",
+                    detail=f"IPv6 averaged {v6.avg_ms} ms vs {v4.avg_ms} ms over IPv4, a {gap:.1f} ms gap.",
+                    metric="avg_ms",
+                    value=v6.avg_ms,
+                    threshold=v4.avg_ms * _V6_SLOWER_RATIO,
+                    advice="Often a tunneled or poorly-peered IPv6 path (6to4, a distant tunnel broker); "
+                    "an invisible slowdown since most tools only report whichever stack the OS happened to pick.",
+                    title_ru=f"IPv6 до {v6.host} намного медленнее IPv4",
+                    detail_ru=f"IPv6 в среднем {v6.avg_ms} мс против {v4.avg_ms} мс по IPv4, разница {gap:.1f} мс.",
+                    advice_ru="Часто туннелированный или плохо пропиренный путь IPv6 (6to4, далёкий туннельный "
+                    "брокер); невидимое замедление, поскольку большинство инструментов показывают лишь тот "
+                    "стек, который случайно выбрала ОС.",
+                )
+            )
+    return findings
+
+
 def path_findings(trace: TraceResult, local: LocalNet | None = None, t: Thresholds | None = None) -> list[Finding]:
     if not trace.hops:
         return [

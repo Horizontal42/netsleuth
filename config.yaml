@@ -10,6 +10,14 @@ probing:
     - { label: "cloudflare-dns", host: "1.1.1.1" }
     - { label: "google-dns", host: "8.8.8.8" }
     - { label: "quad9-dns", host: "9.9.9.9" }
+  # Only probed when the host is dual-stack (auto), always (on), or never (off).
+  # Latency to these is measured alongside the IPv4 reference hosts, labeled
+  # "<label>-v6", so a report can compare the two stacks side by side.
+  reference_hosts_v6:
+    - { label: "cloudflare-dns", host: "2606:4700:4700::1111" }
+    - { label: "google-dns", host: "2001:4860:4860::8888" }
+    - { label: "quad9-dns", host: "2620:fe::fe" }
+  ipv6: "auto"
   service_hosts:
     - { label: "cloudflare", host: "cloudflare.com" }
     - { label: "google", host: "google.com" }

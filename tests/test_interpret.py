@@ -4,7 +4,7 @@ import pytest
 
 from netsleuth.config import Band, Thresholds
 from netsleuth.models import PingResult, TraceHop, TraceResult
-from netsleuth.interpret import latency_findings, path_findings, severity_for
+from netsleuth.interpret import dual_family_findings, latency_findings, path_findings, severity_for
 
 
 @pytest.fixture()
@@ -89,6 +89,43 @@ def test_a_fully_dead_host_is_critical_regardless_of_bands(thresholds):
     )
     assert [f.severity for f in findings] == ["crit"]
     assert findings[0].id == "latency.unreachable.cloudflare-dns"
+
+
+def test_dual_family_findings_silent_when_no_v6_hosts_present():
+    assert dual_family_findings([ping()]) == []
+
+
+def test_dual_family_findings_reports_unreachable_when_every_v6_host_is_dead():
+    pings = [
+        ping(),
+        ping(label="cloudflare-dns-v6", host="2606:4700:4700::1111", received=0, avg_ms=None, loss_pct=100.0),
+    ]
+    findings = dual_family_findings(pings)
+    assert [f.id for f in findings] == ["net.ipv6_unreachable"]
+    assert findings[0].severity == "info"
+
+
+def test_dual_family_findings_flags_a_much_slower_v6_path():
+    pings = [
+        ping(avg_ms=10.0),
+        ping(label="cloudflare-dns-v6", host="2606:4700:4700::1111", avg_ms=80.0),
+    ]
+    findings = dual_family_findings(pings)
+    assert [f.id for f in findings] == ["latency.v6_much_slower.cloudflare-dns"]
+    assert findings[0].severity == "warn"
+
+
+def test_dual_family_findings_silent_when_v6_is_only_slightly_slower():
+    pings = [
+        ping(avg_ms=10.0),
+        ping(label="cloudflare-dns-v6", host="2606:4700:4700::1111", avg_ms=15.0),
+    ]
+    assert dual_family_findings(pings) == []
+
+
+def test_dual_family_findings_silent_when_there_is_no_v4_twin():
+    pings = [ping(label="cloudflare-dns-v6", host="2606:4700:4700::1111", avg_ms=80.0)]
+    assert dual_family_findings(pings) == []
 
 
 def test_path_findings_highlight_the_first_sustained_loss_jump():

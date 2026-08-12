@@ -252,6 +252,21 @@ def test_watch_webhook_on_rejects_an_unknown_entry(tmp_path):
         load_settings(config_path=path, env_file=tmp_path / "nope.env")
 
 
+def test_probing_ipv6_rejects_an_unknown_value(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text('probing:\n  ipv6: "sometimes"\n', encoding="utf-8")
+    with pytest.raises(ValidationError, match=r"auto.*off.*on"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
+def test_probing_ipv6_accepts_each_known_value(tmp_path):
+    for value in ("auto", "on", "off"):
+        path = tmp_path / "config.yaml"
+        path.write_text(f'probing:\n  ipv6: "{value}"\n', encoding="utf-8")
+        s = load_settings(config_path=path, env_file=tmp_path / "nope.env")
+        assert s.probing.ipv6 == value
+
+
 def test_ecmp_runs_are_capped(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text("ecmp:\n  runs: 10\n", encoding="utf-8")

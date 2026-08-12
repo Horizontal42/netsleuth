@@ -27,6 +27,7 @@ from netsleuth.interpret import (
     cgnat_findings,
     dns_advanced_findings,
     dpi_findings,
+    dual_family_findings,
     dual_stack_findings,
     ecmp_findings,
     gather_vpn_signals,
@@ -91,6 +92,7 @@ class Options:
     path_diversity: bool = False
     prefix_bench: bool = False
     ecmp: bool = False
+    ipv6: Optional[bool] = None
     dpi_target: str | None = None
     formats: frozenset[str] = frozenset({"md"})
     interface: str | None = None
@@ -611,7 +613,10 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
             hosts.append(("target", options.target_value))
         count = settings.probing.quick_ping_count if options.quick else settings.probing.ping_count
         cycles = settings.probing.quick_mtr_cycles if options.quick else settings.probing.mtr_cycles
-        modules["latency"], modules["path"], modules["tls"] = await gather_modules(
+        ipv6_policy = {"auto": local.is_dual_stack, "on": True, "off": False}[settings.probing.ipv6]
+        ipv6_enabled = ipv6_policy if options.ipv6 is None else options.ipv6
+        v6_hosts = [(f"{h.label}-v6", h.host) for h in settings.probing.reference_hosts_v6] if ipv6_enabled else []
+        modules["latency"], modules["path"], modules["tls"], v6_result = await gather_modules(
             run_module(
                 "latency",
                 ping_fanout(
@@ -626,7 +631,23 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
             ),
             run_module("path", _traces(hosts, caps, settings, cycles, options), timeout=timeouts.subprocess_seconds),
             run_module("tls", _tls_section(settings, options), timeout=timeouts.module_seconds),
+            run_module(
+                "latency_v6",
+                ping_fanout(
+                    v6_hosts,
+                    caps,
+                    count,
+                    settings.probing.ping_interval_seconds,
+                    settings.probing.ping_timeout_seconds,
+                    source_ip=options.bind.ipv6 if options.bind else None,
+                ),
+                timeout=timeouts.subprocess_seconds,
+            ),
         )
+        # v6 rows are tagged onto the same Latency section via a "<label>-v6" label
+        # rather than a parallel section, so exporter/metrics/compare need no changes.
+        modules["latency"].data = (modules["latency"].data or []) + (v6_result.data or [])
+        modules["latency"].warnings += v6_result.warnings
 
         # Phase 3b — prefix benchmark and DPI check, opt-in and exclusive: each is a
         # single-target/self-scoped probe that should not share the wire with the
@@ -696,6 +717,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         + dual_stack_findings(bundle.get("nat64_prefix"), local)
         + captive_portal_findings(modules["captive_portal"].data or CaptivePortal())
         + [f for report in (modules["ecmp"].data or []) for f in ecmp_findings(report)]
+        + dual_family_findings(pings)
     )
 
     # Phase 6 — export
@@ -836,6 +858,11 @@ def run(
         "--ecmp",
         help="Trace a handful of reference hosts multiple times to detect per-hop load balancing (ECMP).",
     ),
+    ipv6: Optional[bool] = typer.Option(
+        None,
+        "--ipv6/--no-ipv6",
+        help="Also measure latency to IPv6 reference hosts (default: auto, only on a dual-stack connection).",
+    ),
     my_server: Optional[str] = typer.Option(
         None,
         "--my-server",
@@ -908,6 +935,7 @@ def run(
         path_diversity=path_diversity or full,
         prefix_bench=prefix_bench,
         ecmp=ecmp,
+        ipv6=ipv6,
         dpi_target=my_server,
         formats=formats,
         webhook=webhook,
