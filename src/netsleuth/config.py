@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
-FORMAT_EXTENSIONS = {"md": "md", "ru-md": "ru.md", "json": "json"}
+FORMAT_EXTENSIONS = {"md": "md", "ru-md": "ru.md", "json": "json", "prom": "prom", "csv": "csv"}
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -275,6 +275,20 @@ class Output(BaseModel):
         return seen
 
 
+class HistoryConfig(BaseModel):
+    auto_diff: bool = True
+    trend_default_reports: int = 10
+
+    @field_validator("trend_default_reports")
+    @classmethod
+    def _cap_trend_default_reports(cls, value: int) -> int:
+        if value > 200:
+            raise ValueError(
+                "history.trend_default_reports may not exceed 200 (reading 200 multi-MB JSON reports is the cost risk)"
+            )
+        return value
+
+
 class Watch(BaseModel):
     interval_seconds: int = 60
     speedtest_every_n_cycles: int = 10
@@ -297,6 +311,7 @@ class Settings(BaseSettings):
     dnsbl: Dnsbl = Dnsbl()
     thresholds: Thresholds = Thresholds()
     output: Output = Output()
+    history: HistoryConfig = HistoryConfig()
     watch: Watch = Watch()
     tls: TlsConfig = TlsConfig()
     prefix_bench: PrefixBenchConfig = PrefixBenchConfig()

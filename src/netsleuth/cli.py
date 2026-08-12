@@ -15,11 +15,12 @@ import psutil
 import typer
 from rich.console import Console
 
-from netsleuth import __version__
-from netsleuth.compare import diff_reports, load_report, render_diff
+from netsleuth import __version__, history
+from netsleuth.compare import diff_reports, load_report, render_diff, render_diff_brief
 from netsleuth.config import FORMAT_EXTENSIONS, Settings, load_settings
 from netsleuth.exporter import build_report, dump_json, egress_asn, render_markdown, report_filename, write_report
 from netsleuth.iface import available_interfaces_hint, resolve_bind_target
+from netsleuth.metrics import collect_metrics, render_csv, render_prometheus
 from netsleuth.interpret import (
     assess_vpn,
     captive_portal_findings,
@@ -711,6 +712,29 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         artifacts["ru-md"] = render_markdown(report, emoji=settings.output.emoji, lang="ru", sibling=sibling_for_ru)
     if "json" in options.formats:
         artifacts["json"] = dump_json(report)
+    if "prom" in options.formats or "csv" in options.formats:
+        computed_metrics = collect_metrics(report)
+        if "prom" in options.formats:
+            artifacts["prom"] = render_prometheus(computed_metrics)
+        if "csv" in options.formats:
+            artifacts["csv"] = render_csv(computed_metrics)
+
+    if settings.history.auto_diff:
+        if "json" in options.formats:
+            try:
+                key = report.get("meta", {}).get("target") or asn
+                previous = history.find_previous(settings.output.logs_dir, key or "unknown", limit=1) if key else []
+                if previous:
+                    previous_report = load_report(previous[0])
+                    console.print(render_diff_brief(diff_reports(previous_report, report), emoji=settings.output.emoji))
+                    report["meta"]["compared_to"] = previous[0].name
+            except (OSError, ValueError, KeyError):
+                pass
+        else:
+            console.print(
+                "[dim](no JSON written this run — future runs will not be able to diff against it)[/dim]"
+            )
+
     paths = write_report(report, artifacts, Path(settings.output.logs_dir))
     return report, paths
 
@@ -743,6 +767,14 @@ def run(
     compare: Optional[Tuple[Path, Path]] = typer.Option(
         None, "--compare", help="Diff two saved JSON reports — reads reports produced with --format json."
     ),
+    trend: Optional[int] = typer.Option(
+        None,
+        "--trend",
+        help="Show a sparkline trend across the last N saved JSON reports for this network. Read-only, no probing.",
+    ),
+    no_auto_diff: bool = typer.Option(
+        False, "--no-auto-diff", help="Skip the automatic vs-previous-run summary this run would otherwise print."
+    ),
     dnsbl: bool = typer.Option(False, "--dnsbl", help="Also query classic DNSBL zones."),
     ndt7: bool = typer.Option(False, "--ndt7", help="Add the M-Lab NDT7 speedtest tier (publishes your IP)."),
     tcp_trace: bool = typer.Option(False, "--tcp-trace", help="Add a scapy TCP-SYN traceroute tier."),
@@ -767,7 +799,7 @@ def run(
         [],
         "--format",
         help=(
-            "Which report artifacts to write: md, ru-md, json, all, none. Repeatable and "
+            "Which report artifacts to write: md, ru-md, json, prom, csv, all, none. Repeatable and "
             "comma-separated (--format md,json). Any --format replaces the default instead of "
             "adding to it. Ignored with --watch and --compare."
         ),
@@ -785,6 +817,28 @@ def run(
         before, after = load_report(compare[0]), load_report(compare[1])
         console.print(render_diff(diff_reports(before, after), emoji=settings.output.emoji))
         raise typer.Exit(0)
+
+    if trend is not None:
+        from netsleuth.trend import build_trend, render_trend
+
+        if trend < 1:
+            raise typer.BadParameter("--trend must be at least 1", param_hint="--trend")
+        kind, value = parse_target(target) if target else (None, None)
+        key = value or history.latest_key(settings.output.logs_dir)
+        if not key:
+            console.print("No saved reports found to build a trend from.")
+            raise typer.Exit(0)
+        count = trend or settings.history.trend_default_reports
+        report_paths = history.find_previous(settings.output.logs_dir, key, limit=count)
+        if not report_paths:
+            console.print(f"No saved reports found for {key}.")
+            raise typer.Exit(0)
+        reports = [load_report(p) for p in reversed(report_paths)]
+        console.print(render_trend(build_trend(reports), emoji=settings.output.emoji))
+        raise typer.Exit(0)
+
+    if no_auto_diff:
+        settings.history.auto_diff = False
 
     if my_server and "/" in my_server:
         raise typer.BadParameter(

@@ -38,7 +38,7 @@ def test_comma_separated_single_flag():
 
 def test_all_expands_to_every_known_format():
     assert parse_formats(["all"], ru=False, json_flag=False, default=DEFAULT) == frozenset(
-        {"md", "ru-md", "json"}
+        {"md", "ru-md", "json", "prom", "csv"}
     )
 
 

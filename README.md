@@ -82,6 +82,8 @@ None of this is required — netsleuth degrades gracefully without any of it —
 | `--speedtest-server <id\|url>` | Pin the speedtest to a specific server |
 | `--watch` | Continuous monitoring with a live dashboard — for catching intermittent drops. Writes one `logs/watch_*.json` time series per session, not one report per tick |
 | `--compare a.json b.json` | Diff two earlier reports: before/after a VPN switch, before/after an ISP call. Read-only — no probing, no network calls. Reads reports produced with `--format json` |
+| `--trend N` | Sparkline trend across the last N saved JSON reports for this network. Read-only — resolves which network from the newest report already on disk, no probing needed |
+| `--no-auto-diff` | Skip the one-line vs-previous-run summary a run otherwise prints automatically when it writes JSON and an earlier JSON report for the same network exists |
 | `--dnsbl` | Opt in to classic DNSBL reputation zones |
 | `--tls` | Measure TCP/TLS handshake RTT and TTFB to reference services. Included in `--full` |
 | `--dns-advanced` | Compare system DNS vs DoH and probe for a transparent DNS proxy. Included in `--full` |
@@ -90,12 +92,12 @@ None of this is required — netsleuth degrades gracefully without any of it —
 | `--my-server <host>` | Check a server **you own** for TCP port blocking / RST injection. Single host only — rejects CIDR input outright. **Not** included in `--full` — opt in explicitly |
 | `--ndt7` | Opt in to M-Lab NDT7 (publishes your measurement, including your IP, as CC0 open data). On an interactive terminal it prints the consent notice and asks first; on a non-interactive one it proceeds without asking |
 | `--tcp-trace` | Opt in to a scapy TCP-SYN traceroute through ICMP-filtering middleboxes (needs the `tcptrace` extra plus Npcap on Windows or root on Unix). Falls through to the normal cascade when it cannot run |
-| `--format md,ru-md,json,all,none` | Choose which report artifacts to write (default: `md`). Repeatable and comma-separated (`--format md,json`); any use replaces the default instead of adding to it. `all` writes all three, `none` writes nothing. Ignored with `--watch`/`--compare` |
+| `--format md,ru-md,json,prom,csv,all,none` | Choose which report artifacts to write (default: `md`). Repeatable and comma-separated (`--format md,json`); any use replaces the default instead of adding to it. `prom`/`csv` are metrics exports for scripting/monitoring — the same numbers as `json`, flattened. `all` writes every format, `none` writes nothing. Ignored with `--watch`/`--compare` |
 | `--ru` | Shorthand for `--format ru-md` |
 | `--json` | Shorthand for `--format json` |
 | `--interface <name\|ip>` | Force outbound probing (identity, BGP/reputation, latency, traceroute, speedtest) through this adapter instead of the OS default route — e.g. compare a VPN adapter against your raw connection. Accepts an adapter name or one of its IPs. Errors out immediately, listing every adapter, if the name doesn't resolve or the adapter is down; if it resolves but has no route to the internet, the run continues and reports that honestly rather than aborting. Windows' `tracert` has no IPv4 source-address option, so that one traceroute tier is skipped when forced (noted in the report) — every other backend, including the Windows ICMP API, honors it |
 
-Each run writes the selected artifacts into `./logs/`: an English Markdown report, a full Russian translation of the same report (`.ru.md`, same sections, same tables, same numbers — cross-linked with the English one when both are written), and/or a JSON dump containing every raw provider response, untruncated. Default is the English Markdown report only; set `output.formats` in `config.yaml` to change the default permanently, or pass `--format` per run. `./logs/` is gitignored — reports contain your external IP, city, coordinates and ISP name.
+Each run writes the selected artifacts into `./logs/`: an English Markdown report, a full Russian translation of the same report (`.ru.md`, same sections, same tables, same numbers — cross-linked with the English one when both are written), a JSON dump containing every raw provider response untruncated, and/or `.prom`/`.csv` metrics exports (the same numbers as the JSON dump, flattened for Prometheus/Grafana or a spreadsheet). Default is the English Markdown report only; set `output.formats` in `config.yaml` to change the default permanently, or pass `--format` per run. `./logs/` is gitignored — reports contain your external IP, city, coordinates and ISP name.
 
 netsleuth never requires administrator or root. Where privileges would give better data, it degrades to an unprivileged method and says so in the report.
 

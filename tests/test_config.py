@@ -126,7 +126,7 @@ def test_output_formats_all_expands_to_every_known_format(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text('output:\n  formats: ["all"]\n', encoding="utf-8")
     s = load_settings(config_path=path, env_file=tmp_path / "nope.env")
-    assert s.output.formats == ["md", "ru-md", "json"]
+    assert s.output.formats == ["md", "ru-md", "json", "prom", "csv"]
 
 
 def test_output_formats_dedupes_and_lowercases(tmp_path):
@@ -221,6 +221,13 @@ def test_tls_pinned_fingerprints_are_capped_at_32_entries(tmp_path):
     entries = ", ".join(f'"host{i}.example.com": "{"aa" * 32}"' for i in range(33))
     path.write_text("tls:\n  pinned_fingerprints: {" + entries + "}\n", encoding="utf-8")
     with pytest.raises(ValidationError, match="at most 32"):
+        load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
+def test_history_trend_default_reports_is_capped(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("history:\n  trend_default_reports: 500\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="200"):
         load_settings(config_path=path, env_file=tmp_path / "nope.env")
 
 

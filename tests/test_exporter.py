@@ -265,8 +265,8 @@ def test_write_report_returns_paths_in_input_order(tmp_path: Path):
     assert paths[1].name.endswith(".md")
 
 
-def test_format_extensions_covers_the_three_known_formats():
-    assert FORMAT_EXTENSIONS == {"md": "md", "ru-md": "ru.md", "json": "json"}
+def test_format_extensions_covers_the_known_formats():
+    assert FORMAT_EXTENSIONS == {"md": "md", "ru-md": "ru.md", "json": "json", "prom": "prom", "csv": "csv"}
 
 
 from netsleuth.exporter import SPARK_CHARS, _forced_interface_rows, badge, first_loss_jump, render_markdown, sparkline

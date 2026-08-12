@@ -10,6 +10,7 @@ from netsleuth.compare import (
     latency_changes,
     load_report,
     render_diff,
+    render_diff_brief,
     speed_changes,
 )
 
@@ -276,3 +277,14 @@ def test_render_diff_of_two_identical_reports_says_so(before):
 def test_render_diff_honours_the_emoji_setting(before, after):
     assert "🔴" in render_diff(diff_reports(before, after), emoji=True)
     assert "[crit]" in render_diff(diff_reports(before, after), emoji=False)
+
+
+def test_render_diff_brief_is_compact_and_mentions_the_asn_change(before, after):
+    text = render_diff_brief(diff_reports(before, after))
+    assert text.startswith("vs previous run:")
+    assert "ASN" in text
+    assert len(text.splitlines()) <= 6
+
+
+def test_render_diff_brief_of_two_identical_reports_says_no_change(before):
+    assert render_diff_brief(diff_reports(before, before)) == "vs previous run — no significant change."

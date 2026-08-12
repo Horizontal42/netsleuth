@@ -123,6 +123,31 @@ def _block(title: str, changes: list[Change]) -> list[str]:
     )
 
 
+def render_diff_brief(diff: ReportDiff, emoji: bool = True) -> str:
+    lines: list[str] = []
+    for label in ("Egress IP", "ASN"):
+        change = next((c for c in diff.identity if c.label == label), None)
+        if change:
+            lines.append(f"{label}: {_fmt(change.before)} -> {_fmt(change.after)}")
+    worst_latency = max(
+        (c for c in diff.latency if c.label.endswith(" avg_ms") and c.delta is not None),
+        key=lambda c: abs(c.delta),
+        default=None,
+    )
+    if worst_latency:
+        sign = "+" if worst_latency.delta >= 0 else ""
+        lines.append(f"Latency {worst_latency.label}: {sign}{worst_latency.delta} ms")
+    download = next((c for c in diff.speed if c.label == "Download Mbps" and c.delta is not None), None)
+    if download:
+        sign = "+" if download.delta >= 0 else ""
+        lines.append(f"Download: {sign}{download.delta} Mbps")
+    if diff.new_findings or diff.resolved_findings:
+        lines.append(f"Findings: {len(diff.new_findings)} new, {len(diff.resolved_findings)} resolved")
+    if not lines:
+        return "vs previous run — no significant change."
+    return "vs previous run:\n" + "\n".join(f"  {line}" for line in lines)
+
+
 def render_diff(diff: ReportDiff, emoji: bool = True) -> str:
     lines = ["# netsleuth compare", ""]
     lines += _block("Identity", diff.identity)

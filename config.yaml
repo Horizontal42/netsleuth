@@ -136,9 +136,17 @@ output:
   logs_dir: "./logs"
   cache_dir: "./.cache"
   emoji: true
-  # Which report artifacts a run writes by default: md, ru-md, json, or all.
+  # Which report artifacts a run writes by default: md, ru-md, json, prom, csv, or all.
   # Overridden per run by --format/--ru/--json.
   formats: ["md"]
+
+# auto_diff prints a compact vs-previous-run summary after every run that writes JSON
+# for the same network (silent if there is no prior JSON report to compare against).
+# trend_default_reports is the N used by --trend when no explicit count is given,
+# capped at 200 in code (reading 200 multi-MB JSON reports is the real cost).
+history:
+  auto_diff: true
+  trend_default_reports: 10
 
 watch:
   interval_seconds: 60
