@@ -283,6 +283,17 @@ def gather_vpn_signals(ctx: VpnContext) -> list[Signal]:
 
 
 def score_vpn(signals: list[Signal], bands: VpnBands) -> tuple[str, float]:
+    """Calculate VPN confidence score from observed signals.
+
+    Args:
+        signals: List of Signal objects with weights and observed flags.
+        bands: VpnBands with 'likely' and 'confirmed' thresholds.
+
+    Returns:
+        A tuple of (verdict, confidence) where verdict is one of
+        'confirmed', 'likely', or 'none', and confidence is a float
+        between 0.0 and 1.0 representing the accumulated weight.
+    """
     total = 0.0
     for s in signals:
         if not s.observed:
@@ -302,6 +313,18 @@ def assess_vpn(
     tunnel_iface: str | None,
     dns_leak: DnsLeak | None,
 ) -> VpnAssessment:
+    """Build a VPN assessment from signals and context.
+
+    Args:
+        signals: List of Signal objects from gather_vpn_signals.
+        bands: VpnBands containing verdict thresholds.
+        tunnel_iface: Name of the tunnel interface if detected.
+        dns_leak: DnsLeak object if DNS leak testing was performed.
+
+    Returns:
+        A VpnAssessment object with verdict, confidence score,
+        all signals, tunnel interface name, and DNS leak data.
+    """
     verdict, confidence = score_vpn(signals, bands)
     return VpnAssessment(
         verdict=verdict,
