@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ['3.11', '3.12', '3.13']
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install ${{ matrix.python }}
+
+      - name: Install dependencies
+        run: uv sync --extra tcptrace --extra ndt7
+
+      - name: Run tests
+        run: uv run pytest -q --cov=src/netsleuth --cov-report=term-missing
+
+      - name: Run linter
+        run: uv run flake8 src/netsleuth --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Type checking
+        run: uv run mypy src/netsleuth --ignore-missing-imports || true
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run flake8 with all checks
+        run: uv run flake8 src/netsleuth --count --show-source --statistics
