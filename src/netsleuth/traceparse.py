@@ -260,6 +260,21 @@ def build_trace_result(
     os_name: str,
     config: TraceConfig,
 ) -> TraceResult:
+    """Build a complete TraceResult from raw traceroute output.
+
+    Parses the traceroute output and constructs a TraceResult object with
+    completion status indicators based on whether the target was reached.
+
+    Args:
+        text: Raw output from a traceroute command.
+        os_name: The operating system name for selecting the correct parser.
+        config: TraceConfig containing target info and max hop count.
+
+    Returns:
+        A TraceResult with parsed hops and completion flags:
+        - completed: True if the last hop matches the target IP
+        - max_hops_reached: True if we hit max hops without reaching target
+    """
     hops = parse_traceroute(text, os_name)
     completed = bool(hops and config.resolved_ip and hops[-1].ip == config.resolved_ip)
     max_hops_reached = bool(hops) and not completed and hops[-1].ttl >= config.max_hops
