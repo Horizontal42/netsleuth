@@ -222,10 +222,32 @@ _TZ_COUNTRY_PREFIX = {
 
 
 def _signal(name: str, observed: bool, note: str = "") -> Signal:
+    """Create a Signal with the predefined weight for its name.
+
+    Args:
+        name: The signal identifier (must exist in SIGNAL_WEIGHTS).
+        observed: Whether this signal was detected.
+        note: Optional context about the observation.
+
+    Returns:
+        A Signal object with the specified name, observed status,
+        weight from SIGNAL_WEIGHTS, direction 'vpn', and the note.
+    """
     return Signal(name=name, observed=observed, weight=SIGNAL_WEIGHTS[name], direction="vpn", note=note)
 
 
 def gather_vpn_signals(ctx: VpnContext) -> list[Signal]:
+    """Collect VPN/proxy detection signals from network context.
+
+    Args:
+        ctx: A VpnContext containing local network info, geolocation,
+            Cloudflare trace data, DNS leak results, and provider flags.
+
+    Returns:
+        A list of Signal objects indicating potential VPN/proxy usage,
+        such as tunnel interfaces, WARP enabled, hosting providers,
+        MTU anomalies, DNS ASN mismatches, and timezone discrepancies.
+    """
     iface = ctx.local.iface_name or ""
     anomaly = mtu_anomaly(ctx.local.iface_mtu)
     leaking = [
