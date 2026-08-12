@@ -4,14 +4,14 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
-
-FORMAT_EXTENSIONS = {"md": "md", "ru-md": "ru.md", "json": "json"}
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
     YamlConfigSettingsSource,
 )
+
+FORMAT_EXTENSIONS = {"md": "md", "ru-md": "ru.md", "json": "json"}
 
 DEFAULT_CONFIG_PATH = Path("config.yaml")
 DEFAULT_ENV_PATH = Path(".env")
