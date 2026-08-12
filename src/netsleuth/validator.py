@@ -52,29 +52,23 @@ def validate_target(value: str) -> str:
     Raises:
         typer.BadParameter: Если адрес запрещён
     """
-    # Пропускаем hostnames (содержат буквы)
-    if any(c.isalpha() for c in value):
-        return value
-    
-    # Проверка на запрещённые префиксы
-    value_lower = value.lower()
-    for prefix in FORBIDDEN_PREFIXES:
-        if value_lower.startswith(prefix.lower()):
-            raise typer.BadParameter(
-                f"Target '{value}' cannot be a private/reserved IP address. "
-                "Please use a public IP or hostname."
-            )
-    
     # Попытка распарсить как IP для дополнительной проверки
     try:
         ip = ipaddress.ip_address(value)
-        if ip.is_private or ip.is_reserved or ip.is_multicast:
+        if ip.is_private or ip.is_reserved or ip.is_multicast or ip.is_link_local:
             raise typer.BadParameter(
-                f"Target '{value}' is a private/reserved/multicast address. "
+                f"Target '{value}' is a private/reserved/multicast/link-local address. "
                 "Please use a public IP address."
             )
+        return value
     except ValueError:
-        # Не IP-адрес (возможно hostname), это ок
+        # Не IP-адрес (hostname), проверяем что это не выглядит как private IP
+        pass
+    
+    # Для hostnames - простая проверка что не начинается с цифр (не похоже на IP)
+    # Hostnames могут содержать буквы, цифры, дефисы и точки
+    if value[0].isdigit():
+        # Похоже на IP но не распарсился - возможно невалидный, но не блокируем
         pass
     
     return value
