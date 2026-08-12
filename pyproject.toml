@@ -44,3 +44,15 @@ packages = ["src/netsleuth"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 filterwarnings = ["error::DeprecationWarning:netsleuth.*"]
+
+[tool.flake8]
+max-line-length = 120
+extend-ignore = ["E203", "W503"]
+exclude = [".git", "__pycache__", ".venv", "build", "dist"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+exclude = ["tests/"]
