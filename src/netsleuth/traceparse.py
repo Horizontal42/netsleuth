@@ -105,6 +105,17 @@ def _unix_annotations(body: str) -> list[str]:
 
 
 def parse_linux(text: str) -> list[TraceHop]:
+    """Parse Linux traceroute output into structured hop data.
+
+    Processes GNU-style traceroute output, extracting TTL, IP addresses,
+    reverse DNS, RTT probes, and annotations for each hop.
+
+    Args:
+        text: Raw output from a Linux/GNU traceroute command.
+
+    Returns:
+        A list of TraceHop objects, one per hop found in the output.
+    """
     hops: list[TraceHop] = []
     for line in text.splitlines():
         match = _HOP_LINE_RE.match(line)
@@ -133,6 +144,17 @@ _WIN_NAME_RE = re.compile(r"(?P<name>[A-Za-z0-9._-]+)\s*\[")
 
 
 def parse_windows(text: str) -> list[TraceHop]:
+    """Parse Windows tracert output into structured hop data.
+
+    Handles Windows-specific formatting including '<1 ms' notation, bracketed
+    IP addresses, and localized output variations.
+
+    Args:
+        text: Raw output from a Windows tracert command.
+
+    Returns:
+        A list of TraceHop objects, one per hop found in the output.
+    """
     hops: list[TraceHop] = []
     for line in text.splitlines():
         match = _HOP_LINE_RE.match(line)
