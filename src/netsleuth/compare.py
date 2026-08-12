@@ -139,12 +139,32 @@ def diff_reports(before: dict, after: dict) -> ReportDiff:
 
 
 def _fmt(value: Any) -> str:
+    """Format a value for display in markdown tables.
+    
+    Args:
+        value: The value to format (can be None, int, float, or str).
+    
+    Returns:
+        An em-dash (—) for None values, a compact numeric format for
+        int/float values, or the string representation for other types.
+    """
     if value is None:
         return "—"
     return f"{value:g}" if isinstance(value, (int, float)) else str(value)
 
 
 def _block(title: str, changes: list[Change]) -> list[str]:
+    """Render a section of changes as markdown lines.
+    
+    Args:
+        title: Section heading (e.g., "Identity", "Latency", "Speed").
+        changes: List of Change objects describing what changed.
+    
+    Returns:
+        A list of markdown lines forming the section. If there are no
+        changes, returns a heading with "No change." message. Otherwise
+        returns a markdown table with Field/Before/After/Delta columns.
+    """
     if not changes:
         return [f"### {title}", "", "No change.", ""]
     return (
