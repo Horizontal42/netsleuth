@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 import ipaddress
-from datetime import datetime, timedelta, timezone
+import json
+import os
+import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import httpx
 
 from netsleuth.config import Providers
-from netsleuth.models import BgpEvent
+from netsleuth.models import BgpEvent, BgpIntel, IxpPresence
 
 # These calls return the whole routing history of an ASN; on a large ISP that is
 # tens of megabytes unless the window and row count are pinned.
@@ -96,7 +103,7 @@ async def ripestat(
 ) -> dict:
     params: dict[str, str] = {"resource": resource, **extra}
     if call in BULK_CALLS:
-        start = datetime.now(timezone.utc) - timedelta(days=providers.ripestat_timeframe_days)
+        start = datetime.now(UTC) - timedelta(days=providers.ripestat_timeframe_days)
         params["max_rows"] = str(providers.ripestat_max_rows)
         params["starttime"] = start.strftime("%Y-%m-%dT%H:%M:%S")
     response = await client.get(f"{providers.ripestat_base_url}/{call}/data.json", params=params)
@@ -104,23 +111,29 @@ async def ripestat(
     return response.json()
 
 
-import json
-import os
-import time
-from pathlib import Path
-from dataclasses import dataclass
-from typing import Awaitable, Callable
-
-from netsleuth.models import IxpPresence
-
-
 def parse_asrank(payload: dict) -> tuple[int | None, int | None, int | None]:
+    """Parse ASRank GraphQL response.
+    
+    Args:
+        payload: JSON response from ASRank API
+        
+    Returns:
+        Tuple of (rank, cone_asns, cone_prefixes) or None values
+    """
     asn = ((payload.get("data") or {}).get("asn")) or {}
     cone = asn.get("cone") or {}
     return asn.get("rank"), cone.get("numberAsns"), cone.get("numberPrefixes")
 
 
 def parse_cymru_origin(txt_record: str) -> dict[str, str]:
+    """Parse Team Cymru WHOIS TXT record.
+    
+    Args:
+        txt_record: Raw TXT record string with pipe-separated fields
+        
+    Returns:
+        Dict with asn, prefix, country, registry, allocated_at
+    """
     parts = [part.strip() for part in txt_record.split("|")]
     if len(parts) < 5:
         return {}
@@ -134,6 +147,14 @@ def parse_cymru_origin(txt_record: str) -> dict[str, str]:
 
 
 def parse_peeringdb_net(payload: dict) -> tuple[str | None, str | None, int | None]:
+    """Parse PeeringDB network record.
+    
+    Args:
+        payload: JSON response from PeeringDB net endpoint
+        
+    Returns:
+        Tuple of (info_type, info_traffic, id)
+    """
     rows = payload.get("data") or []
     if not rows:
         return None, None, None
@@ -142,6 +163,14 @@ def parse_peeringdb_net(payload: dict) -> tuple[str | None, str | None, int | No
 
 
 def parse_peeringdb_netixlan(payload: dict) -> list[IxpPresence]:
+    """Parse PeeringDB netixlan records into IXP presence list.
+    
+    Args:
+        payload: JSON response from PeeringDB netixlan endpoint
+        
+    Returns:
+        List of IxpPresence for operational exchanges
+    """
     return [
         IxpPresence(
             name=row.get("name", ""),
@@ -160,6 +189,17 @@ async def cached_json(
     ttl_hours: int,
     fetch: Callable[[], Awaitable[dict]],
 ) -> dict:
+    """Fetch and cache JSON response with TTL.
+    
+    Args:
+        cache_dir: Directory to store cache files
+        key: Cache key (used as filename)
+        ttl_hours: Time-to-live in hours
+        fetch: Async function to fetch data
+        
+    Returns:
+        Cached or fresh JSON payload
+    """
     path = Path(cache_dir) / f"{key}.json"
     age = max(0.0, time.time() - path.stat().st_mtime) if path.exists() else None
     if age is not None and age < ttl_hours * 3600:
@@ -175,11 +215,9 @@ async def cached_json(
     return payload
 
 
-from netsleuth.models import BgpIntel
-
-
 @dataclass
 class BgpContext:
+    """Context container for BGP intelligence gathering."""
     asn: str
     overview: dict
     neighbours: dict
@@ -192,6 +230,14 @@ class BgpContext:
 
 
 def build_bgp_intel(ctx: BgpContext) -> BgpIntel:
+    """Build BgpIntel from collected context data.
+    
+    Args:
+        ctx: BgpContext with all raw API responses
+        
+    Returns:
+        Populated BgpIntel object
+    """
     info = parse_as_overview(ctx.overview)
     upstreams, peers, downstreams = parse_asn_neighbours(ctx.neighbours)
     announced, v4, v6 = parse_announced_prefixes(ctx.prefixes)
@@ -219,8 +265,6 @@ def build_bgp_intel(ctx: BgpContext) -> BgpIntel:
         cone_prefixes=cone_prefixes,
     )
 
-
-import asyncio
 
 _ASRANK_QUERY = """
 query ASN($asn: String!) {

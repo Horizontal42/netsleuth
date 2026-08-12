@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Cross-platform CLI for deep network diagnostics: ISP/VPN/ASN identity, latency, path and bandwidth"
 readme = "README.md"
 license = "PolyForm-Noncommercial-1.0.0"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 authors = [{ name = "netsleuth contributors" }]
 keywords = ["network", "diagnostics", "traceroute", "bgp", "vpn", "speedtest"]
 dependencies = [

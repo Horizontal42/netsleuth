@@ -105,6 +105,8 @@ def write_report(report: dict[str, Any], artifacts: dict[str, str], logs_dir: Pa
     ]
 
 
+import itertools
+
 from netsleuth.interpret import bufferbloat_consequence
 
 SPARK_CHARS = "▁▂▃▅▇"
@@ -158,7 +160,7 @@ def badge(severity: str, emoji: bool, lang: str = "en") -> str:
 
 
 def first_loss_jump(hops: list[dict]) -> int | None:
-    for hop, following in zip(hops, hops[1:]):
+    for hop, following in itertools.pairwise(hops):
         if hop.get("loss_pct", 0.0) >= _LOSS_JUMP_PCT and following.get("loss_pct", 0.0) >= _LOSS_JUMP_PCT:
             return hop.get("ttl")
     return None
@@ -216,12 +218,12 @@ def _header(report: dict, emoji: bool, lang: str = "en") -> list[str]:
         "# netsleuth report",
         "",
         f"- {_t(lang, 'Mode', 'Режим')}: `{meta.get('mode', 'auto')}`{target}",
-        f"- {_t(lang, 'Started', 'Начало')}: {meta.get('started_at', '?')} · "
-        f"{_t(lang, 'finished', 'завершение')}: {meta.get('finished_at', '?')}",
-        f"- {_t(lang, 'Host OS', 'ОС хоста')}: {meta.get('host_os', '?')} · "
-        f"{_t(lang, 'run id', 'id запуска')} `{meta.get('run_id', '?')}`",
-        f"- {_t(lang, 'Verdict', 'Вердикт')}: {badge(status, emoji, lang)} **{status_word}** "
-        f"({interp.get('overall_score', 0)}/100) — {summary}",
+        (f"- {_t(lang, 'Started', 'Начало')}: {meta.get('started_at', '?')} · "
+        f"{_t(lang, 'finished', 'завершение')}: {meta.get('finished_at', '?')}"),
+        (f"- {_t(lang, 'Host OS', 'ОС хоста')}: {meta.get('host_os', '?')} · "
+        f"{_t(lang, 'run id', 'id запуска')} `{meta.get('run_id', '?')}`"),
+        (f"- {_t(lang, 'Verdict', 'Вердикт')}: {badge(status, emoji, lang)} **{status_word}** "
+        f"({interp.get('overall_score', 0)}/100) — {summary}"),
         "",
     ]
 
@@ -378,9 +380,9 @@ def _vpn(report: dict, lang: str = "en") -> list[str]:
     lines = [
         title,
         "",
-        f"{_t(lang, 'Verdict', 'Вердикт')}: **{verdict_word}** · {_t(lang, 'confidence', 'уверенность')} "
+        (f"{_t(lang, 'Verdict', 'Вердикт')}: **{verdict_word}** · {_t(lang, 'confidence', 'уверенность')} "
         f"{vpn.get('confidence', 0)} · {_t(lang, 'tunnel interface', 'туннельный интерфейс')} "
-        f"{vpn.get('tunnel_iface') or '—'}",
+        f"{vpn.get('tunnel_iface') or '—'}"),
         "",
     ]
     lines += _table(
@@ -467,8 +469,8 @@ def _bgp(report: dict, lang: str = "en") -> list[str]:
         ],
         [
             _t(lang, "CAIDA ASRank", "CAIDA ASRank"),
-            f"#{_num(bgp.get('asrank'))} · {_t(lang, 'cone', 'конус')} {_num(bgp.get('cone_asns'))} "
-            f"{_t(lang, 'ASNs', 'ASN')} / {_num(bgp.get('cone_prefixes'))} {_t(lang, 'prefixes', 'префиксов')}",
+            (f"#{_num(bgp.get('asrank'))} · {_t(lang, 'cone', 'конус')} {_num(bgp.get('cone_asns'))} "
+            f"{_t(lang, 'ASNs', 'ASN')} / {_num(bgp.get('cone_prefixes'))} {_t(lang, 'prefixes', 'префиксов')}"),
         ],
         [_t(lang, "PeeringDB", "PeeringDB"), f"{bgp.get('pdb_info_type') or '—'} · {bgp.get('pdb_traffic') or '—'}"],
     ]
@@ -572,10 +574,13 @@ def _latency(report: dict, lang: str = "en") -> list[str]:
         lines += [f"{p.get('label', ''):<18}{sparkline(p.get('samples') or [])}" for p in pings]
         lines += ["```"]
     if any(p.get("method") == "tcp" for p in pings):
-        lines += [
-            "",
-            f"> {_t(lang, 'Loss on a `tcp` row counts failed TCP connections, not dropped ICMP packets.', 'Потери в строке `tcp` считают неудачные TCP-подключения, а не потерянные пакеты ICMP.')}",
-        ]
+        tcp_note_en = (
+            "Loss on a `tcp` row counts failed TCP connections, not dropped ICMP packets."
+        )
+        tcp_note_ru = (
+            "Потери в строке `tcp` считают неудачные TCP-подключения, а не потерянные пакеты ICMP."
+        )
+        lines += ["", f"> {_t(lang, tcp_note_en, tcp_note_ru)}"]
     return lines + [""]
 
 
@@ -597,8 +602,8 @@ def _path(report: dict, lang: str = "en") -> list[str]:
             _t(lang, "complete", "завершено") if trace.get("completed") else _t(lang, "incomplete", "не завершено")
         )
         lines += [
-            f"### {trace.get('target') or '?'} — {_t(lang, 'backend', 'бэкенд')} `{trace.get('backend', 'none')}`, "
-            f"{completed_word}",
+            (f"### {trace.get('target') or '?'} — {_t(lang, 'backend', 'бэкенд')} `{trace.get('backend', 'none')}`, "
+            f"{completed_word}"),
             "",
             "```",
         ]
@@ -638,9 +643,9 @@ def _speed(report: dict, lang: str = "en") -> list[str]:
         ],
         [
             _t(lang, "Bufferbloat", "Bufferbloat"),
-            f"{_t(lang, 'grade', 'оценка')} {grade} — {_t(lang, 'down', 'приём')} "
+            (f"{_t(lang, 'grade', 'оценка')} {grade} — {_t(lang, 'down', 'приём')} "
             f"+{_num(speed.get('bufferbloat_down_ms'))} {_t(lang, 'ms', 'мс')}, "
-            f"{_t(lang, 'up', 'передача')} +{_num(speed.get('bufferbloat_up_ms'))} {_t(lang, 'ms', 'мс')}",
+            f"{_t(lang, 'up', 'передача')} +{_num(speed.get('bufferbloat_up_ms'))} {_t(lang, 'ms', 'мс')}"),
         ],
         [_t(lang, "Netflix OCA on-net", "Netflix OCA в сети"), yn(speed.get("netflix_oca_onnet"))],
     ]
@@ -701,10 +706,15 @@ def _tls(report: dict, lang: str = "en") -> list[str]:
     errored = [r for r in results if r.get("error")]
     if errored:
         lines += [""] + [f"- {r.get('label')}: {r.get('error')}" for r in errored]
-    lines += [
-        "",
-        f"> {_t(lang, 'TLS handshake time is derived by subtracting a separate TCP-only baseline connection from a second, full TLS connection.', 'Время TLS-рукопожатия получено вычитанием отдельного базового TCP-соединения из времени второго, полного TLS-соединения.')}",
-    ]
+    tls_note_en = (
+        "TLS handshake time is derived by subtracting a separate TCP-only baseline "
+        "connection from a second, full TLS connection."
+    )
+    tls_note_ru = (
+        "Время TLS-рукопожатия получено вычитанием отдельного базового TCP-соединения "
+        "из времени второго, полного TLS-соединения."
+    )
+    lines += ["", f"> {_t(lang, tls_note_en, tls_note_ru)}"]
     return lines + [""]
 
 
@@ -808,11 +818,11 @@ def _prefix_benchmark(report: dict, lang: str = "en") -> list[str]:
     )
     lines += [
         "",
-        f"{_t(lang, 'Prefixes announced', 'Анонсировано префиксов')}: {bench.get('prefixes_announced', 0)} · "
+        (f"{_t(lang, 'Prefixes announced', 'Анонсировано префиксов')}: {bench.get('prefixes_announced', 0)} · "
         f"{_t(lang, 'probed', 'проверено')}: {bench.get('prefixes_probed', 0)} · "
         f"{_t(lang, 'best', 'лучший')}: {bench.get('best') or '—'} · "
         f"{_t(lang, 'worst', 'худший')}: {bench.get('worst') or '—'} · "
-        f"{_t(lang, 'spread', 'разброс')}: {_num(bench.get('spread_ms'))} {_t(lang, 'ms', 'мс')}",
+        f"{_t(lang, 'spread', 'разброс')}: {_num(bench.get('spread_ms'))} {_t(lang, 'ms', 'мс')}"),
     ]
     return lines + [""]
 

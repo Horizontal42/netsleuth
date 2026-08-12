@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timezone
-from typing import Any, Awaitable
+from collections.abc import Awaitable
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 
@@ -14,7 +15,7 @@ _RETRYABLE_STATUS_FLOOR = 500
 
 
 def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def classify_exception(exc: BaseException) -> tuple[str, bool]:

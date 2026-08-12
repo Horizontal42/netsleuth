@@ -13,7 +13,13 @@ from rich.table import Table
 
 from netsleuth import __version__
 from netsleuth.config import Settings
-from netsleuth.exporter import atomic_write, compact_timestamp, dump_json, sanitize_name, sparkline
+from netsleuth.exporter import (
+    atomic_write,
+    compact_timestamp,
+    dump_json,
+    sanitize_name,
+    sparkline,
+)
 from netsleuth.ip_geo import gather_identity
 from netsleuth.models import PingResult, SpeedResult, to_jsonable
 from netsleuth.netinfo import detect_capabilities

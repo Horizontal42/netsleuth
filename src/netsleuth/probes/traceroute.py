@@ -6,7 +6,8 @@ import json
 import platform
 import shutil
 import threading
-from typing import Awaitable, Callable, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
 from netsleuth.models import Capabilities, TraceConfig, TraceHop, TraceResult
 from netsleuth.probes.icmp_win import IcmpReply, classify_status
@@ -15,7 +16,7 @@ from netsleuth.traceparse import build_trace_result, finalize_hop
 _T = TypeVar("_T")
 
 
-def _run_in_daemon_thread(func: Callable[..., _T], *args: object) -> "asyncio.Future[_T]":
+def _run_in_daemon_thread[T](func: Callable[..., _T], *args: object) -> asyncio.Future[_T]:
     # asyncio.to_thread()/loop.run_in_executor(None, ...) queue work onto the
     # ThreadPoolExecutor-backed default executor, whose worker threads are non-daemon
     # and get joined by concurrent.futures' atexit handler. If the underlying call
@@ -116,7 +117,7 @@ async def _run(args: list[str], timeout: float) -> str:
     )
     try:
         stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         process.kill()
         raise
     return stdout.decode(_console_encoding(), errors="replace")

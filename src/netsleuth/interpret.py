@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-
 from netsleuth.config import Band, BufferbloatBands, Thresholds, VpnBands
 from netsleuth.models import (
-    CfTrace,
     DnsAdvanced,
     DnsLeak,
     DpiCheckResult,
     Finding,
-    IpGeo,
-    LocalNet,
     PathDiversity,
     PingResult,
     PrefixBenchmark,

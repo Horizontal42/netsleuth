@@ -1,21 +1,47 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import re
+import time
+from collections.abc import Awaitable, Callable
 from urllib.parse import parse_qs
 
-from netsleuth.models import CfL4Stats
-from netsleuth.stats import percentile
+import httpx
+
+from netsleuth.config import BufferbloatBands, Speedtest
+from netsleuth.interpret import grade_bufferbloat
+from netsleuth.models import CfL4Stats, SpeedResult, TierAttempt
+from netsleuth.stats import percentile, rtt_stats
 
 _CFL4_RE = re.compile(r'cfL4\s*;\s*desc\s*=\s*"?\??(?P<query>[^",]*)"?')
 
 
 def mbps(bytes_transferred: int, seconds: float) -> float:
+    """Convert bytes transferred over duration to Mbps.
+    
+    Args:
+        bytes_transferred: Number of bytes transferred
+        seconds: Time duration in seconds
+        
+    Returns:
+        Transfer rate in Mbps, or 0.0 if invalid input
+    """
     if seconds <= 0 or bytes_transferred <= 0:
         return 0.0
     return (bytes_transferred * 8) / seconds / 1_000_000
 
 
 def throughput_from_samples(samples: list[tuple[int, float]], p: float = 90.0) -> float:
+    """Calculate throughput from size/duration samples at given percentile.
+    
+    Args:
+        samples: List of (bytes, seconds) tuples
+        p: Percentile to use (default 90th)
+        
+    Returns:
+        Throughput in Mbps at the specified percentile
+    """
     rates = [mbps(size, duration) for size, duration in samples]
     rates = [rate for rate in rates if rate > 0]
     if not rates:
@@ -24,6 +50,7 @@ def throughput_from_samples(samples: list[tuple[int, float]], p: float = 90.0) -
 
 
 def _as_int(value: str | None) -> int | None:
+    """Safely convert string to integer."""
     try:
         return int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
@@ -31,11 +58,20 @@ def _as_int(value: str | None) -> int | None:
 
 
 def _us_to_ms(value: str | None) -> float | None:
+    """Convert microseconds to milliseconds."""
     number = _as_int(value)
     return None if number is None else round(number / 1000.0, 3)
 
 
 def parse_server_timing_cfl4(header: str) -> CfL4Stats | None:
+    """Parse Cloudflare L4 stats from Server-Timing header.
+    
+    Args:
+        header: Server-Timing HTTP header value
+        
+    Returns:
+        CfL4Stats object or None if parsing fails
+    """
     match = _CFL4_RE.search(header or "")
     if not match:
         return None
@@ -52,17 +88,19 @@ def parse_server_timing_cfl4(header: str) -> CfL4Stats | None:
 
 
 def bufferbloat_delta(idle_rtt_ms: float | None, loaded_rtts_ms: list[float]) -> float | None:
+    """Calculate bufferbloat as difference between loaded and idle RTT.
+    
+    Args:
+        idle_rtt_ms: Idle round-trip time in milliseconds
+        loaded_rtts_ms: List of RTT measurements under load
+        
+    Returns:
+        Bufferbloat delta in ms, or None if insufficient data
+    """
     if idle_rtt_ms is None or not loaded_rtts_ms:
         return None
     loaded = percentile(sorted(loaded_rtts_ms), 95.0)
     return round(max(0.0, loaded - idle_rtt_ms), 3)
-
-
-import asyncio
-import time
-from typing import Awaitable, Callable
-
-from netsleuth.models import SpeedResult, TierAttempt
 
 NDT7_CONSENT_NOTICE = (
     "M-Lab NDT7 publishes every measurement as public CC0 open data, including your "
@@ -102,14 +140,16 @@ async def run_speed_cascade(
     return SpeedResult(method="none", tier_attempts=attempts)
 
 
-import json
-
-import httpx
-
-from netsleuth.config import Speedtest
-
-
 def ookla_interface_args(iface_name: str | None, ipv4: str | None) -> list[str]:
+    """Build Ookla CLI arguments for interface/IP selection.
+    
+    Args:
+        iface_name: Network interface name
+        ipv4: IPv4 address to bind to
+        
+    Returns:
+        List of command-line arguments
+    """
     if iface_name:
         return ["--interface", iface_name]
     if ipv4:
@@ -221,7 +261,7 @@ async def tier_ndt7(
         while time.perf_counter() - began < 10:
             try:
                 message = await asyncio.wait_for(socket.recv(), timeout=timeout)
-            except (asyncio.TimeoutError, Exception):
+            except (TimeoutError, Exception):
                 break
             total += len(message) if isinstance(message, (bytes, bytearray)) else len(message.encode())
     elapsed = time.perf_counter() - began
@@ -233,16 +273,21 @@ async def tier_ndt7(
     )
 
 
-from netsleuth.config import BufferbloatBands
-from netsleuth.interpret import grade_bufferbloat
-from netsleuth.stats import rtt_stats
-
-
 async def probe_while(
     coro: Awaitable[None],
     probe: Callable[[], Awaitable[float | None]],
     interval: float,
 ) -> list[float]:
+    """Run probes concurrently with a background task.
+    
+    Args:
+        coro: Background coroutine to run (e.g., download/upload)
+        probe: Async function that returns RTT measurement or None
+        interval: Time between probes in seconds
+        
+    Returns:
+        List of RTT measurements collected during execution
+    """
     samples: list[float] = []
     task = asyncio.ensure_future(coro)
     while not task.done():
@@ -263,6 +308,23 @@ async def measure_with_bufferbloat(
     probe: Callable[[], Awaitable[float | None]],
     interval: float,
 ) -> SpeedResult:
+    """Measure bufferbloat by sampling RTT during saturated transfers.
+    
+    This is the one place a measurement is allowed to overlap another: the
+    whole point is to see what latency does while the link is saturated.
+    
+    Args:
+        result: SpeedResult to update with bufferbloat metrics
+        idle_rtt_ms: Idle RTT baseline in milliseconds
+        bands: Bufferbloat grading thresholds
+        run_download: Coroutine to saturate download
+        run_upload: Coroutine to saturate upload
+        probe: Function to measure RTT
+        interval: Probe interval in seconds
+        
+    Returns:
+        Updated SpeedResult with bufferbloat metrics
+    """
     # This is the one place a measurement is allowed to overlap another: the
     # whole point is to see what latency does while the link is saturated.
     down_samples = await probe_while(run_download(), probe, interval)

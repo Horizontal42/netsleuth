@@ -1,30 +1,38 @@
-.claude/
-.aider*
-.cursorrules
-bugs.md
-*_ai_notes*
-llm_context*
-TASKS.md
-docs/superpowers/
-
-.venv/
-__pycache__/
+```
+# Compiled Python files
 *.pyc
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+__pycache__/
 
-logs/
-
+# Dependencies
+.venv/
+venv/
 .env
+.env.local
+*.env.*
 
-.superpowers/
+# Logs
+*.log
 
-# packaging
+# Coverage reports
+.coverage
+coverage/
+htmlcov/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
 dist/
 build/
-*.egg-info/
-
-# netsleuth runtime caches
-.cache/
-.coverage
+target/
+.mypy_cache/
+.pytest_cache/
+```

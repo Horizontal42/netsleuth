@@ -8,7 +8,7 @@ import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 import httpx
 import psutil
@@ -18,8 +18,15 @@ from rich.console import Console
 from netsleuth import __version__
 from netsleuth.compare import diff_reports, load_report, render_diff
 from netsleuth.config import FORMAT_EXTENSIONS, Settings, load_settings
-from netsleuth.exporter import build_report, dump_json, egress_asn, render_markdown, report_filename, write_report
-from netsleuth.iface import available_interfaces_hint, resolve_bind_target
+from netsleuth.exporter import (
+    build_report,
+    dump_json,
+    egress_asn,
+    render_markdown,
+    report_filename,
+    write_report,
+)
+from netsleuth.iface import resolve_bind_target
 from netsleuth.interpret import (
     assess_vpn,
     dns_advanced_findings,
@@ -33,8 +40,21 @@ from netsleuth.interpret import (
     tls_findings,
 )
 from netsleuth.ip_geo import dual_stack_mismatch, gather_identity
-from netsleuth.models import BindTarget, Finding, IpGeo, LocalNet, ModuleResult, ProbeError, SpeedResult, VpnContext
-from netsleuth.netinfo import collect_local_net, detect_capabilities, iface_for_ip, is_tunnel_iface, primary_interface_ip
+from netsleuth.models import (
+    BindTarget,
+    Finding,
+    IpGeo,
+    LocalNet,
+    ModuleResult,
+    ProbeError,
+    SpeedResult,
+    VpnContext,
+)
+from netsleuth.netinfo import (
+    collect_local_net,
+    detect_capabilities,
+    is_tunnel_iface,
+)
 from netsleuth.orchestration import gather_modules, run_module, utc_now_iso
 from netsleuth.probes.dns_leak import collect_dns_leak
 from netsleuth.probes.latency import ping_fanout, tcp_connect_rtt
@@ -217,8 +237,8 @@ async def _bgp_section(client, settings: Settings, asn: str | None, raw: dict):
 
 async def _reputation_section(client, settings: Settings, options: Options, geo: IpGeo, raw: dict):
     from netsleuth.reputation import (
-        build_reputation,
         ReputationContext,
+        build_reputation,
         fetch_abuseipdb,
         fetch_internetdb,
         normalize_internetdb,
@@ -676,11 +696,11 @@ def _check_ndt7_consent(settings: Settings) -> bool:
 def run(
     full: bool = typer.Option(False, "--full", help="Full run: speedtest and full MTR cycles."),
     quick: bool = typer.Option(False, "--quick", help="Express run: reference hosts only, no speedtest."),
-    target: Optional[str] = typer.Option(None, "--target", help="Investigate AS<n>, an IP or a domain."),
-    target_host: Optional[str] = typer.Option(None, "--target-host", help="Extra host for ping/traceroute."),
-    speedtest_server: Optional[str] = typer.Option(None, "--speedtest-server", help="Pin the speedtest server."),
+    target: str | None = typer.Option(None, "--target", help="Investigate AS<n>, an IP or a domain."),
+    target_host: str | None = typer.Option(None, "--target-host", help="Extra host for ping/traceroute."),
+    speedtest_server: str | None = typer.Option(None, "--speedtest-server", help="Pin the speedtest server."),
     watch: bool = typer.Option(False, "--watch", help="Continuous monitoring with a live dashboard."),
-    compare: Optional[Tuple[Path, Path]] = typer.Option(
+    compare: tuple[Path, Path] | None = typer.Option(
         None, "--compare", help="Diff two saved JSON reports — reads reports produced with --format json."
     ),
     dnsbl: bool = typer.Option(False, "--dnsbl", help="Also query classic DNSBL zones."),
@@ -698,12 +718,12 @@ def run(
         "--prefix-bench",
         help="Ping the first host of a handful of your own AS's announced prefixes to find the lowest-latency PoP.",
     ),
-    my_server: Optional[str] = typer.Option(
+    my_server: str | None = typer.Option(
         None,
         "--my-server",
         help="Check a server YOU OWN for TCP port blocking / RST injection. Single host only — never a CIDR or someone else's server.",
     ),
-    format_: List[str] = typer.Option(
+    format_: list[str] = typer.Option(
         [],
         "--format",
         help=(
@@ -714,7 +734,7 @@ def run(
     ),
     ru: bool = typer.Option(False, "--ru", help="Shorthand for --format ru-md."),
     json_flag: bool = typer.Option(False, "--json", help="Shorthand for --format json."),
-    interface: Optional[str] = typer.Option(
+    interface: str | None = typer.Option(
         None,
         "--interface",
         help="Force outbound probing through this adapter (name or IP), instead of the OS default route.",

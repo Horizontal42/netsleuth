@@ -43,9 +43,7 @@ def parse_myaddr(records: list[str]) -> str | None:
 
 def detect_ecs_leak(akahelp: dict[str, str]) -> bool:
     ecs = akahelp.get("ecs", "").strip()
-    if not ecs or ecs.startswith("0.0.0.0/0") or ecs.startswith("::/0"):
-        return False
-    return True
+    return not (not ecs or ecs.startswith(("0.0.0.0/0", "::/0")))
 
 
 def build_adapter_result(

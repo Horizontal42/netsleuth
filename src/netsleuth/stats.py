@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 from typing import NamedTuple
 
 
@@ -25,7 +26,7 @@ def rtt_stats(samples: list[float | None]) -> RttStats:
     mdev = sum(abs(v - avg) for v in got) / received
     deltas = [
         abs(b - a)
-        for a, b in zip(samples, samples[1:])
+        for a, b in itertools.pairwise(samples)
         if a is not None and b is not None
     ]
     jitter = sum(deltas) / len(deltas) if deltas else 0.0
