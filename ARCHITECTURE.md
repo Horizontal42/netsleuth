@@ -25,7 +25,7 @@ src/netsleuth/
                   artifacts get written is decided by the caller (cli.py), not here.
   alerting.py     Pure webhook-transition contract (should_fire debounce) plus a plain httpx POST for --watch alerts.
   compare.py      --compare: diff two saved JSON reports; render_diff_brief() feeds the automatic vs-previous-run summary.
-  history.py      Same-ASN report lookup by filename convention: report_key(), find_previous(), latest_key().
+  history.py      Same-ASN report lookup by walking the logs/YYYY/MM/DD tree: report_key(), find_previous(), latest_key().
   trend.py        --trend N: aggregates N saved JSON reports into per-label sparkline series.
   metrics.py      collect_metrics() extracts a flat Metric list from a report; render_prometheus()/render_csv() serialize it.
   watch.py        --watch: periodic re-run loop with a live Rich dashboard.
@@ -78,7 +78,7 @@ src/netsleuth/
                 |
                 +-- interpret  ---> Finding[] + overall verdict
                 |
-                +-- exporter   ---> logs/report_<ASN>_<ts>.{md,ru.md,json}
+                +-- exporter   ---> logs/YYYY/MM/DD/report_<ASN>_<ts>.{md,ru.md,json}
 ```
 
 Three hard concurrency constraints:
@@ -154,7 +154,7 @@ The AS prefix benchmark (`probes/prefix_benchmark.py`) gets the same treatment f
 
 **Prometheus and CSV are one extraction, two serializations — not two renderers.** `metrics.py::collect_metrics(report) -> list[Metric]` does the per-section special-casing a flat walk of the report dict can't (latency needs a label/host/method triple, TLS a label/host pair, path hops a target/ttl/ip/asn quadruple) as a single pure `dict -> list[Metric]` function; `render_prometheus()` and `render_csv()` are then ~15 lines each, formatting the same list two ways. `FORMAT_EXTENSIONS` (`config.py`) is still the single source of truth both `cli.py::parse_formats()` and `config.py::Output._normalize_formats()` key off of — adding `"prom"`/`"csv"` there was the only wiring point.
 
-**Same-ASN auto-diff runs before `write_report()`, or the current run would diff against itself.** `history.find_previous()` globs `./logs/` for `report_{key}_*.json` using the exact same `sanitize_name()`/timestamp convention `exporter.report_filename()` already writes, so the lookup key can never drift from what's actually on disk. It only fires when this run is itself writing JSON (there'd be nothing to diff against on a future run otherwise) and only prints a one-line note — never a warning — when JSON isn't in this run's formats, since silence is correct on every other skip path (first run ever, or a prior run that didn't write JSON). `compare.py::render_diff_brief()` exists because the full `render_diff()` table is too long to print unbidden after every run; it surfaces only the ASN/IP change, the single worst latency delta, the download delta, and new/resolved finding counts.
+**Same-ASN auto-diff runs before `write_report()`, or the current run would diff against itself.** `history.find_previous()` walks `./logs/` (`Path.rglob("report_*.json")`, since reports now live under a `YYYY/MM/DD` subtree) for `report_{key}_*.json` using the exact same `sanitize_name()`/timestamp convention `exporter.report_filename()` already writes, so the lookup key can never drift from what's actually on disk. Because the filename itself only carries a time-of-day now, recency is sorted on the full path (`p.as_posix()`), not the basename — the zero-padded `YYYY/MM/DD` prefix keeps that sort chronological. It only fires when this run is itself writing JSON (there'd be nothing to diff against on a future run otherwise) and only prints a one-line note — never a warning — when JSON isn't in this run's formats, since silence is correct on every other skip path (first run ever, or a prior run that didn't write JSON). `compare.py::render_diff_brief()` exists because the full `render_diff()` table is too long to print unbidden after every run; it surfaces only the ASN/IP change, the single worst latency delta, the download delta, and new/resolved finding counts.
 
 **`--trend` needs no live network call to find "this network's" history.** Rather than re-running identity detection just to know which ASN's reports to load, `history.latest_key()` reads it back off the newest `report_*.json` filename already on disk — the same file-naming convention already encodes it, and a read-only historical view has no reason to touch the network at all.
 
@@ -190,8 +190,8 @@ The AS prefix benchmark (`probes/prefix_benchmark.py`) gets the same treatment f
 
 ## Storage
 
-- `./logs/report_<ASN>_<YYYYMMDDTHHMMSSZ>.{md,ru.md,json,prom,csv}` — the artifacts selected by `--format`/`output.formats` (default: English Markdown only; `all` writes all three: English Markdown, a full Russian translation with identical structure, and the JSON dump — English only, no `.ru.json`). When both Markdown languages are written they cross-link each other at the top, the same way `README.md`/`README.ru.md` do; writing only one skips the cross-link rather than pointing at a file that doesn't exist. `<ASN>` is the target's subject in target mode (an ASN, IP or domain) and the local egress ASN in auto mode. Compact ISO timestamps because Windows forbids `:` in filenames. Falls back to `report_unknown_…` when the ASN lookup fails entirely. Written temp-file-plus-`os.replace()`, always atomic. Gitignored: reports contain the external IP, city, coordinates and ISP name.
-- `./logs/watch_<ASN>_<YYYYMMDDTHHMMSSZ>.json` — one time-series artifact per `--watch` session, not one report per tick.
+- `./logs/<YYYY>/<MM>/<DD>/report_<ASN>_<HH-MM-SSZ>.{md,ru.md,json,prom,csv}` — the artifacts selected by `--format`/`output.formats` (default: English Markdown only; `all` writes all three: English Markdown, a full Russian translation with identical structure, and the JSON dump — English only, no `.ru.json`). When both Markdown languages are written they cross-link each other at the top, the same way `README.md`/`README.ru.md` do; writing only one skips the cross-link rather than pointing at a file that doesn't exist. `<ASN>` is the target's subject in target mode (an ASN, IP or domain) and the local egress ASN in auto mode. The run's start date becomes the directory (`exporter.report_date_dir()`), so browsing `logs/` means walking year, then month, then day; the filename itself only needs a readable time-of-day (`exporter.readable_timestamp()`, e.g. `19-12-00Z`) since the date is already the path — no `:` because Windows forbids it in filenames, dashes instead. Falls back to a flat `report_unknown_unknown.…` at the `logs/` root when `started_at` doesn't parse. Written temp-file-plus-`os.replace()`, always atomic — `atomic_write()` creates the whole `YYYY/MM/DD` chain via `mkdir(parents=True)`. Gitignored: reports contain the external IP, city, coordinates and ISP name.
+- `./logs/<YYYY>/<MM>/<DD>/watch_<ASN>_<HH-MM-SSZ>.json` — one time-series artifact per `--watch` session, not one report per tick, dated by the session's `started_at` the same way one-shot reports are.
 - `./.cache/firehol/*.netset` — downloaded blocklists, refreshed per `providers.firehol_refresh_hours`.
 - `./.cache/pdb-net-<asn>.json`, `./.cache/pdb-netixlan-<net_id>.json` — PeeringDB responses, valid for `providers.peeringdb_cache_hours`.
 - `./config.yaml` — all non-secret settings. `./.env` — the three optional API keys and nothing else.

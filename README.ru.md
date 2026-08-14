@@ -8,7 +8,7 @@
 $ netsleuth --quick
 netsleuth 0.1.0 · auto mode · Windows
 Verdict: ok (100/100) — No problems found on this connection.
-Report written to logs/report_AS64500_20260808T191200Z.md
+Report written to logs/2026/08/08/report_AS64500_19-12-00Z.md
 ```
 
 Всё остальное — ASN, вердикт по VPN, задержки, маршрут, скорость — попадает в только что записанный отчёт, а не в консоль; терминал показывает только заголовок и куда смотреть дальше. По умолчанию это один Markdown-файл на английском; `--format` управляет тем, что именно пишется (см. «Полезное» ниже).

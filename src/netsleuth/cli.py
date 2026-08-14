@@ -844,7 +844,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
                 if previous:
                     previous_report = load_report(previous[0])
                     console.print(render_diff_brief(diff_reports(previous_report, report), emoji=settings.output.emoji))
-                    report["meta"]["compared_to"] = previous[0].name
+                    report["meta"]["compared_to"] = previous[0].relative_to(settings.output.logs_dir).as_posix()
             except (OSError, ValueError, KeyError):
                 pass
         else:

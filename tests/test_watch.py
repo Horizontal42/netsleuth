@@ -113,7 +113,7 @@ def test_session_history_returns_the_series_for_one_host_with_gaps_preserved():
 
 def test_session_filename_marks_it_as_a_watch_artifact():
     session = WatchSession(started_at="2026-08-08T19:12:00Z", asn="AS64500")
-    assert session.filename() == "watch_AS64500_20260808T191200Z.json"
+    assert session.filename() == "watch_AS64500_19-12-00Z.json"
     assert WatchSession(started_at="2026-08-08T19:12:00Z").filename().startswith("watch_unknown_")
 
 
@@ -124,7 +124,7 @@ def test_a_session_writes_exactly_one_artifact_holding_every_cycle(tmp_path: Pat
     for cycle in range(1, 4):
         session.add(summarize_cycle(cycle, f"t{cycle}", [ping("cloudflare-dns", 12.0 + cycle)], None))
     path = write_session(session, tmp_path)
-    assert list(tmp_path.iterdir()) == [path]
+    assert list((tmp_path / "2026" / "08" / "08").iterdir()) == [path]
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["schema_version"] == WATCH_SCHEMA_VERSION
     assert payload["kind"] == "watch"

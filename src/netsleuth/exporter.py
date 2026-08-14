@@ -32,6 +32,7 @@ SECTION_ORDER = (
 )
 
 _UNSAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+_ISO_RE = re.compile(r"^(?P<y>\d{4})-(?P<mo>\d{2})-(?P<d>\d{2})T(?P<h>\d{2}):(?P<mi>\d{2}):(?P<s>\d{2})")
 
 
 def sanitize_name(value: str | None, fallback: str = "unknown") -> str:
@@ -39,13 +40,24 @@ def sanitize_name(value: str | None, fallback: str = "unknown") -> str:
     return cleaned[:32] or fallback
 
 
-def compact_timestamp(iso: str) -> str:
-    # Windows forbids ':' in filenames, so the stamp is the compact ISO form.
-    return re.sub(r"[-:]", "", (iso or "").strip()) or "unknown"
+def _iso_parts(iso: str) -> dict[str, str] | None:
+    match = _ISO_RE.match((iso or "").strip())
+    return match.groupdict() if match else None
+
+
+def readable_timestamp(iso: str) -> str:
+    # Windows forbids ':' in filenames; the date lives in the directory path instead.
+    parts = _iso_parts(iso)
+    return f"{parts['h']}-{parts['mi']}-{parts['s']}Z" if parts else "unknown"
+
+
+def report_date_dir(iso: str) -> Path:
+    parts = _iso_parts(iso)
+    return Path(parts["y"], parts["mo"], parts["d"]) if parts else Path()
 
 
 def report_filename(asn: str | None, started_at: str, extension: str) -> str:
-    return f"report_{sanitize_name(asn)}_{compact_timestamp(started_at)}.{extension.lstrip('.')}"
+    return f"report_{sanitize_name(asn)}_{readable_timestamp(started_at)}.{extension.lstrip('.')}"
 
 
 def flatten_errors(modules: dict[str, ModuleResult]) -> list[dict[str, Any]]:
@@ -102,7 +114,7 @@ def write_report(report: dict[str, Any], artifacts: dict[str, str], logs_dir: Pa
     meta = report.get("meta") or {}
     started = meta.get("started_at", "")
     asn = meta.get("target") or egress_asn(report)
-    base = Path(logs_dir)
+    base = Path(logs_dir) / report_date_dir(started)
     return [
         atomic_write(base / report_filename(asn, started, FORMAT_EXTENSIONS[fmt]), text)
         for fmt, text in artifacts.items()

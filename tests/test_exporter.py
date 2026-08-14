@@ -12,10 +12,11 @@ from netsleuth.exporter import (
     SECTION_ORDER,
     atomic_write,
     build_report,
-    compact_timestamp,
     dump_json,
     egress_asn,
     flatten_errors,
+    readable_timestamp,
+    report_date_dir,
     report_filename,
     sanitize_name,
     write_report,
@@ -164,9 +165,14 @@ def test_dump_json_is_strict_and_round_trips():
     assert math.isfinite(back["latency"]["duration_ms"])
 
 
-def test_compact_timestamp_strips_the_characters_windows_forbids():
-    assert compact_timestamp("2026-08-08T19:12:00Z") == "20260808T191200Z"
-    assert compact_timestamp("") == "unknown"
+def test_readable_timestamp_strips_the_characters_windows_forbids():
+    assert readable_timestamp("2026-08-08T19:12:00Z") == "19-12-00Z"
+    assert readable_timestamp("") == "unknown"
+
+
+def test_report_date_dir_splits_the_iso_date_into_year_month_day():
+    assert report_date_dir("2026-08-08T19:12:00Z") == Path("2026", "08", "08")
+    assert report_date_dir("") == Path()
 
 
 @pytest.mark.parametrize(
@@ -188,11 +194,11 @@ def test_sanitize_name_produces_windows_safe_fragments(value, expected):
 def test_report_filename_matches_the_documented_pattern():
     assert (
         report_filename("AS64500", "2026-08-08T19:12:00Z", "json")
-        == "report_AS64500_20260808T191200Z.json"
+        == "report_AS64500_19-12-00Z.json"
     )
     assert (
         report_filename(None, "2026-08-08T19:12:00Z", "md")
-        == "report_unknown_20260808T191200Z.md"
+        == "report_unknown_19-12-00Z.md"
     )
 
 
@@ -211,9 +217,10 @@ def test_write_report_names_the_file_after_the_target_in_target_mode(tmp_path: P
         tmp_path,
     )
     names = {p.name for p in paths}
-    assert "report_AS15169_20260808T191200Z.json" in names
-    assert "report_AS15169_20260808T191200Z.md" in names
-    assert "report_AS15169_20260808T191200Z.ru.md" in names
+    assert "report_AS15169_19-12-00Z.json" in names
+    assert "report_AS15169_19-12-00Z.md" in names
+    assert "report_AS15169_19-12-00Z.ru.md" in names
+    assert {p.parent for p in paths} == {tmp_path / "2026" / "08" / "08"}
 
 
 def test_atomic_write_creates_the_directory_and_leaves_no_temp_file(tmp_path: Path):
@@ -239,9 +246,9 @@ def test_write_report_emits_all_requested_artifacts_with_matching_names(tmp_path
         tmp_path,
     )
     by_ext = {p.name.rsplit(".", 1)[-1] if not p.name.endswith(".ru.md") else "ru.md": p for p in paths}
-    assert by_ext["json"].name == "report_AS64500_20260808T191200Z.json"
-    assert by_ext["md"].name == "report_AS64500_20260808T191200Z.md"
-    assert by_ext["ru.md"].name == "report_AS64500_20260808T191200Z.ru.md"
+    assert by_ext["json"].name == "report_AS64500_19-12-00Z.json"
+    assert by_ext["md"].name == "report_AS64500_19-12-00Z.md"
+    assert by_ext["ru.md"].name == "report_AS64500_19-12-00Z.ru.md"
     assert json.loads(by_ext["json"].read_text(encoding="utf-8"))["schema_version"] == SCHEMA_VERSION
     assert by_ext["md"].read_text(encoding="utf-8").startswith("# netsleuth report")
     assert by_ext["ru.md"].read_text(encoding="utf-8").startswith("# netsleuth report")
@@ -250,8 +257,8 @@ def test_write_report_emits_all_requested_artifacts_with_matching_names(tmp_path
 def test_write_report_writes_only_the_requested_formats(tmp_path: Path):
     report = build_report(meta(), modules(), [], {})
     paths = write_report(report, {"md": "# netsleuth report\n"}, tmp_path)
-    assert [p.name for p in paths] == ["report_AS64500_20260808T191200Z.md"]
-    assert list(tmp_path.iterdir()) == paths
+    assert [p.name for p in paths] == ["report_AS64500_19-12-00Z.md"]
+    assert list((tmp_path / "2026" / "08" / "08").iterdir()) == paths
 
 
 def test_write_report_with_empty_mapping_writes_nothing(tmp_path: Path):

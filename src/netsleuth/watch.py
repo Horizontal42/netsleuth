@@ -14,7 +14,7 @@ from rich.table import Table
 from netsleuth import __version__
 from netsleuth.alerting import build_payload, post_webhook, should_fire
 from netsleuth.config import Settings, Thresholds
-from netsleuth.exporter import atomic_write, compact_timestamp, dump_json, sanitize_name, sparkline
+from netsleuth.exporter import atomic_write, dump_json, readable_timestamp, report_date_dir, sanitize_name, sparkline
 from netsleuth.interpret import latency_findings, overall_verdict, speed_findings
 from netsleuth.ip_geo import gather_identity
 from netsleuth.models import PingResult, SpeedResult, to_jsonable
@@ -103,7 +103,7 @@ class WatchSession:
         return seen
 
     def filename(self) -> str:
-        return f"watch_{sanitize_name(self.asn)}_{compact_timestamp(self.started_at)}.json"
+        return f"watch_{sanitize_name(self.asn)}_{readable_timestamp(self.started_at)}.json"
 
     def to_report(self) -> dict[str, Any]:
         return {
@@ -125,7 +125,8 @@ class WatchSession:
 
 
 def write_session(session: WatchSession, logs_dir: Path) -> Path:
-    return atomic_write(Path(logs_dir) / session.filename(), dump_json(session.to_report()))
+    base = Path(logs_dir) / report_date_dir(session.started_at)
+    return atomic_write(base / session.filename(), dump_json(session.to_report()))
 
 
 def render_dashboard(session: WatchSession) -> Table:

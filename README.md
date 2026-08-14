@@ -8,7 +8,7 @@ Cross-platform CLI for deep network diagnostics: who your ISP actually is, wheth
 $ netsleuth --quick
 netsleuth 0.1.0 · auto mode · Windows
 Verdict: ok (100/100) — No problems found on this connection.
-Report written to logs/report_AS64500_20260808T191200Z.md
+Report written to logs/2026/08/08/report_AS64500_19-12-00Z.md
 ```
 
 Everything else — egress ASN, VPN verdict, latency, path, speed — lives in the report it just wrote, not on the console; the terminal only tells you the headline and where to look. By default that's a single English Markdown file; `--format` controls exactly which artifacts get written (see Handy things below).
