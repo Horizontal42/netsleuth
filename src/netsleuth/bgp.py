@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -96,7 +96,7 @@ async def ripestat(
 ) -> dict:
     params: dict[str, str] = {"resource": resource, **extra}
     if call in BULK_CALLS:
-        start = datetime.now(timezone.utc) - timedelta(days=providers.ripestat_timeframe_days)
+        start = datetime.now(UTC) - timedelta(days=providers.ripestat_timeframe_days)
         params["max_rows"] = str(providers.ripestat_max_rows)
         params["starttime"] = start.strftime("%Y-%m-%dT%H:%M:%S")
     response = await client.get(f"{providers.ripestat_base_url}/{call}/data.json", params=params)
@@ -107,9 +107,9 @@ async def ripestat(
 import json
 import os
 import time
-from pathlib import Path
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable
+from pathlib import Path
 
 from netsleuth.models import IxpPresence
 

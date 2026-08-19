@@ -14,7 +14,14 @@ from rich.table import Table
 from netsleuth import __version__
 from netsleuth.alerting import build_payload, post_webhook, should_fire
 from netsleuth.config import Settings, Thresholds
-from netsleuth.exporter import atomic_write, dump_json, readable_timestamp, report_date_dir, sanitize_name, sparkline
+from netsleuth.exporter import (
+    atomic_write,
+    dump_json,
+    readable_timestamp,
+    report_date_dir,
+    sanitize_name,
+    sparkline,
+)
 from netsleuth.interpret import latency_findings, overall_verdict, speed_findings
 from netsleuth.ip_geo import gather_identity
 from netsleuth.models import PingResult, SpeedResult, to_jsonable

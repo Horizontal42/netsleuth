@@ -47,7 +47,7 @@ async def tcp_connect_rtt(
         _reader, writer = await asyncio.wait_for(
             asyncio.open_connection(host, port, local_addr=local_addr), timeout=timeout
         )
-    except (OSError, asyncio.TimeoutError):
+    except (TimeoutError, OSError):
         return None
     writer.close()
     try:

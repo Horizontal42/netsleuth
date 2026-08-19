@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from netsleuth.models import TraceHop
-from netsleuth.traceparse import parse_linux, finalize_hop
+from netsleuth.traceparse import finalize_hop, parse_linux
 
 
 @pytest.fixture()

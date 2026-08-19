@@ -13,8 +13,8 @@ from netsleuth.config import Providers
 from netsleuth.reputation import (
     DnsblOutcome,
     NetsetIndex,
-    build_reputation,
     ReputationContext,
+    build_reputation,
     captcha_risk,
     decode_dnsbl,
     fetch_abuseipdb,
