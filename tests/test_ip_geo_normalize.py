@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import httpx
+from unittest.mock import patch
 import pytest
 
 from netsleuth.config import Providers
@@ -321,3 +322,34 @@ async def test_gather_identity_for_a_target_never_reports_this_hosts_own_ip(http
     assert merged.ip == "8.8.8.8"
     assert merged.asn == "AS15169"
     assert cf is not None and cf.ip == "203.0.113.9"
+
+
+def test_ip_version_value_error_via_mock():
+    from netsleuth.ip_geo import _ip_version
+    with patch("netsleuth.ip_geo.ipaddress.ip_address", side_effect=ValueError("mock error")):
+        assert _ip_version("8.8.8.8") is None
+
+async def test_gather_identity_tolerates_ripestat_value_error(httpx_mock):
+    httpx_mock.add_response(url="https://www.cloudflare.com/cdn-cgi/trace", text="")
+    httpx_mock.add_response(
+        url="http://ip-api.com/json/8.8.8.8",
+        json={
+            "status": "success",
+            "query": "8.8.8.8",
+            "as": "AS15169 GOOGLE",
+            "countryCode": "US",
+        },
+    )
+    httpx_mock.add_response(url="https://freeipapi.com/api/json/8.8.8.8", json={})
+    httpx_mock.add_response(url="https://ipinfo.io/8.8.8.8json", json={})
+    httpx_mock.add_response(url="https://ipwho.is/8.8.8.8", json={"success": False})
+    httpx_mock.add_response(
+        url="https://stat.ripe.net/data/network-info/data.json?resource=8.8.8.8",
+        text="this is not valid JSON and will cause ValueError",
+    )
+
+    async with httpx.AsyncClient() as client:
+        merged, _, _, _ = await gather_identity(client, Providers(), ip="8.8.8.8")
+
+    assert merged.ip == "8.8.8.8"
+    assert merged.asn == "AS15169"
