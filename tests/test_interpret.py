@@ -3,8 +3,13 @@ from __future__ import annotations
 import pytest
 
 from netsleuth.config import Band, Thresholds
+from netsleuth.interpret import (
+    dual_family_findings,
+    latency_findings,
+    path_findings,
+    severity_for,
+)
 from netsleuth.models import PingResult, TraceHop, TraceResult
-from netsleuth.interpret import dual_family_findings, latency_findings, path_findings, severity_for
 
 
 @pytest.fixture()
@@ -217,8 +222,21 @@ def test_path_findings_flag_loss_that_persists_all_the_way_to_the_last_hop():
 
 
 from netsleuth.config import VpnBands
-from netsleuth.models import AdapterLeakResult, CfTrace, DnsLeak, IpGeo, LocalNet, Signal, VpnContext
-from netsleuth.interpret import SIGNAL_WEIGHTS, assess_vpn, gather_vpn_signals, score_vpn
+from netsleuth.interpret import (
+    SIGNAL_WEIGHTS,
+    assess_vpn,
+    gather_vpn_signals,
+    score_vpn,
+)
+from netsleuth.models import (
+    AdapterLeakResult,
+    CfTrace,
+    DnsLeak,
+    IpGeo,
+    LocalNet,
+    Signal,
+    VpnContext,
+)
 
 
 def sig(name: str, observed: bool = True) -> Signal:
@@ -367,8 +385,13 @@ def test_assess_vpn_returns_a_complete_assessment():
 
 
 from netsleuth.config import BufferbloatBands
+from netsleuth.interpret import (
+    bufferbloat_consequence,
+    grade_bufferbloat,
+    overall_verdict,
+    speed_findings,
+)
 from netsleuth.models import Finding, SpeedResult
-from netsleuth.interpret import bufferbloat_consequence, grade_bufferbloat, overall_verdict, speed_findings
 
 
 def test_bufferbloat_grades_follow_the_configured_bands():

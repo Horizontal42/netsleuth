@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import ssl
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from netsleuth.models import TlsResult
 from netsleuth.probes.latency import tcp_connect_rtt
@@ -59,8 +59,8 @@ def days_remaining(not_after: str | None, now: datetime | None = None) -> int | 
         expires_ts = ssl.cert_time_to_seconds(not_after)
     except ValueError:
         return None
-    expires = datetime.fromtimestamp(expires_ts, tz=timezone.utc)
-    return (expires - (now or datetime.now(timezone.utc))).days
+    expires = datetime.fromtimestamp(expires_ts, tz=UTC)
+    return (expires - (now or datetime.now(UTC))).days
 
 
 async def measure_tls(

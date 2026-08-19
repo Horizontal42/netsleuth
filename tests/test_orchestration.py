@@ -10,7 +10,7 @@ from netsleuth.orchestration import classify_exception, gather_modules, run_modu
 
 
 def test_classify_timeout_errors():
-    assert classify_exception(asyncio.TimeoutError()) == ("timeout", True)
+    assert classify_exception(TimeoutError()) == ("timeout", True)
     assert classify_exception(httpx.ConnectTimeout("slow")) == ("timeout", True)
     assert classify_exception(TimeoutError()) == ("timeout", True)
 

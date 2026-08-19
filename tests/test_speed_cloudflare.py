@@ -1,5 +1,5 @@
-import pytest
 import httpx
+import pytest
 from pytest_httpx import HTTPXMock
 
 from netsleuth.config import Speedtest

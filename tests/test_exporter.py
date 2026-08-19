@@ -279,15 +279,22 @@ def test_format_extensions_covers_the_known_formats():
     assert FORMAT_EXTENSIONS == {"md": "md", "ru-md": "ru.md", "json": "json", "prom": "prom", "csv": "csv"}
 
 
-from netsleuth.exporter import SPARK_CHARS, _forced_interface_rows, badge, first_loss_jump, render_markdown, sparkline
+from netsleuth.exporter import (
+    SPARK_CHARS,
+    _forced_interface_rows,
+    badge,
+    first_loss_jump,
+    render_markdown,
+    sparkline,
+)
 from netsleuth.models import (
     AdapterLeakResult,
     AnycastHop,
     BgpIntel,
     CfTrace,
     DnsAdvanced,
-    DnsLeak,
     DnsblHit,
+    DnsLeak,
     DpiCheckResult,
     InternetDbResult,
     IxpPresence,

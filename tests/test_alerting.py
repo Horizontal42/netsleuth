@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import httpx
-import pytest
 
 from netsleuth.alerting import build_payload, post_webhook, should_fire
 from netsleuth.exporter import dump_json

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import socket
 import ssl
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from netsleuth.probes.tls_rtt import (
     cert_name,
@@ -97,7 +97,7 @@ def test_cert_name_handles_empty_input():
 
 
 def test_days_remaining_computes_from_a_fixed_now():
-    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
     assert days_remaining("Jan 11 00:00:00 2026 GMT", now=now) == 10
 
 

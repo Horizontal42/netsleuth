@@ -90,7 +90,7 @@ async def _probe_unix(binary: str, host: str, size: int, timeout: float, os_name
     )
     try:
         stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout + 2.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         process.kill()
         return False, False
     if process.returncode == 0:

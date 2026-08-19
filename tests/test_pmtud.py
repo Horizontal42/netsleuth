@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from netsleuth.interpret import pmtud_findings
 from netsleuth.models import PmtuResult
-from netsleuth.probes.pmtud import classify_pmtu, mtu_from_search, next_probe_size, unix_ping_df_argv
+from netsleuth.probes.pmtud import (
+    classify_pmtu,
+    mtu_from_search,
+    next_probe_size,
+    unix_ping_df_argv,
+)
 
 
 def test_next_probe_size_bisects():

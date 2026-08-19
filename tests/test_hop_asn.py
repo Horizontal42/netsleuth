@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from netsleuth.config import Thresholds
 from netsleuth.interpret import path_asn_findings
 from netsleuth.models import TraceHop, TraceResult
 from netsleuth.probes.hop_asn import cymru_query_name, enrich_hops, parse_cymru_asname

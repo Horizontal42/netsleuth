@@ -60,7 +60,7 @@ def bufferbloat_delta(idle_rtt_ms: float | None, loaded_rtts_ms: list[float]) ->
 
 import asyncio
 import time
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from netsleuth.models import SpeedResult, TierAttempt
 
@@ -223,7 +223,7 @@ async def tier_ndt7(
         while time.perf_counter() - began < 10:
             try:
                 message = await asyncio.wait_for(socket.recv(), timeout=timeout)
-            except (asyncio.TimeoutError, Exception):
+            except (TimeoutError, Exception):
                 break
             total += len(message) if isinstance(message, (bytes, bytearray)) else len(message.encode())
     elapsed = time.perf_counter() - began
