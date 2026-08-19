@@ -1,5 +1,5 @@
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from unittest.mock import MagicMock, patch
 
 from netsleuth.cli import _dedupe, _os_timezone, parse_target
@@ -59,7 +59,7 @@ def test_os_timezone_from_localtime_symlink(mock_path, monkeypatch):
     monkeypatch.delenv("TZ", raising=False)
     mock_localtime = MagicMock()
     mock_localtime.is_symlink.return_value = True
-    mock_localtime.readlink.return_value = Path("/usr/share/zoneinfo/Europe/London")
+    mock_localtime.readlink.return_value = PurePosixPath("/usr/share/zoneinfo/Europe/London")
 
     def side_effect(path, *args, **kwargs):
         if str(path) == "/etc/localtime":
