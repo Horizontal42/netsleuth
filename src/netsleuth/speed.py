@@ -176,7 +176,7 @@ async def tier_cloudflare(client: httpx.AsyncClient, cfg: Speedtest, timeout: fl
 async def tier_fastcom(client: httpx.AsyncClient, cfg: Speedtest, timeout: float) -> SpeedResult:
     response = await client.get(
         cfg.fastcom_api_url,
-        params={"https": "true", "token": "YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm", "urlCount": "3"},
+        params={"https": "true", "token": cfg.fastcom_api_token, "urlCount": "3"},
         timeout=timeout,
     )
     response.raise_for_status()
