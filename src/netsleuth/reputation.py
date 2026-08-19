@@ -69,6 +69,13 @@ class NetsetIndex:
         return found
 
 
+def check_fresh(path: Path, refresh_hours: int) -> bool:
+    return (
+        path.exists()
+        and (time.time() - os.path.getmtime(path)) < refresh_hours * 3600
+    )
+
+
 async def refresh_netsets(
     client: httpx.AsyncClient,
     providers: Providers,
@@ -86,13 +93,7 @@ async def refresh_netsets(
         name = url.rsplit("/", 1)[-1].removesuffix(".netset")
         path = directory / f"{name}.netset"
 
-        def check_fresh() -> bool:
-            return (
-                path.exists()
-                and (time.time() - os.path.getmtime(path)) < providers.firehol_refresh_hours * 3600
-            )
-
-        fresh = await asyncio.to_thread(check_fresh)
+        fresh = await asyncio.to_thread(check_fresh, path, providers.firehol_refresh_hours)
         if not fresh:
             try:
                 response = await client.get(url)

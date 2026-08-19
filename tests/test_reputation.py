@@ -16,6 +16,7 @@ from netsleuth.reputation import (
     ReputationContext,
     build_reputation,
     captcha_risk,
+    check_fresh,
     decode_dnsbl,
     fetch_abuseipdb,
     fetch_internetdb,
@@ -23,8 +24,28 @@ from netsleuth.reputation import (
     parse_netset,
     query_dnsbl,
     refresh_netsets,
+    reverse_ip,
     summarize_dnsbl,
 )
+
+
+def test_check_fresh_missing_file(tmp_path):
+    path = tmp_path / "nonexistent.netset"
+    assert check_fresh(path, refresh_hours=24) is False
+
+
+def test_check_fresh_recent_file(tmp_path):
+    path = tmp_path / "recent.netset"
+    path.touch()
+    assert check_fresh(path, refresh_hours=24) is True
+
+
+def test_check_fresh_stale_file(tmp_path):
+    path = tmp_path / "stale.netset"
+    path.touch()
+    stale_time = time.time() - (24 * 3600 + 100)
+    os.utime(path, (stale_time, stale_time))
+    assert check_fresh(path, refresh_hours=24) is False
 
 
 def test_parse_netset_strips_comments_and_blank_lines(fixtures_dir):
@@ -37,6 +58,11 @@ def test_parse_netset_strips_comments_and_blank_lines(fixtures_dir):
         "2001:db8::/32",
         "192.0.2.0/25",
     ]
+
+
+def test_reverse_ip_raises_value_error_for_ipv6():
+    with pytest.raises(ValueError, match="classic DNSBL zones accept IPv4 only"):
+        reverse_ip("2001:db8::1")
 
 
 def test_parse_netset_of_an_empty_file_is_empty():
