@@ -11,6 +11,7 @@ from netsleuth.watch import (
     WatchSession,
     is_speedtest_cycle,
     next_delay,
+    render_dashboard,
     summarize_cycle,
     write_session,
 )
@@ -26,7 +27,7 @@ def ping(label: str, avg: float | None, loss: float = 0.0) -> PingResult:
         received=5 if avg is not None else 0,
         loss_pct=loss,
         avg_ms=avg,
-        jitter_ms=1.5,
+        jitter_ms=1.5 if avg is not None else None,
     )
 
 
@@ -138,3 +139,60 @@ def test_an_empty_session_still_writes_a_well_formed_artifact(tmp_path: Path):
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["cycles"] == []
     assert payload["meta"]["finished_at"]
+
+
+def test_render_dashboard_empty_session():
+    session = WatchSession(started_at="2026-08-08T19:12:00Z", asn="AS12345")
+    table = render_dashboard(session)
+
+    assert "AS12345" in table.title
+    assert "cycle 0" in table.title
+
+    columns = [col.header for col in table.columns]
+    assert columns == ["Host", "Avg ms", "Jitter", "Loss", "Trend"]
+
+    assert len(list(table.rows)) == 0
+    assert table.caption is None
+
+
+def test_render_dashboard_with_cycle():
+    session = WatchSession(started_at="2026-08-08T19:12:00Z", asn="AS12345")
+    session.add(summarize_cycle(1, "t1", [ping("cloudflare-dns", 12.4)], None))
+
+    table = render_dashboard(session)
+
+    assert "cycle 1" in table.title
+    rows = list(table.rows)
+    assert len(rows) == 1
+
+    cells = list(table.columns[i].cells for i in range(len(table.columns)))
+    assert list(cells[0])[0] == "cloudflare-dns"
+    assert list(cells[1])[0] == "12.4"
+    assert list(cells[2])[0] == "1.5"
+    assert list(cells[3])[0] == "0.0%"
+    assert list(cells[4])[0] != ""  # sparkline has content
+
+    assert "verdict: ok (100/100)" in table.caption
+
+
+def test_render_dashboard_with_missing_host_data():
+    session = WatchSession(started_at="2026-08-08T19:12:00Z", asn="AS12345")
+    session.add(summarize_cycle(1, "t1", [ping("google-dns", None, loss=100.0)], None))
+
+    table = render_dashboard(session)
+
+    cells = list(table.columns[i].cells for i in range(len(table.columns)))
+    assert list(cells[0])[0] == "google-dns"
+    assert list(cells[1])[0] == "—"
+    assert list(cells[2])[0] == "—"
+    assert list(cells[3])[0] == "100.0%"
+
+
+def test_render_dashboard_with_speed_results():
+    session = WatchSession(started_at="2026-08-08T19:12:00Z", asn="AS12345")
+    speed = SpeedResult(method="cloudflare", download_mbps=284.3, upload_mbps=41.7, bufferbloat_grade="B")
+    session.add(summarize_cycle(1, "t1", [ping("cloudflare-dns", 12.4)], speed))
+
+    table = render_dashboard(session)
+
+    assert "last speedtest: 284.3 / 41.7 Mbps via cloudflare · bufferbloat B" in table.caption
