@@ -1,22 +1,19 @@
 from __future__ import annotations
 
-
 from netsleuth.config import Band, BufferbloatBands, Thresholds, VpnBands
 from netsleuth.models import (
     CaptivePortal,
-    CfTrace,
     DnsAdvanced,
     DnsLeak,
     DpiCheckResult,
     EcmpReport,
     Finding,
-    IpGeo,
     LocalNet,
     PathDiversity,
     PingResult,
     PmtuResult,
-    QuicResult,
     PrefixBenchmark,
+    QuicResult,
     Signal,
     SpeedResult,
     TlsResult,
