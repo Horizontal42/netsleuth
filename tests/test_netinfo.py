@@ -111,7 +111,9 @@ def test_degradation_note_on_windows_mentions_the_api_rather_than_sysctl():
 
 import pytest
 
-from netsleuth.netinfo import iface_for_ip, is_tunnel_iface, mtu_anomaly
+from unittest.mock import patch
+
+from netsleuth.netinfo import iface_for_ip, is_tunnel_iface, mtu_anomaly, primary_interface_ip
 
 
 def test_iface_for_ip_matches_the_owning_adapter():
@@ -153,6 +155,35 @@ def test_mtu_anomaly_ignores_normal_and_unknown_values():
 
 def test_mtu_anomaly_flags_unusually_small_links_generically():
     assert mtu_anomaly(1200) == "small"
+
+
+@patch("socket.socket")
+def test_primary_interface_ip_ipv4_success(mock_socket):
+    mock_sock_instance = mock_socket.return_value
+    mock_sock_instance.getsockname.return_value = ("192.168.1.100", 12345)
+
+    assert primary_interface_ip(target="8.8.8.8", family=socket.AF_INET) == "192.168.1.100"
+    mock_socket.assert_called_once_with(socket.AF_INET, socket.SOCK_DGRAM)
+    mock_sock_instance.connect.assert_called_once_with(("8.8.8.8", 53))
+
+
+@patch("socket.socket")
+def test_primary_interface_ip_ipv6_success(mock_socket):
+    mock_sock_instance = mock_socket.return_value
+    mock_sock_instance.getsockname.return_value = ("2001:db8::1", 12345, 0, 0)
+
+    assert primary_interface_ip(family=socket.AF_INET6) == "2001:db8::1"
+    mock_socket.assert_called_once_with(socket.AF_INET6, socket.SOCK_DGRAM)
+    # The default probe target for IPv6 is "2606:4700:4700::1111"
+    mock_sock_instance.connect.assert_called_once_with(("2606:4700:4700::1111", 53))
+
+
+@patch("socket.socket")
+def test_primary_interface_ip_oserror(mock_socket):
+    mock_sock_instance = mock_socket.return_value
+    mock_sock_instance.connect.side_effect = OSError("Network is unreachable")
+
+    assert primary_interface_ip() is None
 
 
 import socket
