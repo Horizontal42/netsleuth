@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 
 import httpx
@@ -158,8 +159,9 @@ async def collect_path_diversity(
     timeout: float,
     source_ip: str | None = None,
 ) -> PathDiversity:
-    hops = [
-        await probe_edge(client, host, timeout=timeout, source_ip=source_ip)
+    coros = [
+        probe_edge(client, host, timeout=timeout, source_ip=source_ip)
         for _label, host in targets[:max_targets]
     ]
-    return build_path_diversity(client_country, hops)
+    hops = await asyncio.gather(*coros)
+    return build_path_diversity(client_country, list(hops))
