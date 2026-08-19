@@ -19,7 +19,7 @@ from netsleuth import __version__, history
 from netsleuth.compare import diff_reports, load_report, render_diff, render_diff_brief
 from netsleuth.config import FORMAT_EXTENSIONS, Settings, load_settings
 from netsleuth.exporter import build_report, dump_json, egress_asn, render_markdown, report_filename, write_report
-from netsleuth.iface import available_interfaces_hint, resolve_bind_target
+from netsleuth.iface import resolve_bind_target
 from netsleuth.metrics import collect_metrics, render_csv, render_prometheus
 from netsleuth.interpret import (
     assess_vpn,
@@ -53,7 +53,7 @@ from netsleuth.models import (
     SpeedResult,
     VpnContext,
 )
-from netsleuth.netinfo import collect_local_net, detect_capabilities, iface_for_ip, is_tunnel_iface, primary_interface_ip
+from netsleuth.netinfo import collect_local_net, detect_capabilities, is_tunnel_iface
 from netsleuth.orchestration import gather_modules, run_module, utc_now_iso
 from netsleuth.probes.captive_portal import check_captive_portal
 from netsleuth.probes.dns_leak import collect_dns_leak
