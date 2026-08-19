@@ -755,126 +755,143 @@ def _cpu_bound_ratio(tls_handshake_ms: float | None, tcp_rtt_ms: float | None) -
     return tls_handshake_ms / tcp_rtt_ms
 
 
+def _check_tls_error(r: TlsResult) -> Finding | None:
+    if not r.error:
+        return None
+    return Finding(
+        id=f"tls.unreachable.{r.label}",
+        severity="warn",
+        title=f"TLS handshake to {r.host} failed",
+        detail=f"Could not complete a TLS connection to {r.host}:{r.port}: {r.error}",
+        metric="error",
+        value=r.error,
+        advice="The service may be down, or the port may be blocked between here and the server.",
+        title_ru=f"TLS-рукопожатие с {r.host} не удалось",
+        detail_ru=f"Не удалось установить TLS-соединение с {r.host}:{r.port}: {r.error}",
+        advice_ru="Сервис может быть недоступен, либо порт заблокирован на пути к серверу.",
+    )
+
+
+def _check_tls_performance(r: TlsResult, t: Thresholds) -> list[Finding]:
+    findings: list[Finding] = []
+    ratio = _cpu_bound_ratio(r.tls_handshake_ms, r.tcp_rtt_ms)
+    if ratio is not None and ratio > t.tls_cpu_bound_ratio and (r.tls_handshake_ms or 0.0) >= 20.0:
+        findings.append(
+            Finding(
+                id=f"tls.server_cpu_bound.{r.label}",
+                severity="warn",
+                title=f"TLS handshake to {r.host} is disproportionately slow",
+                detail=f"TLS handshake took {r.tls_handshake_ms} ms, {ratio:.1f}x the {r.tcp_rtt_ms} ms TCP RTT.",
+                metric="tls_handshake_ms",
+                value=r.tls_handshake_ms,
+                threshold=t.tls_cpu_bound_ratio,
+                advice="Slow handshake relative to network RTT usually points at a CPU-bound TLS terminator, not the network.",
+                title_ru=f"TLS-рукопожатие с {r.host} непропорционально медленное",
+                detail_ru=f"TLS-рукопожатие заняло {r.tls_handshake_ms} мс — в {ratio:.1f} раза больше TCP RTT ({r.tcp_rtt_ms} мс).",
+                advice_ru="Медленное рукопожатие относительно сетевого RTT обычно указывает на упирающийся в CPU TLS-терминатор, а не на сеть.",
+            )
+        )
+    severity = severity_for(r.tls_handshake_ms, t.tls_handshake_ms)
+    if severity not in ("ok", "info"):
+        findings.append(
+            Finding(
+                id=f"tls.handshake_slow.{r.label}",
+                severity=severity,
+                title=f"TLS handshake to {r.host} above target",
+                detail=f"TLS handshake took {r.tls_handshake_ms} ms.",
+                metric="tls_handshake_ms",
+                value=r.tls_handshake_ms,
+                threshold=t.tls_handshake_ms.warn,
+                advice="Check server load and TLS session resumption settings.",
+                title_ru=f"TLS-рукопожатие с {r.host} выше целевого",
+                detail_ru=f"TLS-рукопожатие заняло {r.tls_handshake_ms} мс.",
+                advice_ru="Проверьте нагрузку на сервер и настройки возобновления TLS-сессий.",
+            )
+        )
+    severity = severity_for(r.ttfb_ms, t.ttfb_ms)
+    if severity not in ("ok", "info"):
+        findings.append(
+            Finding(
+                id=f"tls.ttfb_slow.{r.label}",
+                severity=severity,
+                title=f"Time to first byte from {r.host} above target",
+                detail=f"TTFB was {r.ttfb_ms} ms.",
+                metric="ttfb_ms",
+                value=r.ttfb_ms,
+                threshold=t.ttfb_ms.warn,
+                advice="Slow TTFB with a fast handshake points at server-side processing, not the network.",
+                title_ru=f"Время до первого байта от {r.host} выше целевого",
+                detail_ru=f"TTFB составило {r.ttfb_ms} мс.",
+                advice_ru="Медленный TTFB при быстром рукопожатии указывает на обработку на стороне сервера, а не на сеть.",
+            )
+        )
+    return findings
+
+
+def _check_tls_certificate(r: TlsResult) -> list[Finding]:
+    findings: list[Finding] = []
+    if r.pin_verdict == "mismatch":
+        findings.append(
+            Finding(
+                id=f"tls.cert_pin_mismatch.{r.label}",
+                severity="crit",
+                title=f"Certificate for {r.host} does not match the pinned fingerprint",
+                detail=f"Observed SHA-256 {r.cert_sha256}, which does not match the configured pin.",
+                metric="cert_sha256",
+                value=r.cert_sha256,
+                advice="A corporate/ISP TLS-intercepting middlebox or a genuine MITM; "
+                "compare against the fingerprint seen from another network before assuming the worst.",
+                title_ru=f"Сертификат {r.host} не совпадает с закреплённым отпечатком",
+                detail_ru=f"Наблюдаемый SHA-256 {r.cert_sha256} не совпадает с настроенным отпечатком.",
+                advice_ru="Корпоративный/провайдерский TLS-перехватывающий middlebox или настоящий MITM; "
+                "сравните с отпечатком, увиденным из другой сети, прежде чем делать выводы.",
+            )
+        )
+    elif r.cert_verified is False and r.pin_verdict == "unpinned":
+        findings.append(
+            Finding(
+                id=f"tls.cert_unverified.{r.label}",
+                severity="warn",
+                title=f"Certificate chain for {r.host} did not validate",
+                detail=f"Issuer: {r.cert_issuer or 'unknown'}.",
+                metric="cert_issuer",
+                value=r.cert_issuer,
+                advice="Often the issuer of an interception appliance rather than the real service's CA; "
+                "pin the expected fingerprint in tls.pinned_fingerprints to escalate this to a hard alert.",
+                title_ru=f"Цепочка сертификатов {r.host} не прошла проверку",
+                detail_ru=f"Издатель: {r.cert_issuer or 'неизвестен'}.",
+                advice_ru="Часто это издатель перехватывающего устройства, а не настоящий CA сервиса; "
+                "закрепите ожидаемый отпечаток в tls.pinned_fingerprints, чтобы превратить это в жёсткий алерт.",
+            )
+        )
+    if r.cert_days_remaining is not None and 0 <= r.cert_days_remaining < 14:
+        findings.append(
+            Finding(
+                id=f"tls.cert_expiring.{r.label}",
+                severity="warn",
+                title=f"Certificate for {r.host} expires soon",
+                detail=f"{r.cert_days_remaining} day(s) remaining ({r.cert_not_after}).",
+                metric="cert_days_remaining",
+                value=r.cert_days_remaining,
+                threshold=14,
+                advice="Renew before it lapses; an expired certificate breaks the service for every client.",
+                title_ru=f"Сертификат {r.host} скоро истекает",
+                detail_ru=f"Осталось {r.cert_days_remaining} дн. (до {r.cert_not_after}).",
+                advice_ru="Продлите до истечения; просроченный сертификат сломает сервис для всех клиентов.",
+            )
+        )
+    return findings
+
+
 def tls_findings(results: list[TlsResult], t: Thresholds) -> list[Finding]:
     findings: list[Finding] = []
     for r in results:
-        if r.error:
-            findings.append(
-                Finding(
-                    id=f"tls.unreachable.{r.label}",
-                    severity="warn",
-                    title=f"TLS handshake to {r.host} failed",
-                    detail=f"Could not complete a TLS connection to {r.host}:{r.port}: {r.error}",
-                    metric="error",
-                    value=r.error,
-                    advice="The service may be down, or the port may be blocked between here and the server.",
-                    title_ru=f"TLS-рукопожатие с {r.host} не удалось",
-                    detail_ru=f"Не удалось установить TLS-соединение с {r.host}:{r.port}: {r.error}",
-                    advice_ru="Сервис может быть недоступен, либо порт заблокирован на пути к серверу.",
-                )
-            )
+        err = _check_tls_error(r)
+        if err:
+            findings.append(err)
             continue
-        ratio = _cpu_bound_ratio(r.tls_handshake_ms, r.tcp_rtt_ms)
-        if ratio is not None and ratio > t.tls_cpu_bound_ratio and (r.tls_handshake_ms or 0.0) >= 20.0:
-            findings.append(
-                Finding(
-                    id=f"tls.server_cpu_bound.{r.label}",
-                    severity="warn",
-                    title=f"TLS handshake to {r.host} is disproportionately slow",
-                    detail=f"TLS handshake took {r.tls_handshake_ms} ms, {ratio:.1f}x the {r.tcp_rtt_ms} ms TCP RTT.",
-                    metric="tls_handshake_ms",
-                    value=r.tls_handshake_ms,
-                    threshold=t.tls_cpu_bound_ratio,
-                    advice="Slow handshake relative to network RTT usually points at a CPU-bound TLS terminator, not the network.",
-                    title_ru=f"TLS-рукопожатие с {r.host} непропорционально медленное",
-                    detail_ru=f"TLS-рукопожатие заняло {r.tls_handshake_ms} мс — в {ratio:.1f} раза больше TCP RTT ({r.tcp_rtt_ms} мс).",
-                    advice_ru="Медленное рукопожатие относительно сетевого RTT обычно указывает на упирающийся в CPU TLS-терминатор, а не на сеть.",
-                )
-            )
-        severity = severity_for(r.tls_handshake_ms, t.tls_handshake_ms)
-        if severity not in ("ok", "info"):
-            findings.append(
-                Finding(
-                    id=f"tls.handshake_slow.{r.label}",
-                    severity=severity,
-                    title=f"TLS handshake to {r.host} above target",
-                    detail=f"TLS handshake took {r.tls_handshake_ms} ms.",
-                    metric="tls_handshake_ms",
-                    value=r.tls_handshake_ms,
-                    threshold=t.tls_handshake_ms.warn,
-                    advice="Check server load and TLS session resumption settings.",
-                    title_ru=f"TLS-рукопожатие с {r.host} выше целевого",
-                    detail_ru=f"TLS-рукопожатие заняло {r.tls_handshake_ms} мс.",
-                    advice_ru="Проверьте нагрузку на сервер и настройки возобновления TLS-сессий.",
-                )
-            )
-        severity = severity_for(r.ttfb_ms, t.ttfb_ms)
-        if severity not in ("ok", "info"):
-            findings.append(
-                Finding(
-                    id=f"tls.ttfb_slow.{r.label}",
-                    severity=severity,
-                    title=f"Time to first byte from {r.host} above target",
-                    detail=f"TTFB was {r.ttfb_ms} ms.",
-                    metric="ttfb_ms",
-                    value=r.ttfb_ms,
-                    threshold=t.ttfb_ms.warn,
-                    advice="Slow TTFB with a fast handshake points at server-side processing, not the network.",
-                    title_ru=f"Время до первого байта от {r.host} выше целевого",
-                    detail_ru=f"TTFB составило {r.ttfb_ms} мс.",
-                    advice_ru="Медленный TTFB при быстром рукопожатии указывает на обработку на стороне сервера, а не на сеть.",
-                )
-            )
-        if r.pin_verdict == "mismatch":
-            findings.append(
-                Finding(
-                    id=f"tls.cert_pin_mismatch.{r.label}",
-                    severity="crit",
-                    title=f"Certificate for {r.host} does not match the pinned fingerprint",
-                    detail=f"Observed SHA-256 {r.cert_sha256}, which does not match the configured pin.",
-                    metric="cert_sha256",
-                    value=r.cert_sha256,
-                    advice="A corporate/ISP TLS-intercepting middlebox or a genuine MITM; "
-                    "compare against the fingerprint seen from another network before assuming the worst.",
-                    title_ru=f"Сертификат {r.host} не совпадает с закреплённым отпечатком",
-                    detail_ru=f"Наблюдаемый SHA-256 {r.cert_sha256} не совпадает с настроенным отпечатком.",
-                    advice_ru="Корпоративный/провайдерский TLS-перехватывающий middlebox или настоящий MITM; "
-                    "сравните с отпечатком, увиденным из другой сети, прежде чем делать выводы.",
-                )
-            )
-        elif r.cert_verified is False and r.pin_verdict == "unpinned":
-            findings.append(
-                Finding(
-                    id=f"tls.cert_unverified.{r.label}",
-                    severity="warn",
-                    title=f"Certificate chain for {r.host} did not validate",
-                    detail=f"Issuer: {r.cert_issuer or 'unknown'}.",
-                    metric="cert_issuer",
-                    value=r.cert_issuer,
-                    advice="Often the issuer of an interception appliance rather than the real service's CA; "
-                    "pin the expected fingerprint in tls.pinned_fingerprints to escalate this to a hard alert.",
-                    title_ru=f"Цепочка сертификатов {r.host} не прошла проверку",
-                    detail_ru=f"Издатель: {r.cert_issuer or 'неизвестен'}.",
-                    advice_ru="Часто это издатель перехватывающего устройства, а не настоящий CA сервиса; "
-                    "закрепите ожидаемый отпечаток в tls.pinned_fingerprints, чтобы превратить это в жёсткий алерт.",
-                )
-            )
-        if r.cert_days_remaining is not None and 0 <= r.cert_days_remaining < 14:
-            findings.append(
-                Finding(
-                    id=f"tls.cert_expiring.{r.label}",
-                    severity="warn",
-                    title=f"Certificate for {r.host} expires soon",
-                    detail=f"{r.cert_days_remaining} day(s) remaining ({r.cert_not_after}).",
-                    metric="cert_days_remaining",
-                    value=r.cert_days_remaining,
-                    threshold=14,
-                    advice="Renew before it lapses; an expired certificate breaks the service for every client.",
-                    title_ru=f"Сертификат {r.host} скоро истекает",
-                    detail_ru=f"Осталось {r.cert_days_remaining} дн. (до {r.cert_not_after}).",
-                    advice_ru="Продлите до истечения; просроченный сертификат сломает сервис для всех клиентов.",
-                )
-            )
+        findings.extend(_check_tls_performance(r, t))
+        findings.extend(_check_tls_certificate(r))
     return findings
 
 
