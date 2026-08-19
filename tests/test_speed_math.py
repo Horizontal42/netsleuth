@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from netsleuth.speed import bufferbloat_delta, mbps, ookla_interface_args, parse_server_timing_cfl4, throughput_from_samples
+from netsleuth.speed import (
+    bufferbloat_delta,
+    mbps,
+    ookla_interface_args,
+    parse_server_timing_cfl4,
+    throughput_from_samples,
+)
 
 
 def test_mbps_converts_bytes_and_seconds():

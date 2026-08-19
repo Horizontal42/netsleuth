@@ -6,7 +6,12 @@ import threading
 import pytest
 
 from netsleuth.models import Capabilities, TraceHop, TraceResult
-from netsleuth.probes.icmp_win import IP_REQ_TIMED_OUT, IP_SUCCESS, IP_TTL_EXPIRED_TRANSIT, IcmpReply
+from netsleuth.probes.icmp_win import (
+    IP_REQ_TIMED_OUT,
+    IP_SUCCESS,
+    IP_TTL_EXPIRED_TRANSIT,
+    IcmpReply,
+)
 from netsleuth.probes.traceroute import (
     _run_in_daemon_thread,
     filter_trace_tiers,

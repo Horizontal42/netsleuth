@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from netsleuth.models import Capabilities
-from netsleuth.netinfo import choose_latency_backend, choose_trace_backend, degradation_note
+from netsleuth.netinfo import (
+    choose_latency_backend,
+    choose_trace_backend,
+    degradation_note,
+)
 
 
 def caps(**kw) -> Capabilities:

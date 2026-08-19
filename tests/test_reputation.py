@@ -13,8 +13,8 @@ from netsleuth.config import Providers
 from netsleuth.reputation import (
     DnsblOutcome,
     NetsetIndex,
-    build_reputation,
     ReputationContext,
+    build_reputation,
     captcha_risk,
     decode_dnsbl,
     fetch_abuseipdb,
@@ -296,6 +296,27 @@ def providers():
             "http://example.com/firehol_level2.netset"
         ]
     )
+
+
+
+import pathlib
+
+
+async def test_refresh_netsets_setup_dir(httpx_mock, tmp_path, providers):
+    httpx_mock.add_response(url="http://example.com/firehol_level1.netset", text="192.0.2.0/24\n")
+    httpx_mock.add_response(url="http://example.com/firehol_level2.netset", text="198.51.100.0/24\n")
+
+    original_mkdir = pathlib.Path.mkdir
+
+    def mocked_mkdir(self, *args, **kwargs):
+        return original_mkdir(self, *args, **kwargs)
+
+    with patch("pathlib.Path.mkdir", side_effect=mocked_mkdir, autospec=True) as mock_mkdir:
+        async with httpx.AsyncClient() as client:
+            await refresh_netsets(client, providers, tmp_path)
+
+        mock_mkdir.assert_any_call(tmp_path / "firehol", parents=True, exist_ok=True)
+
 
 async def test_refresh_netsets_downloads_new_lists_and_caches_them(httpx_mock, tmp_path, providers):
     httpx_mock.add_response(url="http://example.com/firehol_level1.netset", text="192.0.2.0/24\n")

@@ -4,7 +4,10 @@ import httpx
 
 from netsleuth.interpret import captive_portal_findings
 from netsleuth.models import CaptivePortal
-from netsleuth.probes.captive_portal import check_captive_portal, classify_portal_response
+from netsleuth.probes.captive_portal import (
+    check_captive_portal,
+    classify_portal_response,
+)
 
 URL = "http://cp.cloudflare.com/generate_204"
 

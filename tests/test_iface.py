@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import socket
 
-from netsleuth.iface import available_interfaces_hint, resolve_bind_target, usable_addresses
+from netsleuth.iface import (
+    available_interfaces_hint,
+    resolve_bind_target,
+    usable_addresses,
+)
 
 
 def addrs(**kw) -> dict[str, list[tuple[int, str]]]:

@@ -17,7 +17,6 @@ from netsleuth.models import (
     DnsAdvanced,
     DpiCheckResult,
     PathDiversity,
-    PortProbe,
     PrefixBenchmark,
     PrefixProbe,
     ResolverProbe,

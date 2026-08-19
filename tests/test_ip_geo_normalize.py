@@ -140,8 +140,8 @@ def test_ip_type_classification(mobile, proxy, hosting, known, expected):
     assert classify_ip_type(mobile, proxy, hosting, known) == expected
 
 
-from netsleuth.models import IpGeo
 from netsleuth.ip_geo import dual_stack_mismatch, merge_geo
+from netsleuth.models import IpGeo
 
 
 def test_merge_takes_the_first_non_empty_value_in_priority_order():
