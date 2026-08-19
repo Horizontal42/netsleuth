@@ -1,12 +1,27 @@
 from __future__ import annotations
 
 import asyncio
+import re
+from datetime import UTC, datetime
 
 import httpx
 import pytest
 
 from netsleuth.models import ModuleResult, ProbeError
-from netsleuth.orchestration import classify_exception, gather_modules, run_module
+from netsleuth.orchestration import (
+    classify_exception,
+    gather_modules,
+    run_module,
+    utc_now_iso,
+)
+
+
+def test_utc_now_iso():
+    now_str = utc_now_iso()
+    assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", now_str)
+    parsed = datetime.strptime(now_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    now = datetime.now(UTC)
+    assert abs((now - parsed).total_seconds()) < 5
 
 
 def test_classify_timeout_errors():
@@ -34,7 +49,10 @@ def test_classify_transport_and_parse_and_privilege_errors():
     assert classify_exception(ValueError("bad json")) == ("parse_error", False)
     assert classify_exception(KeyError("asn")) == ("parse_error", False)
     assert classify_exception(PermissionError("raw socket")) == ("no_privilege", False)
-    assert classify_exception(NotImplementedError("no win api here")) == ("not_applicable", False)
+    assert classify_exception(NotImplementedError("no win api here")) == (
+        "not_applicable",
+        False,
+    )
 
 
 def test_classify_unknown_exception_falls_back_to_unavailable():
@@ -61,7 +79,9 @@ async def test_run_module_returns_ok_envelope_on_success():
 
 async def test_run_module_passes_through_a_module_result_unchanged_but_timed():
     async def work():
-        return ModuleResult(name="reputation", status="partial", data={"x": 1}, warnings=["no key"])
+        return ModuleResult(
+            name="reputation", status="partial", data={"x": 1}, warnings=["no key"]
+        )
 
     result = await run_module("reputation", work(), timeout=1.0)
     assert result.status == "partial"
@@ -77,7 +97,9 @@ async def test_run_module_converts_an_exception_into_a_failed_envelope():
     assert result.status == "failed"
     assert result.data is None
     assert result.errors == [
-        ProbeError(source="ip-api", kind="unavailable", message="refused", retryable=True)
+        ProbeError(
+            source="ip-api", kind="unavailable", message="refused", retryable=True
+        )
     ]
 
 
