@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from netsleuth.speed import (
+    _as_int,
     bufferbloat_delta,
     mbps,
     ookla_interface_args,
@@ -397,3 +398,16 @@ async def test_measure_with_bufferbloat_without_an_idle_baseline_grades_unknown(
     )
     assert result.bufferbloat_down_ms is None
     assert result.bufferbloat_grade == "?"
+
+
+def test_as_int_returns_none_for_none():
+    assert _as_int(None) is None
+
+
+def test_as_int_returns_none_for_invalid_string():
+    assert _as_int("abc") is None
+
+
+def test_as_int_returns_parsed_integer_for_valid_string():
+    assert _as_int("123") == 123
+    assert _as_int("-456") == -456
