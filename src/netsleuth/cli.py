@@ -53,7 +53,7 @@ from netsleuth.models import (
     SpeedResult,
     VpnContext,
 )
-from netsleuth.netinfo import collect_local_net, detect_capabilities, iface_for_ip, is_tunnel_iface, primary_interface_ip
+from netsleuth.netinfo import collect_local_net, detect_capabilities, iface_for_ip, is_tunnel_iface
 from netsleuth.orchestration import gather_modules, run_module, utc_now_iso
 from netsleuth.probes.captive_portal import check_captive_portal
 from netsleuth.probes.dns_leak import collect_dns_leak
