@@ -165,6 +165,70 @@ def render_dashboard(session: WatchSession) -> Table:
     return table
 
 
+
+async def _measure_cycle(
+    client: httpx.AsyncClient,
+    settings: Settings,
+    options: Any,
+    session: WatchSession,
+    cycle: int,
+    hosts: list[tuple[str, str]],
+    caps: Any,
+    bind: Any,
+    _speed_section: Any,
+) -> tuple[list[PingResult], SpeedResult | None]:
+    pings = await ping_fanout(
+        hosts,
+        caps,
+        settings.probing.quick_ping_count,
+        settings.probing.ping_interval_seconds,
+        settings.probing.ping_timeout_seconds,
+        source_ip=bind.ipv4 if bind else None,
+    )
+    speed = None
+    if is_speedtest_cycle(cycle, session.speedtest_every_n_cycles) and not options.quick:
+        result = await run_module(
+            "speed",
+            _speed_section(client, settings, options, None),
+            timeout=settings.timeouts.speedtest_seconds,
+        )
+        speed = result.data if result.status == "ok" else None
+    return pings, speed
+
+
+async def _maybe_fire_webhook(
+    client: httpx.AsyncClient,
+    webhook_url: str | None,
+    fire_on: set[str],
+    settings: Settings,
+    session: WatchSession,
+    cycle_summary: dict[str, Any],
+    previous_status: str | None,
+    last_fired_at: float | None,
+) -> float | None:
+    current_status = cycle_summary["status"]
+    if not webhook_url:
+        return last_fired_at
+
+    if should_fire(
+        previous_status,
+        current_status,
+        last_fired_at,
+        time.perf_counter(),
+        settings.watch.webhook_min_interval_seconds,
+        fire_on,
+    ):
+        payload = build_payload(
+            {"asn": session.asn, "interface": session.interface},
+            cycle_summary,
+            previous_status,
+            current_status,
+        )
+        if await post_webhook(client, webhook_url, payload, settings.timeouts.http_seconds):
+            session.alerts_fired += 1
+            return time.perf_counter()
+    return last_fired_at
+
 async def run_watch(settings: Settings, options) -> Path:
     # Imported here, not at module import time: cli imports watch lazily for --watch,
     # and a module-level import back into cli would close the cycle.
@@ -213,43 +277,15 @@ async def run_watch(settings: Settings, options) -> Path:
             with Live(render_dashboard(session), console=console, refresh_per_second=settings.watch.dashboard_refresh_hz) as live:
                 while True:
                     began = time.perf_counter()
-                    pings = await ping_fanout(
-                        hosts,
-                        caps,
-                        settings.probing.quick_ping_count,
-                        settings.probing.ping_interval_seconds,
-                        settings.probing.ping_timeout_seconds,
-                        source_ip=bind.ipv4 if bind else None,
+                    pings, speed = await _measure_cycle(
+                        client, settings, options, session, cycle, hosts, caps, bind, _speed_section
                     )
-                    speed = None
-                    if is_speedtest_cycle(cycle, session.speedtest_every_n_cycles) and not options.quick:
-                        result = await run_module(
-                            "speed",
-                            _speed_section(client, settings, options, None),
-                            timeout=settings.timeouts.speedtest_seconds,
-                        )
-                        speed = result.data if result.status == "ok" else None
                     cycle_summary = summarize_cycle(cycle, utc_now_iso(), pings, speed, settings.thresholds)
                     session.add(cycle_summary)
-                    current_status = cycle_summary["status"]
-                    if webhook_url and should_fire(
-                        previous_status,
-                        current_status,
-                        last_fired_at,
-                        time.perf_counter(),
-                        settings.watch.webhook_min_interval_seconds,
-                        fire_on,
-                    ):
-                        payload = build_payload(
-                            {"asn": session.asn, "interface": session.interface},
-                            cycle_summary,
-                            previous_status,
-                            current_status,
-                        )
-                        if await post_webhook(client, webhook_url, payload, settings.timeouts.http_seconds):
-                            last_fired_at = time.perf_counter()
-                            session.alerts_fired += 1
-                    previous_status = current_status
+                    last_fired_at = await _maybe_fire_webhook(
+                        client, webhook_url, fire_on, settings, session, cycle_summary, previous_status, last_fired_at
+                    )
+                    previous_status = cycle_summary["status"]
                     live.update(render_dashboard(session))
                     await asyncio.sleep(next_delay(began, time.perf_counter(), session.interval_seconds))
                     cycle += 1
