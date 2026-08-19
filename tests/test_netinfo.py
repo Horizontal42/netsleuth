@@ -27,6 +27,44 @@ def test_unix_falls_back_to_raw_icmp_when_datagram_is_unavailable():
     assert choose_latency_backend(caps(icmp_raw=True, is_elevated=True)) == "icmp_raw"
 
 
+from netsleuth.netinfo import detect_capabilities
+from unittest.mock import patch
+
+def test_detect_capabilities_linux_happy_path():
+    with patch("netsleuth.netinfo.platform.system", return_value="Linux"), \
+         patch("netsleuth.netinfo._is_elevated", return_value=True), \
+         patch("netsleuth.netinfo._socket_works", side_effect=[True, True]), \
+         patch("netsleuth.netinfo._win_icmp_available", return_value=False), \
+         patch("netsleuth.netinfo.shutil.which", side_effect=lambda x: "/usr/bin/" + x):
+
+        c = detect_capabilities()
+
+        assert c.os_name == "Linux"
+        assert c.is_elevated is True
+        assert c.icmp_dgram is True
+        assert c.icmp_raw is True
+        assert c.icmp_win_api is False
+        assert c.mtr_binary == "/usr/bin/mtr"
+        assert c.traceroute_binary == "/usr/bin/traceroute"
+
+
+def test_detect_capabilities_windows_happy_path():
+    with patch("netsleuth.netinfo.platform.system", return_value="Windows"), \
+         patch("netsleuth.netinfo._is_elevated", return_value=False), \
+         patch("netsleuth.netinfo._socket_works", return_value=False), \
+         patch("netsleuth.netinfo._win_icmp_available", return_value=True), \
+         patch("netsleuth.netinfo.shutil.which", side_effect=lambda x: "C:\\Windows\\System32\\" + x + ".exe"):
+
+        c = detect_capabilities()
+
+        assert c.os_name == "Windows"
+        assert c.is_elevated is False
+        assert c.icmp_dgram is False
+        assert c.icmp_raw is False
+        assert c.icmp_win_api is True
+        assert c.mtr_binary == "C:\\Windows\\System32\\mtr.exe"
+        assert c.traceroute_binary == "C:\\Windows\\System32\\tracert.exe"
+
 def test_latency_falls_back_to_tcp_when_no_icmp_is_possible():
     assert choose_latency_backend(caps()) == "tcp"
 
