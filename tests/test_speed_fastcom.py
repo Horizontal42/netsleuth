@@ -6,7 +6,7 @@ from netsleuth.speed import tier_fastcom
 
 
 async def test_tier_fastcom_happy_path(httpx_mock):
-    config = Speedtest()
+    config = Speedtest(fastcom_api_token="YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm")
     api_url = config.fastcom_api_url
 
     httpx_mock.add_response(
@@ -42,7 +42,7 @@ async def test_tier_fastcom_happy_path(httpx_mock):
 
 
 async def test_tier_fastcom_no_targets(httpx_mock):
-    config = Speedtest()
+    config = Speedtest(fastcom_api_token="YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm")
     api_url = config.fastcom_api_url
 
     httpx_mock.add_response(
@@ -60,7 +60,7 @@ async def test_tier_fastcom_no_targets(httpx_mock):
 
 
 async def test_tier_fastcom_missing_urls(httpx_mock):
-    config = Speedtest()
+    config = Speedtest(fastcom_api_token="YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm")
     api_url = config.fastcom_api_url
 
     httpx_mock.add_response(
@@ -89,7 +89,7 @@ async def test_tier_fastcom_missing_urls(httpx_mock):
 
 
 async def test_tier_fastcom_api_error(httpx_mock):
-    config = Speedtest()
+    config = Speedtest(fastcom_api_token="YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm")
     api_url = config.fastcom_api_url
 
     httpx_mock.add_response(
@@ -105,7 +105,7 @@ async def test_tier_fastcom_api_error(httpx_mock):
 
 
 async def test_tier_fastcom_download_error(httpx_mock):
-    config = Speedtest()
+    config = Speedtest(fastcom_api_token="YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm")
     api_url = config.fastcom_api_url
 
     httpx_mock.add_response(
