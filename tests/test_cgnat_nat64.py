@@ -34,6 +34,13 @@ def test_nat64_prefix_from_aaaa_handles_empty_and_garbage_input():
     assert nat64_prefix_from_aaaa(["not-an-address"]) is None
 
 
+def test_nat64_prefix_from_aaaa_value_error():
+    from unittest.mock import patch
+
+    with patch("netsleuth.ip_geo.ipaddress.IPv6Address", side_effect=ValueError("mocked error")):
+        assert nat64_prefix_from_aaaa(["2001:db8::1"]) is None
+
+
 def test_cgnat_findings_fires_on_local_ip_evidence():
     local = LocalNet(local_ipv4="100.64.5.5", cgnat=True, cgnat_evidence="local address 100.64.5.5 is in 100.64.0.0/10")
     findings = cgnat_findings(local, [])
