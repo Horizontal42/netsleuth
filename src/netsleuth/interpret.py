@@ -10,7 +10,6 @@ from netsleuth.models import (
     DpiCheckResult,
     EcmpReport,
     Finding,
-    IpGeo,
     LocalNet,
     PathDiversity,
     PingResult,
