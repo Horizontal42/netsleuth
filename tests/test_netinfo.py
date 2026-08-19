@@ -199,3 +199,107 @@ Network Destination        Netmask          Gateway       Interface  Metric
 
 def test_windows_default_gateway_returns_none_when_no_default_route_exists():
     assert _parse_windows_default_gateway("Active Routes:\nNone\n", socket.AF_INET) is None
+
+from dataclasses import dataclass
+
+@dataclass
+class MockAddr:
+    family: int
+    address: str
+
+@dataclass
+class MockStats:
+    mtu: int
+
+from unittest.mock import patch
+from netsleuth.netinfo import collect_local_net
+from netsleuth.models import LocalNet
+
+@patch("netsleuth.netinfo.primary_interface_ip")
+@patch("netsleuth.netinfo.psutil.net_if_addrs")
+@patch("netsleuth.netinfo.psutil.net_if_stats")
+@patch("netsleuth.netinfo._default_gateway")
+@patch("netsleuth.netinfo._resolvers_per_adapter")
+def test_collect_local_net_happy_path(mock_resolvers, mock_gw, mock_stats, mock_addrs, mock_ip):
+    # Setup mocks
+    mock_ip.side_effect = ["192.168.1.50", "2001:db8::1"]
+    mock_addrs.return_value = {
+        "eth0": [MockAddr(family=socket.AF_INET, address="192.168.1.50"), MockAddr(family=socket.AF_INET6, address="2001:db8::1")]
+    }
+    mock_stats.return_value = {"eth0": MockStats(mtu=1500)}
+    mock_gw.side_effect = ["192.168.1.1", "fe80::1"]
+    mock_resolvers.return_value = {"eth0": ["1.1.1.1", "8.8.8.8"]}
+
+    result = collect_local_net()
+
+    assert result.iface_name == "eth0"
+    assert result.local_ipv4 == "192.168.1.50"
+    assert result.local_ipv6 == "2001:db8::1"
+    assert result.iface_mtu == 1500
+    assert result.default_gateway_v4 == "192.168.1.1"
+    assert result.default_gateway_v6 == "fe80::1"
+    assert result.dns_servers_per_adapter == {"eth0": ["1.1.1.1", "8.8.8.8"]}
+    assert result.is_dual_stack is True
+    assert result.cgnat is False
+    assert result.cgnat_evidence is None
+
+@patch("netsleuth.netinfo.primary_interface_ip")
+@patch("netsleuth.netinfo.psutil.net_if_addrs")
+@patch("netsleuth.netinfo.psutil.net_if_stats")
+@patch("netsleuth.netinfo._default_gateway")
+@patch("netsleuth.netinfo._resolvers_per_adapter")
+def test_collect_local_net_cgnat_on_local_ip(mock_resolvers, mock_gw, mock_stats, mock_addrs, mock_ip):
+    mock_ip.side_effect = ["100.64.1.2", None]
+    mock_addrs.return_value = {
+        "eth0": [MockAddr(family=socket.AF_INET, address="100.64.1.2")]
+    }
+    mock_stats.return_value = {"eth0": MockStats(mtu=1500)}
+    mock_gw.side_effect = ["100.64.1.1", None]
+    mock_resolvers.return_value = {}
+
+    result = collect_local_net()
+
+    assert result.cgnat is True
+    assert "100.64.1.2" in result.cgnat_evidence
+
+@patch("netsleuth.netinfo.primary_interface_ip")
+@patch("netsleuth.netinfo.psutil.net_if_addrs")
+@patch("netsleuth.netinfo.psutil.net_if_stats")
+@patch("netsleuth.netinfo._default_gateway")
+@patch("netsleuth.netinfo._resolvers_per_adapter")
+def test_collect_local_net_cgnat_on_gateway(mock_resolvers, mock_gw, mock_stats, mock_addrs, mock_ip):
+    mock_ip.side_effect = ["192.168.1.50", None]
+    mock_addrs.return_value = {
+        "eth0": [MockAddr(family=socket.AF_INET, address="192.168.1.50")]
+    }
+    mock_stats.return_value = {"eth0": MockStats(mtu=1500)}
+    mock_gw.side_effect = ["100.64.1.1", None]
+    mock_resolvers.return_value = {}
+
+    result = collect_local_net()
+
+    assert result.cgnat is True
+    assert "100.64.1.1" in result.cgnat_evidence
+
+@patch("netsleuth.netinfo.primary_interface_ip")
+@patch("netsleuth.netinfo.psutil.net_if_addrs")
+@patch("netsleuth.netinfo.psutil.net_if_stats")
+@patch("netsleuth.netinfo._default_gateway")
+@patch("netsleuth.netinfo._resolvers_per_adapter")
+def test_collect_local_net_no_network(mock_resolvers, mock_gw, mock_stats, mock_addrs, mock_ip):
+    mock_ip.side_effect = [None, None]
+    mock_addrs.return_value = {}
+    mock_stats.return_value = {}
+    mock_gw.side_effect = [None, None]
+    mock_resolvers.return_value = {}
+
+    result = collect_local_net()
+
+    assert result.iface_name is None
+    assert result.local_ipv4 is None
+    assert result.local_ipv6 is None
+    assert result.iface_mtu is None
+    assert result.default_gateway_v4 is None
+    assert result.default_gateway_v6 is None
+    assert result.is_dual_stack is False
+    assert result.cgnat is False
