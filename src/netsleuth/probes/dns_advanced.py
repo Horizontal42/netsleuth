@@ -141,14 +141,13 @@ async def collect_dns_advanced(
     bogus_probe_name: str,
     timeout: float,
 ) -> DnsAdvanced:
-    system_probes = [await resolve_system(name, timeout) for name in control_names]
-    doh_probes: list[ResolverProbe] = []
-    for name in control_names:
-        doh_probes.extend(
-            await asyncio.gather(
-                *(resolve_doh(client, ep.name, ep.url, name, timeout) for ep in doh_endpoints)
-            )
-        )
+    system_probes = list(await asyncio.gather(*(resolve_system(name, timeout) for name in control_names)))
+    doh_tasks = [
+        resolve_doh(client, ep.name, ep.url, name, timeout)
+        for name in control_names
+        for ep in doh_endpoints
+    ]
+    doh_probes = list(await asyncio.gather(*doh_tasks))
 
     divergences: list[str] = []
     for system_probe in system_probes:
