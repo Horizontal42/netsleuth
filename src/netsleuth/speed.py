@@ -174,8 +174,6 @@ async def tier_cloudflare(client: httpx.AsyncClient, cfg: Speedtest, timeout: fl
 
 
 async def tier_fastcom(client: httpx.AsyncClient, cfg: Speedtest, timeout: float) -> SpeedResult:
-    if not cfg.fastcom_api_token:
-        raise RuntimeError("Fast.com API token not configured")
     response = await client.get(
         cfg.fastcom_api_url,
         params={"https": "true", "token": cfg.fastcom_api_token, "urlCount": "3"},

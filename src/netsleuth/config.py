@@ -78,7 +78,7 @@ class Speedtest(BaseModel):
     upload_sizes_bytes: list[int] = Field(default_factory=lambda: [1_000_000, 5_000_000])
     cloudflare_base_url: str = "https://speed.cloudflare.com"
     fastcom_api_url: str = "https://api.fast.com/netflix/speedtest/v2"
-    fastcom_api_token: str | None = None
+    fastcom_api_token: str = "YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm"
     ndt7_locate_url: str = "https://locate.measurementlab.net/v2/nearest/ndt/ndt7"
     bufferbloat_probe_interval_seconds: float = 0.2
 
