@@ -126,7 +126,6 @@ async def probe_pmtu(
     result.resolved_ip = resolved_ip
 
     system = platform.system()
-    result.method = "icmp_win" if system == "Windows" else "system_ping"
 
     async def _probe(size: int) -> tuple[bool, bool]:
         if system == "Windows":
