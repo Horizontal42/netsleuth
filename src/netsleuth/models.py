@@ -538,7 +538,6 @@ class QuicResult:
 @dataclass
 class PmtuResult:
     host: str
-    resolved_ip: str | None = None
     method: str = "none"
     discovered_mtu: int | None = None
     iface_mtu: int | None = None

@@ -90,7 +90,7 @@ def test_unix_ping_df_argv_rounds_a_fractional_timeout_up():
 
 
 def pmtu(**kw) -> PmtuResult:
-    base = dict(host="example.com", resolved_ip="1.2.3.4", method="icmp_win", verdict="unknown")
+    base = dict(host="example.com", method="icmp_win", verdict="unknown")
     base.update(kw)
     return PmtuResult(**base)
 
