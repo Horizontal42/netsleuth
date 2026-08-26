@@ -5,6 +5,7 @@ import os
 import re
 from pathlib import Path
 from typing import Any
+from netsleuth.interpret import bufferbloat_consequence
 
 from netsleuth.config import FORMAT_EXTENSIONS
 from netsleuth.interpret import overall_verdict
@@ -32,7 +33,9 @@ SECTION_ORDER = (
 )
 
 _UNSAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
-_ISO_RE = re.compile(r"^(?P<y>\d{4})-(?P<mo>\d{2})-(?P<d>\d{2})T(?P<h>\d{2}):(?P<mi>\d{2}):(?P<s>\d{2})")
+_ISO_RE = re.compile(
+    r"^(?P<y>\d{4})-(?P<mo>\d{2})-(?P<d>\d{2})T(?P<h>\d{2}):(?P<mi>\d{2}):(?P<s>\d{2})"
+)
 
 
 def sanitize_name(value: str | None, fallback: str = "unknown") -> str:
@@ -77,7 +80,10 @@ def build_report(
     raw: dict[str, Any],
 ) -> dict[str, Any]:
     status, score, summary = overall_verdict(findings)
-    report: dict[str, Any] = {"schema_version": SCHEMA_VERSION, "meta": to_jsonable(meta)}
+    report: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "meta": to_jsonable(meta),
+    }
     for section in SECTION_ORDER:
         result = modules.get(section) or ModuleResult(name=section, status="skipped")
         report[section] = to_jsonable(result)
@@ -93,7 +99,9 @@ def build_report(
 
 
 def dump_json(report: dict[str, Any]) -> str:
-    return json.dumps(to_jsonable(report), allow_nan=False, ensure_ascii=False, indent=2)
+    return json.dumps(
+        to_jsonable(report), allow_nan=False, ensure_ascii=False, indent=2
+    )
 
 
 def atomic_write(path: Path, text: str) -> Path:
@@ -110,7 +118,9 @@ def egress_asn(report: dict[str, Any]) -> str | None:
     return ((data.get("egress_v4") or {}) if isinstance(data, dict) else {}).get("asn")
 
 
-def write_report(report: dict[str, Any], artifacts: dict[str, str], logs_dir: Path) -> list[Path]:
+def write_report(
+    report: dict[str, Any], artifacts: dict[str, str], logs_dir: Path
+) -> list[Path]:
     meta = report.get("meta") or {}
     started = meta.get("started_at", "")
     asn = meta.get("target") or egress_asn(report)
@@ -121,12 +131,16 @@ def write_report(report: dict[str, Any], artifacts: dict[str, str], logs_dir: Pa
     ]
 
 
-from netsleuth.interpret import bufferbloat_consequence
 
 SPARK_CHARS = "▁▂▃▅▇"
 _BADGES = {"ok": "🟢", "info": "🟢", "warn": "🟡", "crit": "🔴"}
 _SEVERITY_RANK = {"crit": 0, "warn": 1, "info": 2, "ok": 3}
-_SEVERITY_WORDS_RU = {"ok": "норма", "info": "инфо", "warn": "предупреждение", "crit": "критично"}
+_SEVERITY_WORDS_RU = {
+    "ok": "норма",
+    "info": "инфо",
+    "warn": "предупреждение",
+    "crit": "критично",
+}
 _LOSS_JUMP_PCT = 20.0
 
 
@@ -181,7 +195,10 @@ def badge(severity: str, emoji: bool, lang: str = "en") -> str:
 
 def first_loss_jump(hops: list[dict]) -> int | None:
     for hop, following in zip(hops, hops[1:]):
-        if hop.get("loss_pct", 0.0) >= _LOSS_JUMP_PCT and following.get("loss_pct", 0.0) >= _LOSS_JUMP_PCT:
+        if (
+            hop.get("loss_pct", 0.0) >= _LOSS_JUMP_PCT
+            and following.get("loss_pct", 0.0) >= _LOSS_JUMP_PCT
+        ):
             return hop.get("ttl")
     return None
 
@@ -195,16 +212,22 @@ def _data(report: dict, section: str) -> Any:
 
 
 def _num(value: Any) -> str:
-    return "—" if value is None else f"{value:g}" if isinstance(value, (int, float)) else str(value)
+    return (
+        "—"
+        if value is None
+        else f"{value:g}"
+        if isinstance(value, (int, float))
+        else str(value)
+    )
 
 
 def _table(headers: list[str], rows: list[list[str]], lang: str = "en") -> list[str]:
     if not rows:
         return [_t(lang, "_No rows._", "_Нет строк._")]
-    return (
-        ["| " + " | ".join(headers) + " |", "|" + "|".join(["---"] * len(headers)) + "|"]
-        + ["| " + " | ".join(row) + " |" for row in rows]
-    )
+    return [
+        "| " + " | ".join(headers) + " |",
+        "|" + "|".join(["---"] * len(headers)) + "|",
+    ] + ["| " + " | ".join(row) + " |" for row in rows]
 
 
 def _findings(report: dict) -> list[dict]:
@@ -230,9 +253,15 @@ def _ru_summary(report: dict, status: str) -> str:
 def _header(report: dict, emoji: bool, lang: str = "en") -> list[str]:
     meta = report.get("meta") or {}
     interp = report.get("interpretation") or {}
-    target = f" · {_t(lang, 'target', 'цель')} `{meta.get('target')}`" if meta.get("target") else ""
+    target = (
+        f" · {_t(lang, 'target', 'цель')} `{meta.get('target')}`"
+        if meta.get("target")
+        else ""
+    )
     status = interp.get("overall_status", "ok")
-    summary = interp.get("summary_text", "") if lang == "en" else _ru_summary(report, status)
+    summary = (
+        interp.get("summary_text", "") if lang == "en" else _ru_summary(report, status)
+    )
     status_word = status if lang == "en" else _SEVERITY_WORDS_RU.get(status, status)
     return [
         "# netsleuth report",
@@ -252,16 +281,37 @@ def _tldr(report: dict, emoji: bool, lang: str = "en") -> list[str]:
     found = _findings(report)
     heading = _t(lang, "## TL;DR", "## Коротко")
     banner = (
-        [_t(lang, "> ⚠️ Every measurement below was taken from behind a captive portal.", "> ⚠️ Все измерения ниже сделаны из-за captive portal."), ""]
+        [
+            _t(
+                lang,
+                "> ⚠️ Every measurement below was taken from behind a captive portal.",
+                "> ⚠️ Все измерения ниже сделаны из-за captive portal.",
+            ),
+            "",
+        ]
         if (report.get("meta") or {}).get("captive_portal")
         else []
     )
     if not found:
-        return banner + [heading, "", _t(lang, "No problems found on this connection.", "Проблем на этом соединении не найдено."), ""]
-    return banner + [heading, ""] + [
-        f"- {badge(f.get('severity', 'info'), emoji, lang)} **{_f(f, 'title', lang)}** — {_f(f, 'detail', lang)}"
-        for f in found[:5]
-    ] + [""]
+        return banner + [
+            heading,
+            "",
+            _t(
+                lang,
+                "No problems found on this connection.",
+                "Проблем на этом соединении не найдено.",
+            ),
+            "",
+        ]
+    return (
+        banner
+        + [heading, ""]
+        + [
+            f"- {badge(f.get('severity', 'info'), emoji, lang)} **{_f(f, 'title', lang)}** — {_f(f, 'detail', lang)}"
+            for f in found[:5]
+        ]
+        + [""]
+    )
 
 
 _SECTION_TITLES = {
@@ -309,7 +359,12 @@ def _section_title(section: str, lang: str = "en") -> str:
     return _SECTION_TITLES_RU[section] if lang == "ru" else _SECTION_TITLES[section]
 
 
-_MODULE_STATUS_RU = {"ok": "ок", "partial": "частично", "failed": "ошибка", "skipped": "пропущено"}
+_MODULE_STATUS_RU = {
+    "ok": "ок",
+    "partial": "частично",
+    "failed": "ошибка",
+    "skipped": "пропущено",
+}
 
 
 def _module_status_word(status: str, lang: str) -> str:
@@ -320,11 +375,17 @@ def unavailable(report: dict[str, Any], section: str, lang: str = "en") -> str |
     module = _module(report, section)
     if module.get("status") in ("ok", "partial") and module.get("data") is not None:
         return None
-    detail = "; ".join(f"{e.get('source')}: {e.get('message')}" for e in module.get("errors") or [])
+    detail = "; ".join(
+        f"{e.get('source')}: {e.get('message')}" for e in module.get("errors") or []
+    )
     if not detail:
         detail = "; ".join(_warning(lang, w) for w in module.get("warnings") or [])
     if not detail:
-        detail = _t(lang, "no data was collected for this section", "для этого раздела не собраны данные")
+        detail = _t(
+            lang,
+            "no data was collected for this section",
+            "для этого раздела не собраны данные",
+        )
     status_word = _module_status_word(module.get("status", "skipped"), lang)
     label = _t(lang, "Not available", "Недоступно")
     return f"_{label} — {status_word}: {detail}._"
@@ -341,12 +402,25 @@ def _forced_interface_rows(meta: dict, lang: str = "en") -> list[list[str]]:
         ]
     ]
     os_iface, os_ipv4 = forced.get("os_default_iface"), forced.get("os_default_ipv4")
-    if os_iface and (os_iface, os_ipv4) != (forced.get("resolved_iface"), forced.get("bind_ipv4")):
-        rows.append([_t(lang, "OS default interface", "Интерфейс ОС по умолчанию"), f"{os_iface} — {os_ipv4 or '?'}"])
+    if os_iface and (os_iface, os_ipv4) != (
+        forced.get("resolved_iface"),
+        forced.get("bind_ipv4"),
+    ):
+        rows.append(
+            [
+                _t(lang, "OS default interface", "Интерфейс ОС по умолчанию"),
+                f"{os_iface} — {os_ipv4 or '?'}",
+            ]
+        )
     return rows
 
 
-_PORTAL_VERDICT_RU = {"clean": "чисто", "portal": "портал", "suspect": "под вопросом", "error": "ошибка"}
+_PORTAL_VERDICT_RU = {
+    "clean": "чисто",
+    "portal": "портал",
+    "suspect": "под вопросом",
+    "error": "ошибка",
+}
 
 
 def _captive_portal(report: dict, lang: str = "en") -> list[str]:
@@ -357,21 +431,40 @@ def _captive_portal(report: dict, lang: str = "en") -> list[str]:
     cp = _data(report, "captive_portal") or {}
     checks = cp.get("checks") or []
     lines = [title, ""] + _table(
-        [_t(lang, "URL", "URL"), _t(lang, "Status", "Статус"), _t(lang, "Verdict", "Вердикт"), _t(lang, "Evidence", "Доказательство")],
+        [
+            _t(lang, "URL", "URL"),
+            _t(lang, "Status", "Статус"),
+            _t(lang, "Verdict", "Вердикт"),
+            _t(lang, "Evidence", "Доказательство"),
+        ],
         [
             [
                 c.get("url", ""),
                 _num(c.get("status")),
-                c.get("verdict", "") if lang == "en" else _PORTAL_VERDICT_RU.get(c.get("verdict"), c.get("verdict", "")),
+                c.get("verdict", "")
+                if lang == "en"
+                else _PORTAL_VERDICT_RU.get(c.get("verdict"), c.get("verdict", "")),
                 c.get("evidence") or "—",
             ]
             for c in checks
         ],
         lang,
     )
-    verdict_word = cp.get("verdict", "clean") if lang == "en" else _PORTAL_VERDICT_RU.get(cp.get("verdict"), cp.get("verdict"))
-    note_text = (cp.get("note_ru") or cp.get("note") or "") if lang == "ru" else (cp.get("note") or "")
-    lines += ["", f"{_t(lang, 'Verdict', 'Вердикт')}: **{verdict_word}**" + (f" — {note_text}" if note_text else "")]
+    verdict_word = (
+        cp.get("verdict", "clean")
+        if lang == "en"
+        else _PORTAL_VERDICT_RU.get(cp.get("verdict"), cp.get("verdict"))
+    )
+    note_text = (
+        (cp.get("note_ru") or cp.get("note") or "")
+        if lang == "ru"
+        else (cp.get("note") or "")
+    )
+    lines += [
+        "",
+        f"{_t(lang, 'Verdict', 'Вердикт')}: **{verdict_word}**"
+        + (f" — {note_text}" if note_text else ""),
+    ]
     return lines + [""]
 
 
@@ -389,32 +482,51 @@ def _connection(report: dict, lang: str = "en") -> list[str]:
     cf = geo_bundle.get("cf_trace") or {}
     meta = report.get("meta") or {}
     rows = [
-        [_t(lang, "Interface", "Интерфейс"), f"{local.get('iface_name') or '?'} (MTU {local.get('iface_mtu') or '?'})"],
+        [
+            _t(lang, "Interface", "Интерфейс"),
+            f"{local.get('iface_name') or '?'} (MTU {local.get('iface_mtu') or '?'})",
+        ],
         *_forced_interface_rows(meta, lang),
         [
             _t(lang, "Local address", "Локальный адрес"),
             f"{local.get('local_ipv4') or '?'} / {local.get('local_ipv6') or '—'}",
         ],
-        [_t(lang, "Default gateway", "Шлюз по умолчанию"), local.get("default_gateway_v4") or "?"],
+        [
+            _t(lang, "Default gateway", "Шлюз по умолчанию"),
+            local.get("default_gateway_v4") or "?",
+        ],
         [
             _t(lang, "Egress IPv4", "Внешний IPv4"),
             f"{geo.get('ip') or '?'} ({geo.get('asn') or '?'} {geo.get('as_name') or geo.get('org') or ''})",
         ],
-        [_t(lang, "Egress IPv6", "Внешний IPv6"), f"{v6.get('ip') or '—'} ({v6.get('asn') or '—'})"],
+        [
+            _t(lang, "Egress IPv6", "Внешний IPv6"),
+            f"{v6.get('ip') or '—'} ({v6.get('asn') or '—'})",
+        ],
         [_t(lang, "Reverse DNS", "Обратный DNS"), geo.get("reverse_dns") or "—"],
         [
             _t(lang, "Location", "Местоположение"),
             f"{geo.get('city') or '?'}, {geo.get('country') or geo.get('country_code') or '?'}",
         ],
-        [_t(lang, "Address type", "Тип адреса"), geo.get("ip_type") or _t(lang, "unknown", "неизвестно")],
+        [
+            _t(lang, "Address type", "Тип адреса"),
+            geo.get("ip_type") or _t(lang, "unknown", "неизвестно"),
+        ],
         [_t(lang, "Cloudflare colo", "Дата-центр Cloudflare"), cf.get("colo") or "—"],
         [
             _t(lang, "CGNAT", "CGNAT"),
             _t(lang, "yes", "да") if local.get("cgnat") else _t(lang, "no", "нет"),
         ],
-        [_t(lang, "NAT64 prefix", "Префикс NAT64"), geo_bundle.get("nat64_prefix") or "—"],
+        [
+            _t(lang, "NAT64 prefix", "Префикс NAT64"),
+            geo_bundle.get("nat64_prefix") or "—",
+        ],
     ]
-    lines = [title, ""] + _table([_t(lang, "Field", "Поле"), _t(lang, "Value", "Значение")], rows, lang) + [""]
+    lines = (
+        [title, ""]
+        + _table([_t(lang, "Field", "Поле"), _t(lang, "Value", "Значение")], rows, lang)
+        + [""]
+    )
     note = geo_bundle.get("dual_stack_note_ru" if lang == "ru" else "dual_stack_note")
     if note:
         lines += [f"> {note}", ""]
@@ -432,7 +544,72 @@ def _connection(report: dict, lang: str = "en") -> list[str]:
     return lines
 
 
-_VPN_VERDICT_RU = {"none": "нет", "likely": "вероятно", "confirmed": "подтверждено", "unknown": "неизвестно"}
+_VPN_VERDICT_RU = {
+    "none": "нет",
+    "likely": "вероятно",
+    "confirmed": "подтверждено",
+    "unknown": "неизвестно",
+}
+
+
+def _vpn_signals(signals: list, lang: str, yes: str, no: str) -> list[str]:
+    return _table(
+        [
+            _t(lang, "Signal", "Сигнал"),
+            _t(lang, "Observed", "Замечен"),
+            _t(lang, "Weight", "Вес"),
+            _t(lang, "Direction", "Направление"),
+            _t(lang, "Note", "Примечание"),
+        ],
+        [
+            [
+                s.get("name", ""),
+                yes if s.get("observed") else no,
+                _num(s.get("weight")),
+                s.get("direction", ""),
+                s.get("note") or "—",
+            ]
+            for s in signals
+        ],
+        lang,
+    )
+
+
+def _vpn_dns_leak(leak: dict, lang: str, yes: str, no: str) -> list[str]:
+    lines = ["", _t(lang, "### DNS leak", "### Утечка DNS"), ""]
+    lines += _table(
+        [
+            _t(lang, "Adapter", "Адаптер"),
+            _t(lang, "Configured resolvers", "Настроенные резолверы"),
+            _t(lang, "Echoed IP", "Отражённый IP"),
+            _t(lang, "Echoed ASN", "Отражённый ASN"),
+            _t(lang, "Same ASN as egress", "Тот же ASN, что и внешний"),
+        ],
+        [
+            [
+                a.get("adapter", ""),
+                ", ".join(a.get("configured_resolvers") or []) or "—",
+                a.get("echoed_ip") or "—",
+                a.get("echoed_asn") or "—",
+                {True: yes, False: no, None: "?"}[a.get("matches_egress_asn")],
+            ]
+            for a in leak.get("per_adapter") or []
+        ],
+        lang,
+    )
+    ecs_word = yes if leak.get("ecs_leaked") else no
+    note_text = (
+        (leak.get("note_ru") or leak.get("note") or "")
+        if lang == "ru"
+        else (leak.get("note") or "")
+    )
+    lines += [
+        "",
+        f"{_t(lang, 'EDNS Client Subnet leaked', 'Утечка EDNS Client Subnet')}: {ecs_word}",
+        "",
+        note_text,
+    ]
+    return lines
 
 
 def _vpn(report: dict, lang: str = "en") -> list[str]:
@@ -452,61 +629,18 @@ def _vpn(report: dict, lang: str = "en") -> list[str]:
         f"{vpn.get('tunnel_iface') or '—'}",
         "",
     ]
-    lines += _table(
-        [
-            _t(lang, "Signal", "Сигнал"),
-            _t(lang, "Observed", "Замечен"),
-            _t(lang, "Weight", "Вес"),
-            _t(lang, "Direction", "Направление"),
-            _t(lang, "Note", "Примечание"),
-        ],
-        [
-            [
-                s.get("name", ""),
-                yes if s.get("observed") else no,
-                _num(s.get("weight")),
-                s.get("direction", ""),
-                s.get("note") or "—",
-            ]
-            for s in vpn.get("signals") or []
-        ],
-        lang,
-    )
+    lines += _vpn_signals(vpn.get("signals") or [], lang, yes, no)
     leak = vpn.get("dns_leak") or {}
     if leak:
-        lines += ["", _t(lang, "### DNS leak", "### Утечка DNS"), ""]
-        lines += _table(
-            [
-                _t(lang, "Adapter", "Адаптер"),
-                _t(lang, "Configured resolvers", "Настроенные резолверы"),
-                _t(lang, "Echoed IP", "Отражённый IP"),
-                _t(lang, "Echoed ASN", "Отражённый ASN"),
-                _t(lang, "Same ASN as egress", "Тот же ASN, что и внешний"),
-            ],
-            [
-                [
-                    a.get("adapter", ""),
-                    ", ".join(a.get("configured_resolvers") or []) or "—",
-                    a.get("echoed_ip") or "—",
-                    a.get("echoed_asn") or "—",
-                    {True: yes, False: no, None: "?"}[a.get("matches_egress_asn")],
-                ]
-                for a in leak.get("per_adapter") or []
-            ],
-            lang,
-        )
-        ecs_word = yes if leak.get("ecs_leaked") else no
-        note_text = (leak.get("note_ru") or leak.get("note") or "") if lang == "ru" else (leak.get("note") or "")
-        lines += [
-            "",
-            f"{_t(lang, 'EDNS Client Subnet leaked', 'Утечка EDNS Client Subnet')}: {ecs_word}",
-            "",
-            note_text,
-        ]
+        lines += _vpn_dns_leak(leak, lang, yes, no)
     return lines + [""]
 
 
-_ROUTE_STABILITY_RU = {"stable": "стабильный", "unstable": "нестабильный", "unknown": "неизвестно"}
+_ROUTE_STABILITY_RU = {
+    "stable": "стабильный",
+    "unstable": "нестабильный",
+    "unknown": "неизвестно",
+}
 
 
 def _bgp(report: dict, lang: str = "en") -> list[str]:
@@ -516,16 +650,27 @@ def _bgp(report: dict, lang: str = "en") -> list[str]:
         return [title, "", note, ""]
     bgp = _data(report, "bgp") or {}
     stability = bgp.get("stability", "unknown")
-    stability_word = stability if lang == "en" else _ROUTE_STABILITY_RU.get(stability, stability)
+    stability_word = (
+        stability if lang == "en" else _ROUTE_STABILITY_RU.get(stability, stability)
+    )
     rows = [
-        [_t(lang, "ASN", "ASN"), f"{bgp.get('asn') or '?'} — {bgp.get('holder') or '?'}"],
+        [
+            _t(lang, "ASN", "ASN"),
+            f"{bgp.get('asn') or '?'} — {bgp.get('holder') or '?'}",
+        ],
         [
             _t(lang, "Registry", "Реестр"),
             f"{bgp.get('registry') or '?'} ({_t(lang, 'allocated', 'выделен')} {bgp.get('allocated_at') or '?'})",
         ],
-        [_t(lang, "Upstreams", "Аплинки"), ", ".join(bgp.get("upstreams") or []) or "—"],
+        [
+            _t(lang, "Upstreams", "Аплинки"),
+            ", ".join(bgp.get("upstreams") or []) or "—",
+        ],
         [_t(lang, "Peers", "Пиры"), ", ".join(bgp.get("peers") or []) or "—"],
-        [_t(lang, "Downstreams", "Клиенты"), ", ".join((bgp.get("downstreams") or [])[:10]) or "—"],
+        [
+            _t(lang, "Downstreams", "Клиенты"),
+            ", ".join((bgp.get("downstreams") or [])[:10]) or "—",
+        ],
         [
             _t(lang, "Announced prefixes", "Анонсируемые префиксы"),
             f"{bgp.get('prefix_count_v4', 0)} IPv4 / {bgp.get('prefix_count_v6', 0)} IPv6",
@@ -539,9 +684,14 @@ def _bgp(report: dict, lang: str = "en") -> list[str]:
             f"#{_num(bgp.get('asrank'))} · {_t(lang, 'cone', 'конус')} {_num(bgp.get('cone_asns'))} "
             f"{_t(lang, 'ASNs', 'ASN')} / {_num(bgp.get('cone_prefixes'))} {_t(lang, 'prefixes', 'префиксов')}",
         ],
-        [_t(lang, "PeeringDB", "PeeringDB"), f"{bgp.get('pdb_info_type') or '—'} · {bgp.get('pdb_traffic') or '—'}"],
+        [
+            _t(lang, "PeeringDB", "PeeringDB"),
+            f"{bgp.get('pdb_info_type') or '—'} · {bgp.get('pdb_traffic') or '—'}",
+        ],
     ]
-    lines = [title, ""] + _table([_t(lang, "Field", "Поле"), _t(lang, "Value", "Значение")], rows, lang)
+    lines = [title, ""] + _table(
+        [_t(lang, "Field", "Поле"), _t(lang, "Value", "Значение")], rows, lang
+    )
     ixps = bgp.get("ixps") or []
     if ixps:
         lines += ["", _t(lang, "### IXP presence", "### Присутствие на IX"), ""]
@@ -552,13 +702,26 @@ def _bgp(report: dict, lang: str = "en") -> list[str]:
                 _t(lang, "Country", "Страна"),
                 _t(lang, "Speed (Mbps)", "Скорость (Мбит/с)"),
             ],
-            [[i.get("name", ""), i.get("city") or "—", i.get("country") or "—", _num(i.get("speed_mbps"))] for i in ixps],
+            [
+                [
+                    i.get("name", ""),
+                    i.get("city") or "—",
+                    i.get("country") or "—",
+                    _num(i.get("speed_mbps")),
+                ]
+                for i in ixps
+            ],
             lang,
         )
     return lines + [""]
 
 
-_CAPTCHA_RISK_RU = {"unknown": "неизвестен", "low": "низкий", "medium": "средний", "high": "высокий"}
+_CAPTCHA_RISK_RU = {
+    "unknown": "неизвестен",
+    "low": "низкий",
+    "medium": "средний",
+    "high": "высокий",
+}
 
 
 def _reputation(report: dict, lang: str = "en") -> list[str]:
@@ -570,23 +733,40 @@ def _reputation(report: dict, lang: str = "en") -> list[str]:
     idb = rep.get("internetdb") or {}
     none_word = _t(lang, "none", "нет")
     rows = [
-        [_t(lang, "FireHOL hits", "Совпадения FireHOL"), ", ".join(rep.get("firehol_hits") or []) or none_word],
+        [
+            _t(lang, "FireHOL hits", "Совпадения FireHOL"),
+            ", ".join(rep.get("firehol_hits") or []) or none_word,
+        ],
         [
             _t(lang, "Open ports (InternetDB)", "Открытые порты (InternetDB)"),
             ", ".join(str(p) for p in idb.get("ports") or []) or none_word,
         ],
         [_t(lang, "Tags", "Теги"), ", ".join(idb.get("tags") or []) or none_word],
-        [_t(lang, "Known CVEs", "Известные CVE"), ", ".join(idb.get("vulns") or []) or none_word],
+        [
+            _t(lang, "Known CVEs", "Известные CVE"),
+            ", ".join(idb.get("vulns") or []) or none_word,
+        ],
         [
             _t(lang, "AbuseIPDB", "AbuseIPDB"),
-            _num(rep.get("abuseipdb_score")) if rep.get("abuseipdb_score") is not None else _t(lang, "not queried", "не запрошено"),
+            _num(rep.get("abuseipdb_score"))
+            if rep.get("abuseipdb_score") is not None
+            else _t(lang, "not queried", "не запрошено"),
         ],
     ]
     hits = rep.get("dnsbl_hits")
     if hits is None:
-        rows.append([_t(lang, "DNSBL", "DNSBL"), _t(lang, "not run (pass --dnsbl)", "не выполнено (используйте --dnsbl)")])
+        rows.append(
+            [
+                _t(lang, "DNSBL", "DNSBL"),
+                _t(
+                    lang, "not run (pass --dnsbl)", "не выполнено (используйте --dnsbl)"
+                ),
+            ]
+        )
     else:
-        listed = ", ".join(h.get("zone", "") for h in hits) or _t(lang, "no listing", "нет в списках")
+        listed = ", ".join(h.get("zone", "") for h in hits) or _t(
+            lang, "no listing", "нет в списках"
+        )
         if rep.get("dnsbl_query_blocked"):
             listed += _t(
                 lang,
@@ -596,9 +776,18 @@ def _reputation(report: dict, lang: str = "en") -> list[str]:
         rows.append([_t(lang, "DNSBL", "DNSBL"), listed])
     risk = rep.get("captcha_risk", "unknown")
     risk_word = risk if lang == "en" else _CAPTCHA_RISK_RU.get(risk, risk)
-    rationale = (rep.get("rationale_ru") or rep.get("rationale") or "") if lang == "ru" else (rep.get("rationale") or "")
+    rationale = (
+        (rep.get("rationale_ru") or rep.get("rationale") or "")
+        if lang == "ru"
+        else (rep.get("rationale") or "")
+    )
     return (
-        [title, "", f"{_t(lang, 'Captcha/blocklist risk', 'Риск капчи/блок-листов')}: **{risk_word}** — {rationale}", ""]
+        [
+            title,
+            "",
+            f"{_t(lang, 'Captcha/blocklist risk', 'Риск капчи/блок-листов')}: **{risk_word}** — {rationale}",
+            "",
+        ]
         + _table([_t(lang, "Field", "Поле"), _t(lang, "Value", "Значение")], rows, lang)
         + [""]
     )
@@ -638,7 +827,10 @@ def _latency(report: dict, lang: str = "en") -> list[str]:
     )
     if pings:
         lines += ["", "```"]
-        lines += [f"{p.get('label', ''):<18}{sparkline(p.get('samples') or [])}" for p in pings]
+        lines += [
+            f"{p.get('label', ''):<18}{sparkline(p.get('samples') or [])}"
+            for p in pings
+        ]
         lines += ["```"]
     if any(p.get("method") == "tcp" for p in pings):
         lines += [
@@ -663,7 +855,9 @@ def _path(report: dict, lang: str = "en") -> list[str]:
         hops = trace.get("hops") or []
         jump = first_loss_jump(hops)
         completed_word = (
-            _t(lang, "complete", "завершено") if trace.get("completed") else _t(lang, "incomplete", "не завершено")
+            _t(lang, "complete", "завершено")
+            if trace.get("completed")
+            else _t(lang, "incomplete", "не завершено")
         )
         lines += [
             f"### {trace.get('target') or '?'} — {_t(lang, 'backend', 'бэкенд')} `{trace.get('backend', 'none')}`, "
@@ -694,14 +888,28 @@ def _ecmp(report: dict, lang: str = "en") -> list[str]:
     for r in reports:
         target = r.get("target") or "?"
         if not r.get("divergent_ttls"):
-            lines += [f"- {target}: {_t(lang, 'single path across', 'единый маршрут во всех')} {r.get('runs', 0)} {_t(lang, 'runs', 'прогонах')}"]
+            lines += [
+                f"- {target}: {_t(lang, 'single path across', 'единый маршрут во всех')} {r.get('runs', 0)} {_t(lang, 'runs', 'прогонах')}"
+            ]
             continue
-        note_text = (r.get("note_ru") or r.get("note") or "") if lang == "ru" else (r.get("note") or "")
+        note_text = (
+            (r.get("note_ru") or r.get("note") or "")
+            if lang == "ru"
+            else (r.get("note") or "")
+        )
         lines += [f"### {target}", "", note_text, ""]
         lines += _table(
-            [_t(lang, "TTL", "TTL"), _t(lang, "Next hops", "Следующие хопы"), _t(lang, "RTT spread (ms)", "Разброс RTT (мс)")],
             [
-                [str(h.get("ttl", "")), ", ".join(h.get("ips") or []), _num(h.get("rtt_spread_ms"))]
+                _t(lang, "TTL", "TTL"),
+                _t(lang, "Next hops", "Следующие хопы"),
+                _t(lang, "RTT spread (ms)", "Разброс RTT (мс)"),
+            ],
+            [
+                [
+                    str(h.get("ttl", "")),
+                    ", ".join(h.get("ips") or []),
+                    _num(h.get("rtt_spread_ms")),
+                ]
                 for h in r.get("hops") or []
                 if len(h.get("ips") or []) > 1
             ],
@@ -711,7 +919,12 @@ def _ecmp(report: dict, lang: str = "en") -> list[str]:
     return lines + [""]
 
 
-_PMTU_VERDICT_RU = {"ok": "ок", "reduced": "снижен", "blackhole": "чёрная дыра", "unknown": "неизвестно"}
+_PMTU_VERDICT_RU = {
+    "ok": "ок",
+    "reduced": "снижен",
+    "blackhole": "чёрная дыра",
+    "unknown": "неизвестно",
+}
 
 
 def _pmtud(report: dict, lang: str = "en") -> list[str]:
@@ -731,10 +944,14 @@ def _pmtud(report: dict, lang: str = "en") -> list[str]:
         [
             [
                 r.get("host", ""),
-                r.get("verdict", "unknown") if lang == "en" else _PMTU_VERDICT_RU.get(r.get("verdict"), r.get("verdict")),
+                r.get("verdict", "unknown")
+                if lang == "en"
+                else _PMTU_VERDICT_RU.get(r.get("verdict"), r.get("verdict")),
                 _num(r.get("discovered_mtu")),
                 _num(r.get("iface_mtu")),
-                (r.get("note_ru") or r.get("note") or "") if lang == "ru" else (r.get("note") or ""),
+                (r.get("note_ru") or r.get("note") or "")
+                if lang == "ru"
+                else (r.get("note") or ""),
             ]
             for r in results
         ],
@@ -760,10 +977,22 @@ def _speed(report: dict, lang: str = "en") -> list[str]:
     rows = [
         [_t(lang, "Method", "Метод"), method_word],
         [_t(lang, "Server", "Сервер"), speed.get("server") or "—"],
-        [_t(lang, "Server country", "Страна сервера"), speed.get("server_country") or "—"],
-        [_t(lang, "Download", "Скачивание"), f"{_num(speed.get('download_mbps'))} {_t(lang, 'Mbps', 'Мбит/с')}"],
-        [_t(lang, "Upload", "Отдача"), f"{_num(speed.get('upload_mbps'))} {_t(lang, 'Mbps', 'Мбит/с')}"],
-        [_t(lang, "Idle RTT", "RTT в простое"), f"{_num(speed.get('idle_rtt_ms'))} {_t(lang, 'ms', 'мс')}"],
+        [
+            _t(lang, "Server country", "Страна сервера"),
+            speed.get("server_country") or "—",
+        ],
+        [
+            _t(lang, "Download", "Скачивание"),
+            f"{_num(speed.get('download_mbps'))} {_t(lang, 'Mbps', 'Мбит/с')}",
+        ],
+        [
+            _t(lang, "Upload", "Отдача"),
+            f"{_num(speed.get('upload_mbps'))} {_t(lang, 'Mbps', 'Мбит/с')}",
+        ],
+        [
+            _t(lang, "Idle RTT", "RTT в простое"),
+            f"{_num(speed.get('idle_rtt_ms'))} {_t(lang, 'ms', 'мс')}",
+        ],
         [
             _t(lang, "Loaded RTT (down / up)", "RTT под нагрузкой (приём / передача)"),
             f"{_num(speed.get('loaded_rtt_down_ms'))} / {_num(speed.get('loaded_rtt_up_ms'))} {_t(lang, 'ms', 'мс')}",
@@ -774,7 +1003,10 @@ def _speed(report: dict, lang: str = "en") -> list[str]:
             f"+{_num(speed.get('bufferbloat_down_ms'))} {_t(lang, 'ms', 'мс')}, "
             f"{_t(lang, 'up', 'передача')} +{_num(speed.get('bufferbloat_up_ms'))} {_t(lang, 'ms', 'мс')}",
         ],
-        [_t(lang, "Netflix OCA on-net", "Netflix OCA в сети"), yn(speed.get("netflix_oca_onnet"))],
+        [
+            _t(lang, "Netflix OCA on-net", "Netflix OCA в сети"),
+            yn(speed.get("netflix_oca_onnet")),
+        ],
     ]
     lines = (
         [title, ""]
@@ -792,7 +1024,12 @@ def _speed(report: dict, lang: str = "en") -> list[str]:
                 _t(lang, "ms", "мс"),
             ],
             [
-                [a.get("tier", ""), yn(a.get("ok")), a.get("reason") or "—", _num(a.get("duration_ms"))]
+                [
+                    a.get("tier", ""),
+                    yn(a.get("ok")),
+                    a.get("reason") or "—",
+                    _num(a.get("duration_ms")),
+                ]
                 for a in attempts
             ],
             lang,
@@ -828,7 +1065,8 @@ def _tls(report: dict, lang: str = "en") -> list[str]:
                 _num(r.get("ttfb_ms")),
                 r.get("tls_version") or "—",
                 r.get("cipher") or "—",
-                (r.get("cert_sha256") or "—")[:16] + ("…" if r.get("cert_sha256") else ""),
+                (r.get("cert_sha256") or "—")[:16]
+                + ("…" if r.get("cert_sha256") else ""),
                 r.get("cert_issuer") or "—",
                 _num(r.get("cert_days_remaining")),
             ]
@@ -872,7 +1110,9 @@ def _quic(report: dict, lang: str = "en") -> list[str]:
                 r.get("label", ""),
                 _num(r.get("handshake_ms")),
                 r.get("alpn") or "—",
-                _t(lang, "yes", "да") if r.get("session_resumed") else _t(lang, "no", "нет"),
+                _t(lang, "yes", "да")
+                if r.get("session_resumed")
+                else _t(lang, "no", "нет"),
                 _num(r.get("tcp_rtt_ms")),
             ]
             for r in results
@@ -923,12 +1163,18 @@ def _dns_advanced(report: dict, lang: str = "en") -> list[str]:
         lang,
     )
     proxy = adv.get("transparent_proxy")
-    proxy_word = {True: _t(lang, "yes", "да"), False: _t(lang, "no", "нет"), None: "—"}[proxy]
+    proxy_word = {True: _t(lang, "yes", "да"), False: _t(lang, "no", "нет"), None: "—"}[
+        proxy
+    ]
     lines += [
         "",
         f"{_t(lang, 'Transparent DNS proxy', 'Прозрачный DNS-прокси')}: **{proxy_word}** — {adv.get('transparent_proxy_detail') or ''}",
     ]
-    note_text = (adv.get("note_ru") or adv.get("note") or "") if lang == "ru" else (adv.get("note") or "")
+    note_text = (
+        (adv.get("note_ru") or adv.get("note") or "")
+        if lang == "ru"
+        else (adv.get("note") or "")
+    )
     if note_text:
         lines += ["", note_text]
     return lines + [""]
@@ -955,9 +1201,13 @@ def _path_diversity(report: dict, lang: str = "en") -> list[str]:
             [
                 h.get("target", ""),
                 h.get("resolved_ip") or "—",
-                f"{h.get('ip_city') or '?'}, {h.get('ip_country')}" if h.get("ip_country") else "—",
+                f"{h.get('ip_city') or '?'}, {h.get('ip_country')}"
+                if h.get("ip_country")
+                else "—",
                 h.get("edge_colo") or "—",
-                f"{h.get('edge_city') or '?'}, {h.get('edge_country')}" if h.get("edge_country") else "—",
+                f"{h.get('edge_city') or '?'}, {h.get('edge_country')}"
+                if h.get("edge_country")
+                else "—",
                 _num(h.get("edge_rtt_ms")),
                 _num(h.get("client_rtt_ms")),
             ]
@@ -965,9 +1215,18 @@ def _path_diversity(report: dict, lang: str = "en") -> list[str]:
         ],
         lang,
     )
-    loop_word = _t(lang, "yes", "да") if pd.get("international_loop") else _t(lang, "no", "нет")
-    lines += ["", f"{_t(lang, 'International routing loop', 'Международная петля маршрута')}: **{loop_word}**"]
-    note_text = (pd.get("note_ru") or pd.get("note") or "") if lang == "ru" else (pd.get("note") or "")
+    loop_word = (
+        _t(lang, "yes", "да") if pd.get("international_loop") else _t(lang, "no", "нет")
+    )
+    lines += [
+        "",
+        f"{_t(lang, 'International routing loop', 'Международная петля маршрута')}: **{loop_word}**",
+    ]
+    note_text = (
+        (pd.get("note_ru") or pd.get("note") or "")
+        if lang == "ru"
+        else (pd.get("note") or "")
+    )
     if note_text:
         lines += ["", note_text]
     return lines + [""]
@@ -988,7 +1247,12 @@ def _prefix_benchmark(report: dict, lang: str = "en") -> list[str]:
             _t(lang, "Loss", "Потери"),
         ],
         [
-            [r.get("prefix", ""), r.get("probe_ip") or "—", _num(r.get("avg_ms")), f"{r.get('loss_pct', 0)}%"]
+            [
+                r.get("prefix", ""),
+                r.get("probe_ip") or "—",
+                _num(r.get("avg_ms")),
+                f"{r.get('loss_pct', 0)}%",
+            ]
             for r in results
         ],
         lang,
@@ -1027,12 +1291,24 @@ def _dpi_check(report: dict, lang: str = "en") -> list[str]:
             _t(lang, "RTT (ms)", "RTT (мс)"),
             _t(lang, "Detail", "Детали"),
         ],
-        [[str(p.get("port", "")), p.get("state", ""), _num(p.get("rtt_ms")), p.get("detail") or "—"] for p in ports],
+        [
+            [
+                str(p.get("port", "")),
+                p.get("state", ""),
+                _num(p.get("rtt_ms")),
+                p.get("detail") or "—",
+            ]
+            for p in ports
+        ],
         lang,
     )
     verdict = dpi.get("verdict", "unknown")
     verdict_word = verdict if lang == "en" else _DPI_VERDICT_RU.get(verdict, verdict)
-    rationale = (dpi.get("rationale_ru") or dpi.get("rationale") or "") if lang == "ru" else (dpi.get("rationale") or "")
+    rationale = (
+        (dpi.get("rationale_ru") or dpi.get("rationale") or "")
+        if lang == "ru"
+        else (dpi.get("rationale") or "")
+    )
     lines += ["", f"{_t(lang, 'Verdict', 'Вердикт')}: **{verdict_word}** — {rationale}"]
     return lines + [""]
 
@@ -1041,10 +1317,17 @@ def _problems(report: dict, emoji: bool, lang: str = "en") -> list[str]:
     found = _findings(report)
     heading = _t(lang, "## Problems & recommendations", "## Проблемы и рекомендации")
     if not found:
-        return [heading, "", _t(lang, "Nothing to act on.", "Не на что реагировать."), ""]
+        return [
+            heading,
+            "",
+            _t(lang, "Nothing to act on.", "Не на что реагировать."),
+            "",
+        ]
     lines = [heading, ""]
     for f in found:
-        lines.append(f"- {badge(f.get('severity', 'info'), emoji, lang)} **{_f(f, 'title', lang)}** — {_f(f, 'detail', lang)}")
+        lines.append(
+            f"- {badge(f.get('severity', 'info'), emoji, lang)} **{_f(f, 'title', lang)}** — {_f(f, 'detail', lang)}"
+        )
         advice = _f(f, "advice", lang)
         if advice:
             lines.append(f"  - {advice}")
@@ -1056,13 +1339,24 @@ def _diagnostics(report: dict, lang: str = "en") -> list[str]:
     warnings: list[str] = []
     for section in SECTION_ORDER:
         module = _module(report, section)
-        errors = "; ".join(f"{e.get('source')}: {e.get('kind')}" for e in module.get("errors") or []) or "—"
+        errors = (
+            "; ".join(
+                f"{e.get('source')}: {e.get('kind')}"
+                for e in module.get("errors") or []
+            )
+            or "—"
+        )
         status_word = _module_status_word(module.get("status", "skipped"), lang)
         rows.append([section, status_word, _num(module.get("duration_ms")), errors])
         warnings += list(module.get("warnings") or [])
     heading = _t(lang, "## Run diagnostics", "## Диагностика запуска")
     lines = [heading, ""] + _table(
-        [_t(lang, "Module", "Модуль"), _t(lang, "Status", "Статус"), _t(lang, "ms", "мс"), _t(lang, "Errors", "Ошибки")],
+        [
+            _t(lang, "Module", "Модуль"),
+            _t(lang, "Status", "Статус"),
+            _t(lang, "ms", "мс"),
+            _t(lang, "Errors", "Ошибки"),
+        ],
         rows,
         lang,
     )
@@ -1072,7 +1366,10 @@ def _diagnostics(report: dict, lang: str = "en") -> list[str]:
 
 
 def render_markdown(
-    report: dict[str, Any], emoji: bool = True, lang: str = "en", sibling: str | None = None
+    report: dict[str, Any],
+    emoji: bool = True,
+    lang: str = "en",
+    sibling: str | None = None,
 ) -> str:
     lines = _header(report, emoji, lang)
     if sibling:
