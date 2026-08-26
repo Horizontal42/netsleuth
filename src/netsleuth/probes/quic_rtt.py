@@ -29,7 +29,9 @@ async def measure_quic(label: str, host: str, *, port: int = 443, timeout: float
     from aioquic.quic.events import HandshakeCompleted
 
     class _HandshakeCapture(QuicConnectionProtocol):
-        handshake_event: HandshakeCompleted | None = None
+        def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+            super().__init__(*args, **kwargs)
+            self.handshake_event: HandshakeCompleted | None = None
 
         def quic_event_received(self, event) -> None:
             if isinstance(event, HandshakeCompleted):
