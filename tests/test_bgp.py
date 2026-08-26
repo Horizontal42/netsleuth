@@ -156,6 +156,39 @@ def test_peeringdb_netixlan_lists_only_operational_exchanges(api_fixture):
     assert ixps[1].speed_mbps == 200000
 
 
+def test_peeringdb_netixlan_of_an_empty_payload():
+    assert parse_peeringdb_netixlan({}) == []
+    assert parse_peeringdb_netixlan({"data": None}) == []
+    assert parse_peeringdb_netixlan({"data": []}) == []
+
+
+def test_peeringdb_netixlan_ignores_non_operational_entries():
+    payload = {
+        "data": [
+            {"name": "IXP 1", "operational": True},
+            {"name": "IXP 2", "operational": False},
+            {"name": "IXP 3"},
+        ]
+    }
+    ixps = parse_peeringdb_netixlan(payload)
+    assert len(ixps) == 1
+    assert ixps[0].name == "IXP 1"
+
+
+def test_peeringdb_netixlan_handles_missing_keys():
+    payload = {
+        "data": [
+            {"operational": True}
+        ]
+    }
+    ixps = parse_peeringdb_netixlan(payload)
+    assert len(ixps) == 1
+    assert ixps[0].name == ""
+    assert ixps[0].city is None
+    assert ixps[0].country is None
+    assert ixps[0].speed_mbps is None
+
+
 async def test_cached_json_writes_then_reuses_the_cache(tmp_path: Path):
     calls = []
 
