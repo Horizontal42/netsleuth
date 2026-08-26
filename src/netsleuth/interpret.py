@@ -40,79 +40,103 @@ def severity_for(value: float | None, band: Band, higher_is_worse: bool = True) 
     return "warn" if value >= band.warn else "crit"
 
 
+def _check_ping_unreachable(p: PingResult) -> Finding | None:
+    if p.received == 0:
+        return Finding(
+            id=f"latency.unreachable.{p.label}",
+            severity="crit",
+            title=f"{p.host} did not answer",
+            detail=f"{p.sent} probes sent via {p.method}, none returned.",
+            metric="received",
+            value=0,
+            threshold=1,
+            advice="If every reference host is unreachable the link is down or filtering the probe method.",
+            title_ru=f"{p.host} не отвечает",
+            detail_ru=f"{p.sent} проб отправлено через {p.method}, ни одна не вернулась.",
+            advice_ru="Если все эталонные хосты недоступны, значит канал не работает или фильтрует метод пробы.",
+        )
+    return None
+
+
+def _check_ping_latency(p: PingResult, t: Thresholds) -> Finding | None:
+    severity = severity_for(p.avg_ms, t.latency_ms)
+    if severity not in ("ok", "info"):
+        return Finding(
+            id=f"latency.avg.{p.label}",
+            severity=severity,
+            title=f"Latency to {p.host} above target",
+            detail=f"Average {p.avg_ms} ms over {p.received} probes via {p.method}.",
+            metric="avg_ms",
+            value=p.avg_ms,
+            threshold=t.latency_ms.warn,
+            advice="Check for a saturated uplink, a distant route, or a congested Wi-Fi link.",
+            title_ru=f"Задержка до {p.host} выше целевой",
+            detail_ru=f"Средняя {p.avg_ms} мс за {p.received} проб через {p.method}.",
+            advice_ru="Проверьте, не насыщен ли аплинк, не слишком ли далёкий маршрут или не перегружен ли Wi-Fi.",
+        )
+    return None
+
+
+def _check_ping_jitter(p: PingResult, t: Thresholds) -> Finding | None:
+    severity = severity_for(p.jitter_ms, t.jitter_ms)
+    if severity not in ("ok", "info"):
+        return Finding(
+            id=f"latency.jitter.{p.label}",
+            severity=severity,
+            title=f"Jitter to {p.host} above target",
+            detail=f"Jitter {p.jitter_ms} ms over {p.received} probes via {p.method}.",
+            metric="jitter_ms",
+            value=p.jitter_ms,
+            threshold=t.jitter_ms.warn,
+            advice="Unstable latency hurts calls and games more than raw latency does.",
+            title_ru=f"Джиттер до {p.host} выше целевого",
+            detail_ru=f"Джиттер {p.jitter_ms} мс за {p.received} проб через {p.method}.",
+            advice_ru="Нестабильная задержка вредит звонкам и играм сильнее, чем сама по себе высокая задержка.",
+        )
+    return None
+
+
+def _check_ping_loss(p: PingResult, t: Thresholds) -> Finding | None:
+    severity = severity_for(p.loss_pct, t.loss_pct)
+    if severity not in ("ok", "info"):
+        kind = "connection failures" if p.method == "tcp" else "packet loss"
+        kind_ru = "неудачных подключений" if p.method == "tcp" else "потерь пакетов"
+        return Finding(
+            id=f"latency.loss.{p.label}",
+            severity=severity,
+            title=f"Loss to {p.host}",
+            detail=f"{p.loss_pct}% {kind} over {p.sent} probes via {p.method}.",
+            metric="loss_pct",
+            value=p.loss_pct,
+            threshold=t.loss_pct.warn,
+            advice="Sustained loss on every host points at the local link or the first upstream hop.",
+            title_ru=f"Потери до {p.host}",
+            detail_ru=f"{p.loss_pct}% {kind_ru} за {p.sent} проб через {p.method}.",
+            advice_ru="Устойчивые потери на всех хостах указывают на локальный канал или первый аплинк.",
+        )
+    return None
+
+
 def latency_findings(pings: list[PingResult], t: Thresholds) -> list[Finding]:
     findings: list[Finding] = []
     for p in pings:
-        if p.received == 0:
-            findings.append(
-                Finding(
-                    id=f"latency.unreachable.{p.label}",
-                    severity="crit",
-                    title=f"{p.host} did not answer",
-                    detail=f"{p.sent} probes sent via {p.method}, none returned.",
-                    metric="received",
-                    value=0,
-                    threshold=1,
-                    advice="If every reference host is unreachable the link is down or filtering the probe method.",
-                    title_ru=f"{p.host} не отвечает",
-                    detail_ru=f"{p.sent} проб отправлено через {p.method}, ни одна не вернулась.",
-                    advice_ru="Если все эталонные хосты недоступны, значит канал не работает или фильтрует метод пробы.",
-                )
-            )
+        unreachable = _check_ping_unreachable(p)
+        if unreachable:
+            findings.append(unreachable)
             continue
-        severity = severity_for(p.avg_ms, t.latency_ms)
-        if severity not in ("ok", "info"):
-            findings.append(
-                Finding(
-                    id=f"latency.avg.{p.label}",
-                    severity=severity,
-                    title=f"Latency to {p.host} above target",
-                    detail=f"Average {p.avg_ms} ms over {p.received} probes via {p.method}.",
-                    metric="avg_ms",
-                    value=p.avg_ms,
-                    threshold=t.latency_ms.warn,
-                    advice="Check for a saturated uplink, a distant route, or a congested Wi-Fi link.",
-                    title_ru=f"Задержка до {p.host} выше целевой",
-                    detail_ru=f"Средняя {p.avg_ms} мс за {p.received} проб через {p.method}.",
-                    advice_ru="Проверьте, не насыщен ли аплинк, не слишком ли далёкий маршрут или не перегружен ли Wi-Fi.",
-                )
-            )
-        severity = severity_for(p.jitter_ms, t.jitter_ms)
-        if severity not in ("ok", "info"):
-            findings.append(
-                Finding(
-                    id=f"latency.jitter.{p.label}",
-                    severity=severity,
-                    title=f"Jitter to {p.host} above target",
-                    detail=f"Jitter {p.jitter_ms} ms over {p.received} probes via {p.method}.",
-                    metric="jitter_ms",
-                    value=p.jitter_ms,
-                    threshold=t.jitter_ms.warn,
-                    advice="Unstable latency hurts calls and games more than raw latency does.",
-                    title_ru=f"Джиттер до {p.host} выше целевого",
-                    detail_ru=f"Джиттер {p.jitter_ms} мс за {p.received} проб через {p.method}.",
-                    advice_ru="Нестабильная задержка вредит звонкам и играм сильнее, чем сама по себе высокая задержка.",
-                )
-            )
-        severity = severity_for(p.loss_pct, t.loss_pct)
-        if severity not in ("ok", "info"):
-            kind = "connection failures" if p.method == "tcp" else "packet loss"
-            kind_ru = "неудачных подключений" if p.method == "tcp" else "потерь пакетов"
-            findings.append(
-                Finding(
-                    id=f"latency.loss.{p.label}",
-                    severity=severity,
-                    title=f"Loss to {p.host}",
-                    detail=f"{p.loss_pct}% {kind} over {p.sent} probes via {p.method}.",
-                    metric="loss_pct",
-                    value=p.loss_pct,
-                    threshold=t.loss_pct.warn,
-                    advice="Sustained loss on every host points at the local link or the first upstream hop.",
-                    title_ru=f"Потери до {p.host}",
-                    detail_ru=f"{p.loss_pct}% {kind_ru} за {p.sent} проб через {p.method}.",
-                    advice_ru="Устойчивые потери на всех хостах указывают на локальный канал или первый аплинк.",
-                )
-            )
+
+        latency = _check_ping_latency(p, t)
+        if latency:
+            findings.append(latency)
+
+        jitter = _check_ping_jitter(p, t)
+        if jitter:
+            findings.append(jitter)
+
+        loss = _check_ping_loss(p, t)
+        if loss:
+            findings.append(loss)
+
     return findings
 
 
@@ -121,8 +145,16 @@ def _first_hop_findings(hop: TraceHop, local: LocalNet, t: Thresholds) -> list[F
         return []
     is_gateway = bool(local.default_gateway_v4) and hop.ip == local.default_gateway_v4
     findings: list[Finding] = []
-    where = f"your LAN/Wi-Fi link to {hop.ip}" if is_gateway else f"the first hop ({hop.ip})"
-    where_ru = f"вашу локальную сеть/Wi-Fi до {hop.ip}" if is_gateway else f"первый хоп ({hop.ip})"
+    where = (
+        f"your LAN/Wi-Fi link to {hop.ip}"
+        if is_gateway
+        else f"the first hop ({hop.ip})"
+    )
+    where_ru = (
+        f"вашу локальную сеть/Wi-Fi до {hop.ip}"
+        if is_gateway
+        else f"первый хоп ({hop.ip})"
+    )
     if hop.loss_pct >= 20.0 or hop.loss_pct > t.loss_pct.warn:
         severity = "crit" if hop.loss_pct >= 20.0 else "warn"
         findings.append(
@@ -228,7 +260,9 @@ def dual_family_findings(pings: list[PingResult]) -> list[Finding]:
     return findings
 
 
-def path_findings(trace: TraceResult, local: LocalNet | None = None, t: Thresholds | None = None) -> list[Finding]:
+def path_findings(
+    trace: TraceResult, local: LocalNet | None = None, t: Thresholds | None = None
+) -> list[Finding]:
     if not trace.hops:
         return [
             Finding(
@@ -250,7 +284,11 @@ def path_findings(trace: TraceResult, local: LocalNet | None = None, t: Threshol
     # in a row stayed silent; only loss that persists all the way to the end is real.
     loss_persists_to_the_end = trace.hops[-1].loss_pct >= 20.0
     for hop, following in zip(trace.hops, trace.hops[1:]):
-        if loss_persists_to_the_end and hop.loss_pct >= 20.0 and following.loss_pct >= 20.0:
+        if (
+            loss_persists_to_the_end
+            and hop.loss_pct >= 20.0
+            and following.loss_pct >= 20.0
+        ):
             findings.append(
                 Finding(
                     id="path.loss_jump",
@@ -323,7 +361,9 @@ def cgnat_findings(local: LocalNet, traces: list[TraceResult]) -> list[Finding]:
             for hop in trace.hops:
                 if is_cgnat(hop.ip):
                     detected = True
-                    evidence = f"traceroute hop {hop.ttl} ({hop.ip}) is in 100.64.0.0/10"
+                    evidence = (
+                        f"traceroute hop {hop.ttl} ({hop.ip}) is in 100.64.0.0/10"
+                    )
                     break
             if detected:
                 break
@@ -340,7 +380,8 @@ def cgnat_findings(local: LocalNet, traces: list[TraceResult]) -> list[Finding]:
             advice="No inbound port forwarding is possible; P2P and game/server hosting may not work. "
             "Ask your ISP for a public IPv4 address, or use IPv6 where the destination supports it.",
             title_ru="За carrier-grade NAT (CGNAT)",
-            detail_ru=evidence or "Обнаружен адрес из диапазона 100.64.0.0/10 (RFC 6598).",
+            detail_ru=evidence
+            or "Обнаружен адрес из диапазона 100.64.0.0/10 (RFC 6598).",
             advice_ru="Проброс входящих портов невозможен; P2P и хостинг игр/серверов могут не работать. "
             "Запросите у провайдера публичный IPv4-адрес либо используйте IPv6, если целевой сервис его поддерживает.",
         )
@@ -533,7 +574,11 @@ def path_asn_findings(trace: TraceResult, client_country: str | None) -> list[Fi
     final_country = trace.hops[-1].country
     run: list[TraceHop] = []
     for hop in trace.hops:
-        detour = bool(hop.country) and hop.country != client_country and hop.country != final_country
+        detour = (
+            bool(hop.country)
+            and hop.country != client_country
+            and hop.country != final_country
+        )
         if not detour:
             run = []
             continue
@@ -584,7 +629,13 @@ _TZ_COUNTRY_PREFIX = {
 
 
 def _signal(name: str, observed: bool, note: str = "") -> Signal:
-    return Signal(name=name, observed=observed, weight=SIGNAL_WEIGHTS[name], direction="vpn", note=note)
+    return Signal(
+        name=name,
+        observed=observed,
+        weight=SIGNAL_WEIGHTS[name],
+        direction="vpn",
+        note=note,
+    )
 
 
 def gather_vpn_signals(ctx: VpnContext) -> list[Signal]:
@@ -598,7 +649,11 @@ def gather_vpn_signals(ctx: VpnContext) -> list[Signal]:
     tz_country = _TZ_COUNTRY_PREFIX.get(ctx.os_timezone or "")
     return [
         _signal("tunnel_iface", is_tunnel_iface(iface), iface),
-        _signal("cf_warp", bool(ctx.cf and (ctx.cf.warp or "").lower() == "on"), (ctx.cf.warp if ctx.cf else "") or ""),
+        _signal(
+            "cf_warp",
+            bool(ctx.cf and (ctx.cf.warp or "").lower() == "on"),
+            (ctx.cf.warp if ctx.cf else "") or "",
+        ),
         _signal("provider_proxy", bool(ctx.provider_flags.get("proxy"))),
         _signal("provider_hosting", bool(ctx.provider_flags.get("hosting"))),
         _signal("provider_mobile", bool(ctx.provider_flags.get("mobile"))),
@@ -613,10 +668,18 @@ def gather_vpn_signals(ctx: VpnContext) -> list[Signal]:
             bool(ctx.local.default_gateway_v4 and is_tunnel_iface(iface)),
             ctx.local.default_gateway_v4 or "",
         ),
-        _signal("pdb_info_type_nsp", (ctx.pdb_info_type or "").upper() in ("NSP", "CONTENT", "ENTERPRISE"), ctx.pdb_info_type or ""),
+        _signal(
+            "pdb_info_type_nsp",
+            (ctx.pdb_info_type or "").upper() in ("NSP", "CONTENT", "ENTERPRISE"),
+            ctx.pdb_info_type or "",
+        ),
         _signal(
             "timezone_mismatch",
-            bool(tz_country and ctx.geo.country_code and tz_country != ctx.geo.country_code),
+            bool(
+                tz_country
+                and ctx.geo.country_code
+                and tz_country != ctx.geo.country_code
+            ),
             f"{ctx.os_timezone} vs {ctx.geo.country_code}" if tz_country else "",
         ),
     ]
@@ -670,14 +733,28 @@ _CONSEQUENCES_RU = {
     "F": "Одна закачка делает звонок непригодным; это раздутие очереди, а не медленный канал.",
     "?": "Не измерено — уровень speedtest-каскада, который это измеряет, не запускался.",
 }
-_GRADE_SEVERITY = {"A": "ok", "B": "ok", "C": "warn", "D": "crit", "E": "crit", "F": "crit", "?": "info"}
+_GRADE_SEVERITY = {
+    "A": "ok",
+    "B": "ok",
+    "C": "warn",
+    "D": "crit",
+    "E": "crit",
+    "F": "crit",
+    "?": "info",
+}
 
 
 def grade_bufferbloat(delta_ms: float | None, bands: BufferbloatBands) -> str:
     if delta_ms is None:
         return "?"
     delta = max(0.0, delta_ms)
-    for grade, ceiling in (("A", bands.a), ("B", bands.b), ("C", bands.c), ("D", bands.d), ("E", bands.e)):
+    for grade, ceiling in (
+        ("A", bands.a),
+        ("B", bands.b),
+        ("C", bands.c),
+        ("D", bands.d),
+        ("E", bands.e),
+    ):
         if delta <= ceiling:
             return grade
     return "F"
@@ -688,7 +765,9 @@ def bufferbloat_consequence(grade: str, lang: str = "en") -> str:
     return table.get(grade, table["?"])
 
 
-def speed_findings(speed: SpeedResult, bands: BufferbloatBands, client_country: str | None = None) -> list[Finding]:
+def speed_findings(
+    speed: SpeedResult, bands: BufferbloatBands, client_country: str | None = None
+) -> list[Finding]:
     if speed.method == "none":
         tried = ", ".join(a.tier for a in speed.tier_attempts) or "none"
         return [
@@ -729,7 +808,11 @@ def speed_findings(speed: SpeedResult, bands: BufferbloatBands, client_country: 
                 + " Включение SQM/fq_codel на роутере — стандартное решение.",
             )
         )
-    if client_country and speed.server_country and client_country.casefold() != speed.server_country.casefold():
+    if (
+        client_country
+        and speed.server_country
+        and client_country.casefold() != speed.server_country.casefold()
+    ):
         findings.append(
             Finding(
                 id="speed.server_other_country",
@@ -749,7 +832,9 @@ def speed_findings(speed: SpeedResult, bands: BufferbloatBands, client_country: 
     return findings
 
 
-def _cpu_bound_ratio(tls_handshake_ms: float | None, tcp_rtt_ms: float | None) -> float | None:
+def _cpu_bound_ratio(
+    tls_handshake_ms: float | None, tcp_rtt_ms: float | None
+) -> float | None:
     if tls_handshake_ms is None or not tcp_rtt_ms:
         return None
     return tls_handshake_ms / tcp_rtt_ms
@@ -775,7 +860,11 @@ def _check_tls_error(r: TlsResult) -> Finding | None:
 def _check_tls_performance(r: TlsResult, t: Thresholds) -> list[Finding]:
     findings: list[Finding] = []
     ratio = _cpu_bound_ratio(r.tls_handshake_ms, r.tcp_rtt_ms)
-    if ratio is not None and ratio > t.tls_cpu_bound_ratio and (r.tls_handshake_ms or 0.0) >= 20.0:
+    if (
+        ratio is not None
+        and ratio > t.tls_cpu_bound_ratio
+        and (r.tls_handshake_ms or 0.0) >= 20.0
+    ):
         findings.append(
             Finding(
                 id=f"tls.server_cpu_bound.{r.label}",
@@ -937,9 +1026,21 @@ def prefix_findings(bench: PrefixBenchmark, t: Thresholds) -> list[Finding]:
 
 
 _DPI_TEXT = {
-    "reset_injection": ("crit", "Possible active DPI interference on {t}", "Возможное активное вмешательство DPI на {t}"),
-    "partial_filtering": ("warn", "Selective port filtering detected on {t}", "Обнаружена выборочная фильтрация портов на {t}"),
-    "unreachable": ("info", "{t} did not respond on any probed port", "{t} не ответил ни на одном проверенном порту"),
+    "reset_injection": (
+        "crit",
+        "Possible active DPI interference on {t}",
+        "Возможное активное вмешательство DPI на {t}",
+    ),
+    "partial_filtering": (
+        "warn",
+        "Selective port filtering detected on {t}",
+        "Обнаружена выборочная фильтрация портов на {t}",
+    ),
+    "unreachable": (
+        "info",
+        "{t} did not respond on any probed port",
+        "{t} не ответил ни на одном проверенном порту",
+    ),
 }
 
 
