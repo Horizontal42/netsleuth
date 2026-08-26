@@ -156,7 +156,6 @@ def test_ping_result_round_trips_through_json():
         host="1.1.1.1",
         resolved_ip="1.1.1.1",
         method="icmp_win",
-        sent=20,
         received=20,
         loss_pct=0.0,
         min_ms=11.0,
