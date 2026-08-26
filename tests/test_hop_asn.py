@@ -1,24 +1,37 @@
 from __future__ import annotations
 
+import dns.exception
 import pytest
+from unittest.mock import AsyncMock, Mock
 
 from netsleuth.interpret import path_asn_findings
 from netsleuth.models import TraceHop, TraceResult
-from netsleuth.probes.hop_asn import cymru_query_name, enrich_hops, parse_cymru_asname
+from netsleuth.probes.hop_asn import (
+    _txt,
+    cymru_query_name,
+    enrich_hops,
+    parse_cymru_asname,
+)
 
 ORIGIN_ZONE = "origin.asn.cymru.com"
 ORIGIN6_ZONE = "origin6.asn.cymru.com"
 
 
 def test_cymru_query_name_reverses_ipv4_octets():
-    assert cymru_query_name("1.2.3.4", ORIGIN_ZONE, ORIGIN6_ZONE) == f"4.3.2.1.{ORIGIN_ZONE}"
+    assert (
+        cymru_query_name("1.2.3.4", ORIGIN_ZONE, ORIGIN6_ZONE)
+        == f"4.3.2.1.{ORIGIN_ZONE}"
+    )
 
 
 def test_cymru_query_name_reverses_ipv6_nibbles_against_a_hand_expanded_literal():
     # 2001:db8::1 expands to 2001:0db8:0000:...:0001 -> 32 hex nibbles, reversed and
     # dot-joined. Verified independently via `ipaddress` before hardcoding here.
     expected = "1" + ".0" * 23 + ".8.b.d.0.1.0.0.2"
-    assert cymru_query_name("2001:db8::1", ORIGIN_ZONE, ORIGIN6_ZONE) == f"{expected}.{ORIGIN6_ZONE}"
+    assert (
+        cymru_query_name("2001:db8::1", ORIGIN_ZONE, ORIGIN6_ZONE)
+        == f"{expected}.{ORIGIN6_ZONE}"
+    )
 
 
 @pytest.mark.parametrize(
@@ -59,7 +72,11 @@ async def test_enrich_hops_dedupes_repeated_ips_and_skips_none_ips(monkeypatch):
     trace = TraceResult(target="8.8.8.8", hops=[hop_a, hop_b, hop_c])
 
     await enrich_hops(
-        [trace], origin_zone=ORIGIN_ZONE, origin6_zone=ORIGIN6_ZONE, asn_zone="asn.cymru.com", timeout=1.0
+        [trace],
+        origin_zone=ORIGIN_ZONE,
+        origin6_zone=ORIGIN6_ZONE,
+        asn_zone="asn.cymru.com",
+        timeout=1.0,
     )
 
     assert calls == ["8.8.8.8"]
@@ -79,7 +96,11 @@ async def test_enrich_hops_fills_reverse_dns_only_when_absent(monkeypatch):
     trace = TraceResult(target="1.1.1.1", hops=[hop_with_rdns, hop_without_rdns])
 
     await enrich_hops(
-        [trace], origin_zone=ORIGIN_ZONE, origin6_zone=ORIGIN6_ZONE, asn_zone="asn.cymru.com", timeout=1.0
+        [trace],
+        origin_zone=ORIGIN_ZONE,
+        origin6_zone=ORIGIN6_ZONE,
+        asn_zone="asn.cymru.com",
+        timeout=1.0,
     )
 
     assert hop_with_rdns.reverse_dns == "already.set"
@@ -87,7 +108,9 @@ async def test_enrich_hops_fills_reverse_dns_only_when_absent(monkeypatch):
 
 
 def _trace_with_countries(*countries: str | None) -> TraceResult:
-    hops = [TraceHop(ttl=i + 1, ip=f"1.1.1.{i}", country=c) for i, c in enumerate(countries)]
+    hops = [
+        TraceHop(ttl=i + 1, ip=f"1.1.1.{i}", country=c) for i, c in enumerate(countries)
+    ]
     return TraceResult(target="1.1.1.1", hops=hops)
 
 
@@ -106,3 +129,12 @@ def test_path_asn_findings_silent_on_a_single_foreign_hop():
 def test_path_asn_findings_silent_when_country_is_unknown_throughout():
     trace = _trace_with_countries(None, None, None)
     assert path_asn_findings(trace, "RU") == []
+
+
+@pytest.mark.asyncio
+async def test_txt_returns_empty_list_on_dns_exception():
+    resolver = Mock()
+    resolver.resolve = AsyncMock(side_effect=dns.exception.DNSException())
+
+    result = await _txt(resolver, "test.name")
+    assert result == []
