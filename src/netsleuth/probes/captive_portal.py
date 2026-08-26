@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import urlsplit
 
 import httpx
@@ -32,6 +33,23 @@ def classify_portal_response(
     return "suspect", f"unexpected status {status}"
 
 
+async def _fetch_and_classify(
+    client: httpx.AsyncClient,
+    url: str,
+    expected_status: int,
+    timeout: float,
+) -> PortalCheck:
+    try:
+        response = await client.get(url, follow_redirects=False, timeout=timeout)
+        verdict, evidence = classify_portal_response(
+            url, response.status_code, response.text, response.headers.get("location"), expected_status
+        )
+        return PortalCheck(url=url, status=response.status_code, verdict=verdict, evidence=evidence)
+    except httpx.HTTPError as exc:
+        verdict, evidence = "error", str(exc)
+        return PortalCheck(url=url, status=None, verdict=verdict, evidence=evidence)
+
+
 async def check_captive_portal(
     client: httpx.AsyncClient,
     urls: list[str],
@@ -39,18 +57,11 @@ async def check_captive_portal(
     expected_status: int = 204,
     timeout: float,
 ) -> CaptivePortal:
-    checks: list[PortalCheck] = []
-    for url in urls:
-        try:
-            response = await client.get(url, follow_redirects=False, timeout=timeout)
-            verdict, evidence = classify_portal_response(
-                url, response.status_code, response.text, response.headers.get("location"), expected_status
-            )
-        except httpx.HTTPError as exc:
-            verdict, evidence = "error", str(exc)
-            checks.append(PortalCheck(url=url, status=None, verdict=verdict, evidence=evidence))
-            continue
-        checks.append(PortalCheck(url=url, status=response.status_code, verdict=verdict, evidence=evidence))
+    coros = [
+        _fetch_and_classify(client, url, expected_status, timeout)
+        for url in urls
+    ]
+    checks = list(await asyncio.gather(*coros))
 
     portal_checks = [c for c in checks if c.verdict == "portal"]
     if portal_checks:
