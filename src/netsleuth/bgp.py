@@ -84,7 +84,9 @@ def classify_stability(events: list[BgpEvent], days: int) -> str:
     if days <= 0:
         return "unknown"
     withdrawals = sum(1 for e in events if e.type == "W")
-    return "unstable" if withdrawals / days >= _UNSTABLE_WITHDRAWALS_PER_DAY else "stable"
+    return (
+        "unstable" if withdrawals / days >= _UNSTABLE_WITHDRAWALS_PER_DAY else "stable"
+    )
 
 
 async def ripestat(
@@ -99,7 +101,9 @@ async def ripestat(
         start = datetime.now(UTC) - timedelta(days=providers.ripestat_timeframe_days)
         params["max_rows"] = str(providers.ripestat_max_rows)
         params["starttime"] = start.strftime("%Y-%m-%dT%H:%M:%S")
-    response = await client.get(f"{providers.ripestat_base_url}/{call}/data.json", params=params)
+    response = await client.get(
+        f"{providers.ripestat_base_url}/{call}/data.json", params=params
+    )
     response.raise_for_status()
     return response.json()
 
@@ -188,16 +192,19 @@ class BgpContext:
     asrank: dict | None
     pdb_net: dict | None
     pdb_ixlan: dict | None
-    timeframe_days: int
 
 
-def build_bgp_intel(ctx: BgpContext) -> BgpIntel:
+def build_bgp_intel(ctx: BgpContext, timeframe_days: int) -> BgpIntel:
     info = parse_as_overview(ctx.overview)
     upstreams, peers, downstreams = parse_asn_neighbours(ctx.neighbours)
     announced, v4, v6 = parse_announced_prefixes(ctx.prefixes)
     events = parse_bgp_updates(ctx.updates)
-    rank, cone_asns, cone_prefixes = parse_asrank(ctx.asrank) if ctx.asrank else (None, None, None)
-    info_type, traffic, _net_id = parse_peeringdb_net(ctx.pdb_net) if ctx.pdb_net else (None, None, None)
+    rank, cone_asns, cone_prefixes = (
+        parse_asrank(ctx.asrank) if ctx.asrank else (None, None, None)
+    )
+    info_type, traffic, _net_id = (
+        parse_peeringdb_net(ctx.pdb_net) if ctx.pdb_net else (None, None, None)
+    )
     return BgpIntel(
         asn=ctx.asn,
         holder=info["holder"],
@@ -210,7 +217,7 @@ def build_bgp_intel(ctx: BgpContext) -> BgpIntel:
         prefix_count_v4=v4,
         prefix_count_v6=v6,
         flaps=events,
-        stability=classify_stability(events, ctx.timeframe_days),
+        stability=classify_stability(events, timeframe_days),
         ixps=parse_peeringdb_netixlan(ctx.pdb_ixlan) if ctx.pdb_ixlan else [],
         pdb_info_type=info_type,
         pdb_traffic=traffic,
@@ -247,7 +254,8 @@ async def collect_bgp(
 
     async def _asrank() -> dict:
         response = await client.post(
-            providers.asrank_url, json={"query": _ASRANK_QUERY, "variables": {"asn": number}}
+            providers.asrank_url,
+            json={"query": _ASRANK_QUERY, "variables": {"asn": number}},
         )
         response.raise_for_status()
         return response.json()
@@ -266,7 +274,12 @@ async def collect_bgp(
         ripestat(client, providers, "announced-prefixes", asn),
         ripestat(client, providers, "bgp-updates", asn),
         _asrank(),
-        cached_json(cache_dir, f"pdb-net-{number}", providers.peeringdb_cache_hours, lambda: _pdb("net", asn=number)),
+        cached_json(
+            cache_dir,
+            f"pdb-net-{number}",
+            providers.peeringdb_cache_hours,
+            lambda: _pdb("net", asn=number),
+        ),
         return_exceptions=True,
     )
     overview, neighbours, prefixes, updates, asrank, pdb_net = [
@@ -297,8 +310,8 @@ async def collect_bgp(
             asrank=asrank,
             pdb_net=pdb_net,
             pdb_ixlan=pdb_ixlan,
-            timeframe_days=providers.ripestat_timeframe_days,
-        )
+        ),
+        timeframe_days=providers.ripestat_timeframe_days,
     )
     raw = {
         "ripestat-as-overview": overview,

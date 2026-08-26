@@ -3,11 +3,18 @@ from __future__ import annotations
 import httpx
 
 from netsleuth.bgp import (
+    BgpContext,
+    build_bgp_intel,
+    cached_json,
     classify_stability,
     parse_announced_prefixes,
     parse_as_overview,
     parse_asn_neighbours,
+    parse_asrank,
     parse_bgp_updates,
+    parse_cymru_origin,
+    parse_peeringdb_net,
+    parse_peeringdb_netixlan,
     ripestat,
 )
 from netsleuth.config import Providers
@@ -29,14 +36,18 @@ def test_as_overview_of_an_error_payload_is_empty():
 
 
 def test_neighbours_split_into_upstreams_peers_and_downstreams(api_fixture):
-    upstreams, peers, downstreams = parse_asn_neighbours(api_fixture("ripestat_asn_neighbours.json"))
+    upstreams, peers, downstreams = parse_asn_neighbours(
+        api_fixture("ripestat_asn_neighbours.json")
+    )
     assert upstreams == ["AS3356", "AS1299"]
     assert downstreams == ["AS6939", "AS64501"]
     assert peers == ["AS8075"]
 
 
 def test_announced_prefixes_are_counted_by_family(api_fixture):
-    prefixes, v4, v6 = parse_announced_prefixes(api_fixture("ripestat_announced_prefixes.json"))
+    prefixes, v4, v6 = parse_announced_prefixes(
+        api_fixture("ripestat_announced_prefixes.json")
+    )
     assert prefixes == ["203.0.113.0/24", "198.51.100.0/24", "2001:db8::/32"]
     assert v4 == 2
     assert v6 == 1
@@ -61,12 +72,18 @@ def test_stability_of_a_quiet_asn_is_stable():
 
 
 def test_stability_of_a_flapping_asn_is_unstable():
-    events = [BgpEvent(timestamp="2026-08-01T00:00:00", type="W", prefix="203.0.113.0/24") for _ in range(60)]
+    events = [
+        BgpEvent(timestamp="2026-08-01T00:00:00", type="W", prefix="203.0.113.0/24")
+        for _ in range(60)
+    ]
     assert classify_stability(events, days=14) == "unstable"
 
 
 def test_stability_only_counts_withdrawals_not_announcements():
-    events = [BgpEvent(timestamp="2026-08-01T00:00:00", type="A", prefix="203.0.113.0/24") for _ in range(200)]
+    events = [
+        BgpEvent(timestamp="2026-08-01T00:00:00", type="A", prefix="203.0.113.0/24")
+        for _ in range(200)
+    ]
     assert classify_stability(events, days=14) == "stable"
 
 
@@ -97,14 +114,6 @@ async def test_ripestat_does_not_bound_non_bulk_calls(httpx_mock):
 
 import json
 from pathlib import Path
-
-from netsleuth.bgp import (
-    cached_json,
-    parse_asrank,
-    parse_cymru_origin,
-    parse_peeringdb_net,
-    parse_peeringdb_netixlan,
-)
 
 
 def test_asrank_gives_rank_and_customer_cone(api_fixture):
@@ -163,12 +172,21 @@ async def test_cached_json_writes_then_reuses_the_cache(tmp_path: Path):
         calls.append(1)
         return {"value": len(calls)}
 
-    first = await cached_json(tmp_path, "peeringdb-net-64500", ttl_hours=24, fetch=fetch)
-    second = await cached_json(tmp_path, "peeringdb-net-64500", ttl_hours=24, fetch=fetch)
+    first = await cached_json(
+        tmp_path, "peeringdb-net-64500", ttl_hours=24, fetch=fetch
+    )
+    second = await cached_json(
+        tmp_path, "peeringdb-net-64500", ttl_hours=24, fetch=fetch
+    )
     assert first == {"value": 1}
     assert second == {"value": 1}
     assert len(calls) == 1
-    assert json.loads((tmp_path / "peeringdb-net-64500.json").read_text(encoding="utf-8"))["value"] == 1
+    assert (
+        json.loads((tmp_path / "peeringdb-net-64500.json").read_text(encoding="utf-8"))[
+            "value"
+        ]
+        == 1
+    )
 
 
 async def test_cached_json_refetches_once_the_entry_expires(tmp_path: Path):
@@ -207,10 +225,9 @@ async def test_cached_json_survives_a_corrupt_cache_file(tmp_path: Path):
     async def fetch() -> dict:
         return {"value": "fresh"}
 
-    assert await cached_json(tmp_path, "k", ttl_hours=24, fetch=fetch) == {"value": "fresh"}
-
-
-from netsleuth.bgp import BgpContext, build_bgp_intel
+    assert await cached_json(tmp_path, "k", ttl_hours=24, fetch=fetch) == {
+        "value": "fresh"
+    }
 
 
 def test_build_bgp_intel_merges_every_source(api_fixture):
@@ -224,8 +241,8 @@ def test_build_bgp_intel_merges_every_source(api_fixture):
             asrank=api_fixture("asrank.json"),
             pdb_net=api_fixture("peeringdb_net.json"),
             pdb_ixlan=api_fixture("peeringdb_netixlan.json"),
-            timeframe_days=14,
-        )
+        ),
+        timeframe_days=14,
     )
     assert intel.asn == "AS64500"
     assert intel.holder == "EXAMPLE-AS Example Telecom BV"
@@ -251,8 +268,8 @@ def test_build_bgp_intel_tolerates_every_optional_source_being_absent(api_fixtur
             asrank=None,
             pdb_net=None,
             pdb_ixlan=None,
-            timeframe_days=14,
-        )
+        ),
+        timeframe_days=14,
     )
     assert intel.asn == "AS64500"
     assert intel.upstreams == []
