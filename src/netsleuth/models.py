@@ -266,7 +266,6 @@ class PingResult:
     resolved_ip: str | None = None
     method: str = "none"
     sent: int = 0
-    received: int = 0
     loss_pct: float = 0.0
     min_ms: float | None = None
     avg_ms: float | None = None
@@ -277,6 +276,10 @@ class PingResult:
     p99_ms: float | None = None
     cv: float | None = None
     samples: list[float | None] = field(default_factory=list)
+
+    @property
+    def received(self) -> int:
+        return self.sent - int(round(self.sent * self.loss_pct / 100.0))
 
 
 @dataclass

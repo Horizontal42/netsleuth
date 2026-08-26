@@ -45,7 +45,6 @@ def ping(**kw) -> PingResult:
         resolved_ip="1.1.1.1",
         method="icmp_dgram",
         sent=20,
-        received=20,
         loss_pct=0.0,
         min_ms=10.0,
         avg_ms=12.0,
@@ -75,7 +74,7 @@ def test_high_latency_produces_a_warn_finding_with_metric_and_threshold(threshol
 
 
 def test_high_jitter_and_loss_each_produce_their_own_finding(thresholds):
-    findings = latency_findings([ping(jitter_ms=25.0, loss_pct=5.0, received=19)], thresholds)
+    findings = latency_findings([ping(jitter_ms=25.0, loss_pct=5.0)], thresholds)
     ids = sorted(f.id for f in findings)
     assert ids == ["latency.jitter.cloudflare-dns", "latency.loss.cloudflare-dns"]
 
@@ -89,7 +88,7 @@ def test_tcp_measured_loss_is_labelled_as_connection_failures_not_packet_loss(th
 
 def test_a_fully_dead_host_is_critical_regardless_of_bands(thresholds):
     findings = latency_findings(
-        [ping(received=0, loss_pct=100.0, avg_ms=None, min_ms=None, max_ms=None, jitter_ms=None)],
+        [ping(loss_pct=100.0, avg_ms=None, min_ms=None, max_ms=None, jitter_ms=None)],
         thresholds,
     )
     assert [f.severity for f in findings] == ["crit"]
@@ -103,7 +102,7 @@ def test_dual_family_findings_silent_when_no_v6_hosts_present():
 def test_dual_family_findings_reports_unreachable_when_every_v6_host_is_dead():
     pings = [
         ping(),
-        ping(label="cloudflare-dns-v6", host="2606:4700:4700::1111", received=0, avg_ms=None, loss_pct=100.0),
+        ping(label="cloudflare-dns-v6", host="2606:4700:4700::1111", avg_ms=None, loss_pct=100.0),
     ]
     findings = dual_family_findings(pings)
     assert [f.id for f in findings] == ["net.ipv6_unreachable"]
@@ -507,8 +506,8 @@ def has_cyrillic(text: str) -> bool:
 def test_latency_findings_carry_russian_siblings():
     findings = latency_findings(
         [
-            ping(received=0, loss_pct=100.0, avg_ms=None, min_ms=None, max_ms=None, jitter_ms=None),
-            ping(avg_ms=130.0, jitter_ms=25.0, loss_pct=5.0, received=19),
+            ping(loss_pct=100.0, avg_ms=None, min_ms=None, max_ms=None, jitter_ms=None),
+            ping(avg_ms=130.0, jitter_ms=25.0, loss_pct=5.0),
         ],
         thresholds_fixture(),
     )

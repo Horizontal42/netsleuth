@@ -130,7 +130,6 @@ async def test_benchmark_prefixes_probes_selected_hosts_with_mocked_ping_host(mo
             resolved_ip=host,
             method="tcp",
             sent=count,
-            received=count,
             loss_pct=0.0,
             avg_ms=10.0,
         )

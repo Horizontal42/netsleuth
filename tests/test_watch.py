@@ -24,7 +24,6 @@ def ping(label: str, avg: float | None, loss: float = 0.0) -> PingResult:
         resolved_ip="1.1.1.1",
         method="icmp_win",
         sent=5,
-        received=5 if avg is not None else 0,
         loss_pct=loss,
         avg_ms=avg,
         jitter_ms=1.5 if avg is not None else None,
