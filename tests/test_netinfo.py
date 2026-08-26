@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from netsleuth.models import Capabilities
 from netsleuth.netinfo import (
+    _resolvers_unix,
     choose_latency_backend,
     choose_trace_backend,
     degradation_note,
@@ -28,7 +29,7 @@ def test_unix_falls_back_to_raw_icmp_when_datagram_is_unavailable():
 
 
 from netsleuth.netinfo import detect_capabilities
-from unittest.mock import patch
+from unittest.mock import mock_open, patch
 
 def test_detect_capabilities_linux_happy_path():
     with patch("netsleuth.netinfo.platform.system", return_value="Linux"), \
@@ -334,3 +335,77 @@ def test_collect_local_net_no_network(mock_resolvers, mock_gw, mock_stats, mock_
     assert result.default_gateway_v6 is None
     assert result.is_dual_stack is False
     assert result.cgnat is False
+
+
+@patch("netsleuth.netinfo.subprocess.run")
+@patch("builtins.open", new_callable=mock_open, read_data="nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
+def test_resolvers_unix_parses_resolv_conf(mock_file, mock_run):
+    mock_run.side_effect = OSError("No such file or directory")
+
+    result = _resolvers_unix()
+
+    assert result == {"system": ["1.1.1.1", "8.8.8.8"]}
+    mock_file.assert_called_once_with("/etc/resolv.conf", encoding="utf-8", errors="replace")
+    mock_run.assert_called_once()
+
+
+@patch("netsleuth.netinfo.subprocess.run")
+@patch("builtins.open")
+def test_resolvers_unix_parses_scutil(mock_file, mock_run):
+    mock_file.side_effect = OSError("No such file or directory")
+
+    import subprocess
+    mock_run.return_value = subprocess.CompletedProcess(
+        args=["scutil", "--dns"],
+        returncode=0,
+        stdout="""
+DNS configuration
+resolver #1
+  if_index : 4 (en0)
+  nameserver[0] : 192.168.1.1
+  nameserver[1] : 1.0.0.1
+  flags    : Request A records
+"""
+    )
+
+    result = _resolvers_unix()
+
+    assert result == {"en0": ["192.168.1.1", "1.0.0.1"]}
+    mock_file.assert_called_once_with("/etc/resolv.conf", encoding="utf-8", errors="replace")
+    mock_run.assert_called_once_with(["scutil", "--dns"], capture_output=True, text=True, errors="replace", timeout=15)
+
+
+@patch("netsleuth.netinfo.subprocess.run")
+@patch("builtins.open", new_callable=mock_open, read_data="nameserver 8.8.4.4\n")
+def test_resolvers_unix_handles_both(mock_file, mock_run):
+    import subprocess
+    mock_run.return_value = subprocess.CompletedProcess(
+        args=["scutil", "--dns"],
+        returncode=0,
+        stdout="""
+DNS configuration
+resolver #1
+  if_index : 5 (en1)
+  nameserver[0] : 10.0.0.1
+"""
+    )
+
+    result = _resolvers_unix()
+
+    assert result == {
+        "system": ["8.8.4.4"],
+        "en1": ["10.0.0.1"]
+    }
+    mock_file.assert_called_once_with("/etc/resolv.conf", encoding="utf-8", errors="replace")
+    mock_run.assert_called_once()
+
+
+@patch("netsleuth.netinfo.subprocess.run")
+@patch("builtins.open")
+def test_resolvers_unix_handles_all_failures(mock_file, mock_run):
+    mock_file.side_effect = OSError("No resolv.conf")
+    mock_run.side_effect = OSError("No scutil")
+
+    result = _resolvers_unix()
+
+    assert result == {}
