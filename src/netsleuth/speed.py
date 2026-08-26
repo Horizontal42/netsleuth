@@ -1,4 +1,15 @@
 from __future__ import annotations
+import asyncio
+import time
+from collections.abc import Awaitable, Callable
+from netsleuth.models import SpeedResult, TierAttempt
+import json
+import httpx
+from netsleuth.config import Speedtest
+from netsleuth.config import BufferbloatBands
+from netsleuth.interpret import grade_bufferbloat
+from netsleuth.stats import rtt_stats
+
 
 import re
 from urllib.parse import parse_qs
@@ -39,7 +50,10 @@ def parse_server_timing_cfl4(header: str) -> CfL4Stats | None:
     match = _CFL4_RE.search(header or "")
     if not match:
         return None
-    fields = {k: v[0] for k, v in parse_qs(match.group("query"), keep_blank_values=True).items()}
+    fields = {
+        k: v[0]
+        for k, v in parse_qs(match.group("query"), keep_blank_values=True).items()
+    }
     return CfL4Stats(
         rtt_ms=_us_to_ms(fields.get("rtt")),
         min_rtt_ms=_us_to_ms(fields.get("min_rtt")),
@@ -51,18 +65,16 @@ def parse_server_timing_cfl4(header: str) -> CfL4Stats | None:
     )
 
 
-def bufferbloat_delta(idle_rtt_ms: float | None, loaded_rtts_ms: list[float]) -> float | None:
+def bufferbloat_delta(
+    idle_rtt_ms: float | None, loaded_rtts_ms: list[float]
+) -> float | None:
     if idle_rtt_ms is None or not loaded_rtts_ms:
         return None
     loaded = percentile(sorted(loaded_rtts_ms), 95.0)
     return round(max(0.0, loaded - idle_rtt_ms), 3)
 
 
-import asyncio
-import time
-from collections.abc import Awaitable, Callable
 
-from netsleuth.models import SpeedResult, TierAttempt
 
 NDT7_CONSENT_NOTICE = (
     "M-Lab NDT7 publishes every measurement as public CC0 open data, including your "
@@ -93,20 +105,24 @@ async def run_speed_cascade(
         duration_ms = int((time.perf_counter() - began) * 1000)
         if not result.download_mbps:
             attempts.append(
-                TierAttempt(tier=name, ok=False, reason="no throughput measured", duration_ms=duration_ms)
+                TierAttempt(
+                    tier=name,
+                    ok=False,
+                    reason="no throughput measured",
+                    duration_ms=duration_ms,
+                )
             )
             continue
-        attempts.append(TierAttempt(tier=name, ok=True, reason=None, duration_ms=duration_ms))
+        attempts.append(
+            TierAttempt(tier=name, ok=True, reason=None, duration_ms=duration_ms)
+        )
         result.tier_attempts = attempts
         return result
     return SpeedResult(method="none", tier_attempts=attempts)
 
 
-import json
 
-import httpx
 
-from netsleuth.config import Speedtest
 
 
 def ookla_interface_args(iface_name: str | None, ipv4: str | None) -> list[str]:
@@ -138,32 +154,58 @@ async def tier_ookla(
     server_info = payload.get("server") or {}
     return SpeedResult(
         method="ookla_bin",
-        download_mbps=round(mbps(download.get("bytes", 0), (download.get("elapsed", 0) or 0) / 1000), 3),
-        upload_mbps=round(mbps(upload.get("bytes", 0), (upload.get("elapsed", 0) or 0) / 1000), 3),
+        download_mbps=round(
+            mbps(download.get("bytes", 0), (download.get("elapsed", 0) or 0) / 1000), 3
+        ),
+        upload_mbps=round(
+            mbps(upload.get("bytes", 0), (upload.get("elapsed", 0) or 0) / 1000), 3
+        ),
         server=f"{server_info.get('name', '')} ({server_info.get('location', '')})".strip(),
         idle_rtt_ms=(payload.get("ping") or {}).get("latency"),
         server_country=server_info.get("country") or None,
     )
 
 
-async def tier_cloudflare(client: httpx.AsyncClient, cfg: Speedtest, timeout: float) -> SpeedResult:
-    down_samples: list[tuple[int, float]] = []
-    cfl4: CfL4Stats | None = None
-    for size in cfg.download_sizes_bytes:
+async def tier_cloudflare(
+    client: httpx.AsyncClient, cfg: Speedtest, timeout: float
+) -> SpeedResult:
+    async def _download(size: int) -> tuple[int, float, str]:
         began = time.perf_counter()
         response = await client.get(
             f"{cfg.cloudflare_base_url}/__down", params={"bytes": size}, timeout=timeout
         )
         response.raise_for_status()
-        down_samples.append((len(response.content), time.perf_counter() - began))
-        cfl4 = parse_server_timing_cfl4(response.headers.get("server-timing", "")) or cfl4
-    up_samples: list[tuple[int, float]] = []
-    for size in cfg.upload_sizes_bytes:
+        return (
+            len(response.content),
+            time.perf_counter() - began,
+            response.headers.get("server-timing", ""),
+        )
+
+    down_samples: list[tuple[int, float]] = []
+    cfl4: CfL4Stats | None = None
+    down_results = await asyncio.gather(
+        *[_download(size) for size in cfg.download_sizes_bytes]
+    )
+    for length, duration, timing in down_results:
+        down_samples.append((length, duration))
+        cfl4 = parse_server_timing_cfl4(timing) or cfl4
+
+    async def _upload(size: int) -> tuple[int, float]:
         payload = b"\x00" * size
         began = time.perf_counter()
-        response = await client.post(f"{cfg.cloudflare_base_url}/__up", content=payload, timeout=timeout)
+        response = await client.post(
+            f"{cfg.cloudflare_base_url}/__up", content=payload, timeout=timeout
+        )
         response.raise_for_status()
-        up_samples.append((size, time.perf_counter() - began))
+        return size, time.perf_counter() - began
+
+    up_samples: list[tuple[int, float]] = []
+    up_results = await asyncio.gather(
+        *[_upload(size) for size in cfg.upload_sizes_bytes]
+    )
+    for size_out, duration in up_results:
+        up_samples.append((size_out, duration))
+
     return SpeedResult(
         method="cloudflare",
         download_mbps=throughput_from_samples(down_samples),
@@ -173,7 +215,9 @@ async def tier_cloudflare(client: httpx.AsyncClient, cfg: Speedtest, timeout: fl
     )
 
 
-async def tier_fastcom(client: httpx.AsyncClient, cfg: Speedtest, timeout: float) -> SpeedResult:
+async def tier_fastcom(
+    client: httpx.AsyncClient, cfg: Speedtest, timeout: float
+) -> SpeedResult:
     response = await client.get(
         cfg.fastcom_api_url,
         params={"https": "true", "token": cfg.fastcom_api_token, "urlCount": "3"},
@@ -197,14 +241,21 @@ async def tier_fastcom(client: httpx.AsyncClient, cfg: Speedtest, timeout: float
         method="fastcom",
         download_mbps=throughput_from_samples(samples),
         upload_mbps=None,
-        server=targets[0].get("url").split("/")[2] if targets and targets[0].get("url") else None,
+        server=targets[0].get("url").split("/")[2]
+        if targets and targets[0].get("url")
+        else None,
         netflix_oca_onnet=on_net,
-        server_country=(targets[0].get("location") or {}).get("country") if targets else None,
+        server_country=(targets[0].get("location") or {}).get("country")
+        if targets
+        else None,
     )
 
 
 async def tier_ndt7(
-    client: httpx.AsyncClient, cfg: Speedtest, timeout: float, source_ip: str | None = None
+    client: httpx.AsyncClient,
+    cfg: Speedtest,
+    timeout: float,
+    source_ip: str | None = None,
 ) -> SpeedResult:
     import websockets
 
@@ -225,7 +276,11 @@ async def tier_ndt7(
                 message = await asyncio.wait_for(socket.recv(), timeout=timeout)
             except (TimeoutError, Exception):
                 break
-            total += len(message) if isinstance(message, (bytes, bytearray)) else len(message.encode())
+            total += (
+                len(message)
+                if isinstance(message, (bytes, bytearray))
+                else len(message.encode())
+            )
     elapsed = time.perf_counter() - began
     return SpeedResult(
         method="ndt7",
@@ -236,9 +291,6 @@ async def tier_ndt7(
     )
 
 
-from netsleuth.config import BufferbloatBands
-from netsleuth.interpret import grade_bufferbloat
-from netsleuth.stats import rtt_stats
 
 
 async def probe_while(
@@ -276,7 +328,11 @@ async def measure_with_bufferbloat(
     result.bufferbloat_down_ms = bufferbloat_delta(idle_rtt_ms, down_samples)
     result.bufferbloat_up_ms = bufferbloat_delta(idle_rtt_ms, up_samples)
     worst_delta = max(
-        [d for d in (result.bufferbloat_down_ms, result.bufferbloat_up_ms) if d is not None],
+        [
+            d
+            for d in (result.bufferbloat_down_ms, result.bufferbloat_up_ms)
+            if d is not None
+        ],
         default=None,
     )
     result.bufferbloat_grade = grade_bufferbloat(worst_delta, bands)
