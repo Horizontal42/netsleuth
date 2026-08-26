@@ -867,6 +867,57 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
     return report, paths
 
 
+def _handle_compare(compare: tuple[Path, Path], settings: Settings) -> None:
+    before, after = load_report(compare[0]), load_report(compare[1])
+    console.print(render_diff(diff_reports(before, after), emoji=settings.output.emoji))
+    raise typer.Exit(0)
+
+
+def _handle_trend(trend: int, target: str | None, settings: Settings) -> None:
+    from netsleuth.trend import build_trend, render_trend
+
+    if trend < 1:
+        raise typer.BadParameter("--trend must be at least 1", param_hint="--trend")
+    kind, value = parse_target(target) if target else (None, None)
+    key = value or history.latest_key(settings.output.logs_dir)
+    if not key:
+        console.print("No saved reports found to build a trend from.")
+        raise typer.Exit(0)
+    count = trend or settings.history.trend_default_reports
+    report_paths = history.find_previous(settings.output.logs_dir, key, limit=count)
+    if not report_paths:
+        console.print(f"No saved reports found for {key}.")
+        raise typer.Exit(0)
+    reports = [load_report(p) for p in reversed(report_paths)]
+    console.print(render_trend(build_trend(reports), emoji=settings.output.emoji))
+    raise typer.Exit(0)
+
+
+def _configure_interface(interface: str, options: Options) -> None:
+    addrs_by_iface = {
+        name: [(a.family, a.address.split("%")[0]) for a in addrs]
+        for name, addrs in psutil.net_if_addrs().items()
+    }
+    up_by_iface = {name: stats.isup for name, stats in psutil.net_if_stats().items()}
+    bind = resolve_bind_target(interface, addrs_by_iface, up_by_iface)
+    if bind.error:
+        raise typer.BadParameter(bind.error, param_hint="--interface")
+    options.interface = interface
+    options.bind = bind
+    if bind.ipv4:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.bind((bind.ipv4, 0))
+            probe.connect(("1.1.1.1", 53))
+        except OSError:
+            console.print(
+                f"[yellow]--interface {bind.iface_name}: no route to the internet from this "
+                "address yet — continuing, this run may show every module as unreachable.[/yellow]"
+            )
+        finally:
+            probe.close()
+
+
 def _check_ndt7_consent(settings: Settings) -> bool:
     consent_marker = Path(settings.output.cache_dir) / "ndt7_consent"
     if consent_marker.exists():
@@ -967,28 +1018,10 @@ def run(
 ) -> None:
     settings = load_settings()
     if compare:
-        before, after = load_report(compare[0]), load_report(compare[1])
-        console.print(render_diff(diff_reports(before, after), emoji=settings.output.emoji))
-        raise typer.Exit(0)
+        _handle_compare(compare, settings)
 
     if trend is not None:
-        from netsleuth.trend import build_trend, render_trend
-
-        if trend < 1:
-            raise typer.BadParameter("--trend must be at least 1", param_hint="--trend")
-        kind, value = parse_target(target) if target else (None, None)
-        key = value or history.latest_key(settings.output.logs_dir)
-        if not key:
-            console.print("No saved reports found to build a trend from.")
-            raise typer.Exit(0)
-        count = trend or settings.history.trend_default_reports
-        report_paths = history.find_previous(settings.output.logs_dir, key, limit=count)
-        if not report_paths:
-            console.print(f"No saved reports found for {key}.")
-            raise typer.Exit(0)
-        reports = [load_report(p) for p in reversed(report_paths)]
-        console.print(render_trend(build_trend(reports), emoji=settings.output.emoji))
-        raise typer.Exit(0)
+        _handle_trend(trend, target, settings)
 
     if no_auto_diff:
         settings.history.auto_diff = False
@@ -1023,28 +1056,7 @@ def run(
         webhook=webhook,
     )
     if interface:
-        addrs_by_iface = {
-            name: [(a.family, a.address.split("%")[0]) for a in addrs]
-            for name, addrs in psutil.net_if_addrs().items()
-        }
-        up_by_iface = {name: stats.isup for name, stats in psutil.net_if_stats().items()}
-        bind = resolve_bind_target(interface, addrs_by_iface, up_by_iface)
-        if bind.error:
-            raise typer.BadParameter(bind.error, param_hint="--interface")
-        options.interface = interface
-        options.bind = bind
-        if bind.ipv4:
-            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            try:
-                probe.bind((bind.ipv4, 0))
-                probe.connect(("1.1.1.1", 53))
-            except OSError:
-                console.print(
-                    f"[yellow]--interface {bind.iface_name}: no route to the internet from this "
-                    "address yet — continuing, this run may show every module as unreachable.[/yellow]"
-                )
-            finally:
-                probe.close()
+        _configure_interface(interface, options)
     if ndt7:
         options.ndt7 = _check_ndt7_consent(settings)
     if tcp_trace:
