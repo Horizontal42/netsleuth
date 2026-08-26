@@ -165,8 +165,8 @@ def test_prefix_benchmark_section_renders_results_and_summary():
         prefixes_probed=2,
         method="icmp",
         results=[
-            PrefixProbe(prefix="203.0.113.0/24", probe_ip="203.0.113.1", avg_ms=12.0, loss_pct=0.0, reachable=True),
-            PrefixProbe(prefix="198.51.100.0/24", probe_ip="198.51.100.1", avg_ms=None, loss_pct=100.0, reachable=False),
+            PrefixProbe(prefix="203.0.113.0/24", probe_ip="203.0.113.1", avg_ms=12.0, reachable=True),
+            PrefixProbe(prefix="198.51.100.0/24", probe_ip="198.51.100.1", avg_ms=None, reachable=False),
         ],
         best="203.0.113.0/24",
         worst="203.0.113.0/24",

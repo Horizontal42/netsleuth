@@ -379,7 +379,6 @@ class PrefixProbe:
     prefix: str
     probe_ip: str | None = None
     avg_ms: float | None = None
-    loss_pct: float = 100.0
     reachable: bool = False
     reverse_dns: str | None = None
 

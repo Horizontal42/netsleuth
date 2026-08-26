@@ -985,10 +985,9 @@ def _prefix_benchmark(report: dict, lang: str = "en") -> list[str]:
             _t(lang, "Prefix", "Префикс"),
             _t(lang, "Probe IP", "IP пробы"),
             _t(lang, "Avg ms", "Сред. мс"),
-            _t(lang, "Loss", "Потери"),
         ],
         [
-            [r.get("prefix", ""), r.get("probe_ip") or "—", _num(r.get("avg_ms")), f"{r.get('loss_pct', 0)}%"]
+            [r.get("prefix", ""), r.get("probe_ip") or "—", _num(r.get("avg_ms"))]
             for r in results
         ],
         lang,

@@ -108,7 +108,6 @@ async def benchmark_prefixes(
             prefix=prefix,
             probe_ip=host,
             avg_ms=result.avg_ms,
-            loss_pct=result.loss_pct,
             reachable=result.received > 0,
         )
 
