@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import ssl
 import time
+import warnings
 from datetime import UTC, datetime
 
 from netsleuth.models import TlsResult
@@ -28,6 +29,11 @@ def cpu_bound_ratio(tls_handshake_ms: float | None, tcp_rtt_ms: float | None) ->
 def tls_context(verify: bool = True) -> ssl.SSLContext:
     ctx = ssl.create_default_context()
     if not verify:
+        warnings.warn(
+            "TLS certificate validation is disabled. This is inherently risky and exposes the connection to MITM attacks.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
     ctx.set_alpn_protocols(["h2", "http/1.1"])
