@@ -123,7 +123,6 @@ async def probe_pmtu(
         result.note = f"could not resolve {host}: {exc}"
         result.note_ru = f"не удалось разрешить {host}: {exc}"
         return result
-    result.resolved_ip = resolved_ip
 
     system = platform.system()
     result.method = "icmp_win" if system == "Windows" else "system_ping"
