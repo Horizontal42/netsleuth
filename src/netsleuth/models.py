@@ -265,7 +265,6 @@ class PingResult:
     host: str
     resolved_ip: str | None = None
     method: str = "none"
-    sent: int = 0
     received: int = 0
     loss_pct: float = 0.0
     min_ms: float | None = None

@@ -44,7 +44,6 @@ def ping(**kw) -> PingResult:
         host="1.1.1.1",
         resolved_ip="1.1.1.1",
         method="icmp_dgram",
-        sent=20,
         received=20,
         loss_pct=0.0,
         min_ms=10.0,

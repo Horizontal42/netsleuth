@@ -17,7 +17,7 @@ def test_summarize_builds_a_complete_ping_result():
     assert result.host == "1.1.1.1"
     assert result.resolved_ip == "1.1.1.1"
     assert result.method == "icmp_dgram"
-    assert result.sent == 4
+    assert len(result.samples) == 4
     assert result.received == 4
     assert result.loss_pct == 0.0
     assert result.min_ms == 10.0
@@ -31,7 +31,7 @@ def test_summarize_builds_a_complete_ping_result():
 def test_summarize_keeps_timeout_positions_in_the_sample_list():
     result = summarize_ping("h", "example.test", None, "tcp", [None, 20.0, None, 24.0])
     assert result.samples == [None, 20.0, None, 24.0]
-    assert result.sent == 4
+    assert len(result.samples) == 4
     assert result.received == 2
     assert result.loss_pct == 50.0
 
@@ -53,7 +53,7 @@ def test_summarize_of_a_single_sample_reports_zero_jitter():
 
 def test_summarize_of_zero_probes_is_a_well_formed_empty_result():
     result = summarize_ping("h", "1.1.1.1", None, "none", [])
-    assert result.sent == 0
+    assert len(result.samples) == 0
     assert result.received == 0
     assert result.loss_pct == 0.0
     assert result.samples == []

@@ -23,7 +23,6 @@ def summarize_ping(
         host=host,
         resolved_ip=resolved_ip,
         method=method,
-        sent=s.sent,
         received=s.received,
         loss_pct=s.loss_pct,
         min_ms=s.min_ms,

@@ -19,7 +19,7 @@ def test_summarize_ping_calculates_correct_stats():
     assert result.host == "host.com"
     assert result.resolved_ip == "1.1.1.1"
     assert result.method == "tcp"
-    assert result.sent == 4
+    assert len(result.samples) == 4
     assert result.received == 4
     assert result.loss_pct == 0.0
     assert result.min_ms == 10.0
