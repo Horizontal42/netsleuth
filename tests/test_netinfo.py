@@ -1,4 +1,7 @@
 from __future__ import annotations
+import base64
+import subprocess
+from netsleuth.netinfo import _resolvers_windows
 
 from netsleuth.models import Capabilities
 from netsleuth.netinfo import (
@@ -9,7 +12,13 @@ from netsleuth.netinfo import (
 
 
 def caps(**kw) -> Capabilities:
-    base = dict(os_name="Linux", is_elevated=False, icmp_dgram=False, icmp_raw=False, icmp_win_api=False)
+    base = dict(
+        os_name="Linux",
+        is_elevated=False,
+        icmp_dgram=False,
+        icmp_raw=False,
+        icmp_win_api=False,
+    )
     base.update(kw)
     return Capabilities(**base)
 
@@ -30,13 +39,15 @@ def test_unix_falls_back_to_raw_icmp_when_datagram_is_unavailable():
 from netsleuth.netinfo import detect_capabilities
 from unittest.mock import patch
 
-def test_detect_capabilities_linux_happy_path():
-    with patch("netsleuth.netinfo.platform.system", return_value="Linux"), \
-         patch("netsleuth.netinfo._is_elevated", return_value=True), \
-         patch("netsleuth.netinfo._socket_works", side_effect=[True, True]), \
-         patch("netsleuth.netinfo._win_icmp_available", return_value=False), \
-         patch("netsleuth.netinfo.shutil.which", side_effect=lambda x: "/usr/bin/" + x):
 
+def test_detect_capabilities_linux_happy_path():
+    with (
+        patch("netsleuth.netinfo.platform.system", return_value="Linux"),
+        patch("netsleuth.netinfo._is_elevated", return_value=True),
+        patch("netsleuth.netinfo._socket_works", side_effect=[True, True]),
+        patch("netsleuth.netinfo._win_icmp_available", return_value=False),
+        patch("netsleuth.netinfo.shutil.which", side_effect=lambda x: "/usr/bin/" + x),
+    ):
         c = detect_capabilities()
 
         assert c.os_name == "Linux"
@@ -49,12 +60,16 @@ def test_detect_capabilities_linux_happy_path():
 
 
 def test_detect_capabilities_windows_happy_path():
-    with patch("netsleuth.netinfo.platform.system", return_value="Windows"), \
-         patch("netsleuth.netinfo._is_elevated", return_value=False), \
-         patch("netsleuth.netinfo._socket_works", return_value=False), \
-         patch("netsleuth.netinfo._win_icmp_available", return_value=True), \
-         patch("netsleuth.netinfo.shutil.which", side_effect=lambda x: "C:\\Windows\\System32\\" + x + ".exe"):
-
+    with (
+        patch("netsleuth.netinfo.platform.system", return_value="Windows"),
+        patch("netsleuth.netinfo._is_elevated", return_value=False),
+        patch("netsleuth.netinfo._socket_works", return_value=False),
+        patch("netsleuth.netinfo._win_icmp_available", return_value=True),
+        patch(
+            "netsleuth.netinfo.shutil.which",
+            side_effect=lambda x: "C:\\Windows\\System32\\" + x + ".exe",
+        ),
+    ):
         c = detect_capabilities()
 
         assert c.os_name == "Windows"
@@ -65,17 +80,26 @@ def test_detect_capabilities_windows_happy_path():
         assert c.mtr_binary == "C:\\Windows\\System32\\mtr.exe"
         assert c.traceroute_binary == "C:\\Windows\\System32\\tracert.exe"
 
+
 def test_latency_falls_back_to_tcp_when_no_icmp_is_possible():
     assert choose_latency_backend(caps()) == "tcp"
 
 
 def test_trace_backend_prefers_mtr_when_the_binary_exists():
-    c = caps(mtr_binary="/usr/bin/mtr", icmp_dgram=True, traceroute_binary="/usr/bin/traceroute")
+    c = caps(
+        mtr_binary="/usr/bin/mtr",
+        icmp_dgram=True,
+        traceroute_binary="/usr/bin/traceroute",
+    )
     assert choose_trace_backend(c) == "mtr_json"
 
 
 def test_trace_backend_uses_win_api_before_the_system_binary():
-    c = caps(os_name="Windows", icmp_win_api=True, traceroute_binary="C:\\Windows\\System32\\TRACERT.EXE")
+    c = caps(
+        os_name="Windows",
+        icmp_win_api=True,
+        traceroute_binary="C:\\Windows\\System32\\TRACERT.EXE",
+    )
     assert choose_trace_backend(c) == "icmp_win"
 
 
@@ -85,7 +109,10 @@ def test_trace_backend_uses_icmplib_on_unix_before_the_system_binary():
 
 
 def test_trace_backend_falls_back_to_the_system_binary():
-    assert choose_trace_backend(caps(traceroute_binary="/usr/bin/traceroute")) == "system_traceroute"
+    assert (
+        choose_trace_backend(caps(traceroute_binary="/usr/bin/traceroute"))
+        == "system_traceroute"
+    )
 
 
 def test_trace_backend_reports_none_when_nothing_is_available():
@@ -93,7 +120,10 @@ def test_trace_backend_reports_none_when_nothing_is_available():
 
 
 def test_degradation_note_is_absent_when_icmp_works():
-    assert degradation_note(caps(icmp_dgram=True, traceroute_binary="/usr/bin/traceroute")) is None
+    assert (
+        degradation_note(caps(icmp_dgram=True, traceroute_binary="/usr/bin/traceroute"))
+        is None
+    )
 
 
 def test_degradation_note_explains_the_tcp_fallback_with_a_remedy():
@@ -111,9 +141,13 @@ def test_degradation_note_on_windows_mentions_the_api_rather_than_sysctl():
 
 import pytest
 
-from unittest.mock import patch
 
-from netsleuth.netinfo import iface_for_ip, is_tunnel_iface, mtu_anomaly, primary_interface_ip
+from netsleuth.netinfo import (
+    iface_for_ip,
+    is_tunnel_iface,
+    mtu_anomaly,
+    primary_interface_ip,
+)
 
 
 def test_iface_for_ip_matches_the_owning_adapter():
@@ -129,13 +163,24 @@ def test_iface_for_ip_matches_the_owning_adapter():
 
 @pytest.mark.parametrize(
     "name",
-    ["tun0", "tap0", "wg0", "utun3", "ppp0", "WireGuard Tunnel", "TAP-Windows Adapter V9", "nordlynx"],
+    [
+        "tun0",
+        "tap0",
+        "wg0",
+        "utun3",
+        "ppp0",
+        "WireGuard Tunnel",
+        "TAP-Windows Adapter V9",
+        "nordlynx",
+    ],
 )
 def test_tunnel_interfaces_are_recognised(name):
     assert is_tunnel_iface(name) is True
 
 
-@pytest.mark.parametrize("name", ["eth0", "en0", "Wi-Fi", "Ethernet 2", "lo", "Loopback Pseudo-Interface 1"])
+@pytest.mark.parametrize(
+    "name", ["eth0", "en0", "Wi-Fi", "Ethernet 2", "lo", "Loopback Pseudo-Interface 1"]
+)
 def test_ordinary_interfaces_are_not_flagged_as_tunnels(name):
     assert is_tunnel_iface(name) is False
 
@@ -162,7 +207,9 @@ def test_primary_interface_ip_ipv4_success(mock_socket):
     mock_sock_instance = mock_socket.return_value
     mock_sock_instance.getsockname.return_value = ("192.168.1.100", 12345)
 
-    assert primary_interface_ip(target="8.8.8.8", family=socket.AF_INET) == "192.168.1.100"
+    assert (
+        primary_interface_ip(target="8.8.8.8", family=socket.AF_INET) == "192.168.1.100"
+    )
     mock_socket.assert_called_once_with(socket.AF_INET, socket.SOCK_DGRAM)
     mock_sock_instance.connect.assert_called_once_with(("8.8.8.8", 53))
 
@@ -216,7 +263,8 @@ def test_windows_default_gateway_picks_the_lowest_metric_route_not_the_first_lis
     # default (metric 25); Windows itself prefers the lower metric for outbound
     # traffic, so the parser must too, regardless of listing order.
     assert (
-        _parse_windows_default_gateway(_ROUTE_PRINT_WITH_A_VPN_ADAPTER, socket.AF_INET) == "192.168.3.1"
+        _parse_windows_default_gateway(_ROUTE_PRINT_WITH_A_VPN_ADAPTER, socket.AF_INET)
+        == "192.168.3.1"
     )
 
 
@@ -229,33 +277,44 @@ Network Destination        Netmask          Gateway       Interface  Metric
 
 
 def test_windows_default_gateway_returns_none_when_no_default_route_exists():
-    assert _parse_windows_default_gateway("Active Routes:\nNone\n", socket.AF_INET) is None
+    assert (
+        _parse_windows_default_gateway("Active Routes:\nNone\n", socket.AF_INET) is None
+    )
+
 
 from dataclasses import dataclass
+
 
 @dataclass
 class MockAddr:
     family: int
     address: str
 
+
 @dataclass
 class MockStats:
     mtu: int
 
+
 from unittest.mock import patch
 from netsleuth.netinfo import collect_local_net
-from netsleuth.models import LocalNet
+
 
 @patch("netsleuth.netinfo.primary_interface_ip")
 @patch("netsleuth.netinfo.psutil.net_if_addrs")
 @patch("netsleuth.netinfo.psutil.net_if_stats")
 @patch("netsleuth.netinfo._default_gateway")
 @patch("netsleuth.netinfo._resolvers_per_adapter")
-def test_collect_local_net_happy_path(mock_resolvers, mock_gw, mock_stats, mock_addrs, mock_ip):
+def test_collect_local_net_happy_path(
+    mock_resolvers, mock_gw, mock_stats, mock_addrs, mock_ip
+):
     # Setup mocks
     mock_ip.side_effect = ["192.168.1.50", "2001:db8::1"]
     mock_addrs.return_value = {
-        "eth0": [MockAddr(family=socket.AF_INET, address="192.168.1.50"), MockAddr(family=socket.AF_INET6, address="2001:db8::1")]
+        "eth0": [
+            MockAddr(family=socket.AF_INET, address="192.168.1.50"),
+            MockAddr(family=socket.AF_INET6, address="2001:db8::1"),
+        ]
     }
     mock_stats.return_value = {"eth0": MockStats(mtu=1500)}
     mock_gw.side_effect = ["192.168.1.1", "fe80::1"]
@@ -274,12 +333,15 @@ def test_collect_local_net_happy_path(mock_resolvers, mock_gw, mock_stats, mock_
     assert result.cgnat is False
     assert result.cgnat_evidence is None
 
+
 @patch("netsleuth.netinfo.primary_interface_ip")
 @patch("netsleuth.netinfo.psutil.net_if_addrs")
 @patch("netsleuth.netinfo.psutil.net_if_stats")
 @patch("netsleuth.netinfo._default_gateway")
 @patch("netsleuth.netinfo._resolvers_per_adapter")
-def test_collect_local_net_cgnat_on_local_ip(mock_resolvers, mock_gw, mock_stats, mock_addrs, mock_ip):
+def test_collect_local_net_cgnat_on_local_ip(
+    mock_resolvers, mock_gw, mock_stats, mock_addrs, mock_ip
+):
     mock_ip.side_effect = ["100.64.1.2", None]
     mock_addrs.return_value = {
         "eth0": [MockAddr(family=socket.AF_INET, address="100.64.1.2")]
@@ -293,12 +355,15 @@ def test_collect_local_net_cgnat_on_local_ip(mock_resolvers, mock_gw, mock_stats
     assert result.cgnat is True
     assert "100.64.1.2" in result.cgnat_evidence
 
+
 @patch("netsleuth.netinfo.primary_interface_ip")
 @patch("netsleuth.netinfo.psutil.net_if_addrs")
 @patch("netsleuth.netinfo.psutil.net_if_stats")
 @patch("netsleuth.netinfo._default_gateway")
 @patch("netsleuth.netinfo._resolvers_per_adapter")
-def test_collect_local_net_cgnat_on_gateway(mock_resolvers, mock_gw, mock_stats, mock_addrs, mock_ip):
+def test_collect_local_net_cgnat_on_gateway(
+    mock_resolvers, mock_gw, mock_stats, mock_addrs, mock_ip
+):
     mock_ip.side_effect = ["192.168.1.50", None]
     mock_addrs.return_value = {
         "eth0": [MockAddr(family=socket.AF_INET, address="192.168.1.50")]
@@ -312,12 +377,15 @@ def test_collect_local_net_cgnat_on_gateway(mock_resolvers, mock_gw, mock_stats,
     assert result.cgnat is True
     assert "100.64.1.1" in result.cgnat_evidence
 
+
 @patch("netsleuth.netinfo.primary_interface_ip")
 @patch("netsleuth.netinfo.psutil.net_if_addrs")
 @patch("netsleuth.netinfo.psutil.net_if_stats")
 @patch("netsleuth.netinfo._default_gateway")
 @patch("netsleuth.netinfo._resolvers_per_adapter")
-def test_collect_local_net_no_network(mock_resolvers, mock_gw, mock_stats, mock_addrs, mock_ip):
+def test_collect_local_net_no_network(
+    mock_resolvers, mock_gw, mock_stats, mock_addrs, mock_ip
+):
     mock_ip.side_effect = [None, None]
     mock_addrs.return_value = {}
     mock_stats.return_value = {}
@@ -334,3 +402,78 @@ def test_collect_local_net_no_network(mock_resolvers, mock_gw, mock_stats, mock_
     assert result.default_gateway_v6 is None
     assert result.is_dual_stack is False
     assert result.cgnat is False
+
+
+@patch("subprocess.run")
+def test_resolvers_windows_happy_path(mock_run):
+    output_str = "Wi-Fi|8.8.8.8,8.8.4.4\nEthernet|1.1.1.1\n"
+    encoded_out = base64.b64encode(output_str.encode("utf-8")).decode("utf-8")
+
+    mock_run.return_value.stdout = encoded_out
+
+    result = _resolvers_windows()
+
+    assert result == {
+        "Wi-Fi": ["8.8.8.8", "8.8.4.4"],
+        "Ethernet": ["1.1.1.1"],
+    }
+
+    mock_run.assert_called_once()
+
+
+@patch("subprocess.run")
+def test_resolvers_windows_empty_output(mock_run):
+    mock_run.return_value.stdout = ""
+
+    result = _resolvers_windows()
+
+    assert result == {}
+
+    mock_run.assert_called_once()
+
+
+@patch("subprocess.run")
+def test_resolvers_windows_oserror(mock_run):
+    mock_run.side_effect = OSError("Command not found")
+
+    result = _resolvers_windows()
+
+    assert result == {}
+
+    mock_run.assert_called_once()
+
+
+@patch("subprocess.run")
+def test_resolvers_windows_subprocess_error(mock_run):
+    mock_run.side_effect = subprocess.TimeoutExpired(cmd="powershell", timeout=15)
+
+    result = _resolvers_windows()
+
+    assert result == {}
+
+    mock_run.assert_called_once()
+
+
+@patch("subprocess.run")
+def test_resolvers_windows_binascii_error(mock_run):
+    # Invalid base64 that causes binascii.Error
+    mock_run.return_value.stdout = "a!"
+
+    result = _resolvers_windows()
+
+    assert result == {}
+
+    mock_run.assert_called_once()
+
+
+@patch("subprocess.run")
+def test_resolvers_windows_unicode_decode_error(mock_run):
+    # Valid base64 but decodes to invalid UTF-8 bytes (e.g., b'\xff')
+    invalid_utf8_bytes = b"\xff"
+    mock_run.return_value.stdout = base64.b64encode(invalid_utf8_bytes).decode("utf-8")
+
+    result = _resolvers_windows()
+
+    assert result == {}
+
+    mock_run.assert_called_once()
