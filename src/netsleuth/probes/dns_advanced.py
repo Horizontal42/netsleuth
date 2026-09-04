@@ -6,9 +6,9 @@ import time
 
 import dns.asyncquery
 import dns.asyncresolver
-import dns.exception
-import dns.message
 import httpx
+from dns.exception import DNSException, Timeout
+from dns.message import make_query
 
 from netsleuth.models import DnsAdvanced, ResolverProbe
 
@@ -37,7 +37,9 @@ def is_suspicious_answer(addr: str) -> bool:
     return ip.is_private or ip.is_loopback or ip.is_reserved
 
 
-def compare_answers(system_probe: ResolverProbe, doh_probes: list[ResolverProbe]) -> list[str]:
+def compare_answers(
+    system_probe: ResolverProbe, doh_probes: list[ResolverProbe]
+) -> list[str]:
     divergences: list[str] = []
     system_set = set(system_probe.answers)
     for doh_probe in doh_probes:
@@ -52,19 +54,28 @@ def compare_answers(system_probe: ResolverProbe, doh_probes: list[ResolverProbe]
     return divergences
 
 
-def detect_poisoning(system_probe: ResolverProbe, doh_probes: list[ResolverProbe]) -> bool:
+def detect_poisoning(
+    system_probe: ResolverProbe, doh_probes: list[ResolverProbe]
+) -> bool:
     system_suspicious = any(is_suspicious_answer(a) for a in system_probe.answers)
     if not system_suspicious:
         return False
     return any(
-        any(not is_suspicious_answer(a) for a in doh_probe.answers) for doh_probe in doh_probes
+        any(not is_suspicious_answer(a) for a in doh_probe.answers)
+        for doh_probe in doh_probes
     )
 
 
 def detect_transparent_proxy(bogus_probe: ResolverProbe) -> tuple[bool | None, str]:
     if bogus_probe.error is None and bogus_probe.answers:
-        return True, "A response was received from the bogus resolver IP: transparent DNS proxy detected."
-    return False, "No response from the bogus resolver IP (timeout): transparent DNS proxy not detected."
+        return (
+            True,
+            "A response was received from the bogus resolver IP: transparent DNS proxy detected.",
+        )
+    return (
+        False,
+        "No response from the bogus resolver IP (timeout): transparent DNS proxy not detected.",
+    )
 
 
 async def resolve_system(name: str, timeout: float) -> ResolverProbe:
@@ -82,8 +93,10 @@ async def resolve_system(name: str, timeout: float) -> ResolverProbe:
             answers=answers,
             elapsed_ms=elapsed_ms,
         )
-    except dns.exception.DNSException as exc:
-        return ResolverProbe(name="system", kind="system", query_name=name, error=str(exc))
+    except DNSException as exc:
+        return ResolverProbe(
+            name="system", kind="system", query_name=name, error=str(exc)
+        )
 
 
 async def resolve_doh(
@@ -113,11 +126,13 @@ async def resolve_doh(
             elapsed_ms=elapsed_ms,
         )
     except httpx.HTTPError as exc:
-        return ResolverProbe(name=name, kind="doh", endpoint=url, query_name=query_name, error=str(exc))
+        return ResolverProbe(
+            name=name, kind="doh", endpoint=url, query_name=query_name, error=str(exc)
+        )
 
 
 async def probe_bogus_resolver(ip: str, name: str, timeout: float) -> ResolverProbe:
-    query = dns.message.make_query(name, "A")
+    query = make_query(name, "A")
     try:
         response = await dns.asyncquery.udp(query, ip, timeout=timeout)
         answers = [
@@ -126,11 +141,17 @@ async def probe_bogus_resolver(ip: str, name: str, timeout: float) -> ResolverPr
             for rdata in rrset
             if rdata.rdtype == 1
         ]
-        return ResolverProbe(name="bogus", kind="system", query_name=name, answers=answers)
-    except dns.exception.Timeout:
-        return ResolverProbe(name="bogus", kind="system", query_name=name, error="timeout")
-    except (dns.exception.DNSException, OSError) as exc:
-        return ResolverProbe(name="bogus", kind="system", query_name=name, error=str(exc))
+        return ResolverProbe(
+            name="bogus", kind="system", query_name=name, answers=answers
+        )
+    except Timeout:
+        return ResolverProbe(
+            name="bogus", kind="system", query_name=name, error="timeout"
+        )
+    except (DNSException, OSError) as exc:
+        return ResolverProbe(
+            name="bogus", kind="system", query_name=name, error=str(exc)
+        )
 
 
 async def collect_dns_advanced(
@@ -141,7 +162,9 @@ async def collect_dns_advanced(
     bogus_probe_name: str,
     timeout: float,
 ) -> DnsAdvanced:
-    system_probes = list(await asyncio.gather(*(resolve_system(name, timeout) for name in control_names)))
+    system_probes = list(
+        await asyncio.gather(*(resolve_system(name, timeout) for name in control_names))
+    )
     doh_tasks = [
         resolve_doh(client, ep.name, ep.url, name, timeout)
         for name in control_names
@@ -151,7 +174,9 @@ async def collect_dns_advanced(
 
     divergences: list[str] = []
     for system_probe in system_probes:
-        matching_doh = [p for p in doh_probes if p.query_name == system_probe.query_name]
+        matching_doh = [
+            p for p in doh_probes if p.query_name == system_probe.query_name
+        ]
         divergences.extend(compare_answers(system_probe, matching_doh))
 
     system_times = [p.elapsed_ms for p in system_probes if p.elapsed_ms is not None]
@@ -159,7 +184,9 @@ async def collect_dns_advanced(
     system_avg_ms = sum(system_times) / len(system_times) if system_times else None
     doh_avg_ms = sum(doh_times) / len(doh_times) if doh_times else None
 
-    bogus_probe = await probe_bogus_resolver(bogus_resolver_ip, bogus_probe_name, timeout)
+    bogus_probe = await probe_bogus_resolver(
+        bogus_resolver_ip, bogus_probe_name, timeout
+    )
     transparent_proxy, transparent_proxy_detail = detect_transparent_proxy(bogus_probe)
 
     note = (
