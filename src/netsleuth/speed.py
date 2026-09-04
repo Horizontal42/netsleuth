@@ -157,13 +157,17 @@ async def tier_cloudflare(client: httpx.AsyncClient, cfg: Speedtest, timeout: fl
         response.raise_for_status()
         down_samples.append((len(response.content), time.perf_counter() - began))
         cfl4 = parse_server_timing_cfl4(response.headers.get("server-timing", "")) or cfl4
-    up_samples: list[tuple[int, float]] = []
-    for size in cfg.upload_sizes_bytes:
+
+    async def _upload(size: int) -> tuple[int, float]:
         payload = b"\x00" * size
         began = time.perf_counter()
         response = await client.post(f"{cfg.cloudflare_base_url}/__up", content=payload, timeout=timeout)
         response.raise_for_status()
-        up_samples.append((size, time.perf_counter() - began))
+        return size, time.perf_counter() - began
+
+    up_samples = await asyncio.gather(
+        *[_upload(size) for size in cfg.upload_sizes_bytes]
+    )
     return SpeedResult(
         method="cloudflare",
         download_mbps=throughput_from_samples(down_samples),
