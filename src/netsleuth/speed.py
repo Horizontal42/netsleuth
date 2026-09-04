@@ -183,16 +183,28 @@ async def tier_fastcom(client: httpx.AsyncClient, cfg: Speedtest, timeout: float
     targets = response.json().get("targets") or []
     samples: list[tuple[int, float]] = []
     on_net: bool | None = None
+
+    async def fetch(url: str) -> int:
+        body = await client.get(url, timeout=timeout)
+        body.raise_for_status()
+        return len(body.content)
+
+    tasks = []
     for target in targets:
         url = target.get("url")
         if not url:
             continue
         location = (target.get("location") or {}).get("country")
         on_net = on_net or bool(location)
+        tasks.append(fetch(url))
+
+    if tasks:
         began = time.perf_counter()
-        body = await client.get(url, timeout=timeout)
-        body.raise_for_status()
-        samples.append((len(body.content), time.perf_counter() - began))
+        results = await asyncio.gather(*tasks)
+        elapsed = time.perf_counter() - began
+        total_bytes = sum(results)
+        samples.append((total_bytes, elapsed))
+
     return SpeedResult(
         method="fastcom",
         download_mbps=throughput_from_samples(samples),
