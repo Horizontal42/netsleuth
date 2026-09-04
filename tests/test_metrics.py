@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from netsleuth.metrics import Metric, collect_metrics, render_csv, render_prometheus
+from netsleuth.metrics import Metric, _add, collect_metrics, render_csv, render_prometheus
 
 
 def _report(**overrides) -> dict:
@@ -84,3 +84,17 @@ def test_render_csv_has_a_header_row_and_quotes_a_comma_in_a_label():
     lines = text.strip().splitlines()
     assert lines[0] == "metric,labels,value"
     assert '"target=a, b"' in lines[1]
+
+
+def test_add_catches_type_and_value_errors():
+    metrics: list[Metric] = []
+    _add(metrics, "test_value_error", "not_a_float")
+    assert len(metrics) == 0
+
+    _add(metrics, "test_type_error", {"invalid": "dict"})
+    assert len(metrics) == 0
+
+    # Sanity check that a valid float still works
+    _add(metrics, "test_valid", "12.5")
+    assert len(metrics) == 1
+    assert metrics[0].value == 12.5
