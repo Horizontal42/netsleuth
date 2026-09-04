@@ -356,6 +356,34 @@ async def test_refresh_netsets_downloads_new_lists_and_caches_them(httpx_mock, t
     assert (cache_dir / "firehol_level1.netset").read_text() == "192.0.2.0/24\n"
     assert (cache_dir / "firehol_level2.netset").exists()
 
+async def test_refresh_netsets_writes_to_tmp_and_replaces(httpx_mock, tmp_path, providers):
+    httpx_mock.add_response(url="http://example.com/firehol_level1.netset", text="192.0.2.0/24\n")
+    httpx_mock.add_response(url="http://example.com/firehol_level2.netset", text="198.51.100.0/24\n")
+
+    import pathlib
+    original_replace = os.replace
+    replace_calls = []
+
+    def mocked_replace(src, dst):
+        # Verify the tmp file exists and has correct content before it gets replaced
+        src_path = pathlib.Path(src)
+        assert src_path.exists()
+        assert src_path.suffix == ".tmp"
+
+        # Then let it actually do the replacement so the test can proceed
+        original_replace(src, dst)
+        replace_calls.append((src, dst))
+
+    with patch("os.replace", side_effect=mocked_replace):
+        async with httpx.AsyncClient() as client:
+            await refresh_netsets(client, providers, tmp_path)
+
+    assert len(replace_calls) == 2
+    for src, dst in replace_calls:
+        assert str(src).endswith(".netset.tmp")
+        assert str(dst).endswith(".netset")
+
+
 async def test_refresh_netsets_uses_fresh_cache_without_downloading(httpx_mock, tmp_path, providers):
     cache_dir = tmp_path / "firehol"
     cache_dir.mkdir(parents=True, exist_ok=True)
