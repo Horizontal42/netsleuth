@@ -231,6 +231,16 @@ Network Destination        Netmask          Gateway       Interface  Metric
 def test_windows_default_gateway_returns_none_when_no_default_route_exists():
     assert _parse_windows_default_gateway("Active Routes:\nNone\n", socket.AF_INET) is None
 
+
+def test_windows_default_gateway_ignores_invalid_metric():
+    invalid = """
+Network Destination        Netmask          Gateway       Interface  Metric
+          0.0.0.0          0.0.0.0      192.168.1.1     192.168.1.34    invalid_metric
+          0.0.0.0          0.0.0.0      192.168.2.1     192.168.2.34     25
+"""
+    assert _parse_windows_default_gateway(invalid, socket.AF_INET) == "192.168.2.1"
+
+
 from dataclasses import dataclass
 
 @dataclass
