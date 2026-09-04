@@ -147,23 +147,37 @@ async def tier_ookla(
 
 
 async def tier_cloudflare(client: httpx.AsyncClient, cfg: Speedtest, timeout: float) -> SpeedResult:
-    down_samples: list[tuple[int, float]] = []
     cfl4: CfL4Stats | None = None
-    for size in cfg.download_sizes_bytes:
+
+    async def fetch_down(size: int) -> tuple[int, float, str]:
         began = time.perf_counter()
         response = await client.get(
             f"{cfg.cloudflare_base_url}/__down", params={"bytes": size}, timeout=timeout
         )
         response.raise_for_status()
-        down_samples.append((len(response.content), time.perf_counter() - began))
-        cfl4 = parse_server_timing_cfl4(response.headers.get("server-timing", "")) or cfl4
-    up_samples: list[tuple[int, float]] = []
-    for size in cfg.upload_sizes_bytes:
+        return len(response.content), time.perf_counter() - began, response.headers.get("server-timing", "")
+
+    down_results = await asyncio.gather(*(fetch_down(size) for size in cfg.download_sizes_bytes))
+
+    down_samples: list[tuple[int, float]] = []
+    for size, duration, server_timing in down_results:
+        down_samples.append((size, duration))
+        if server_timing:
+            cfl4 = parse_server_timing_cfl4(server_timing) or cfl4
+
+    async def fetch_up(size: int) -> tuple[int, float]:
         payload = b"\x00" * size
         began = time.perf_counter()
         response = await client.post(f"{cfg.cloudflare_base_url}/__up", content=payload, timeout=timeout)
         response.raise_for_status()
-        up_samples.append((size, time.perf_counter() - began))
+        return size, time.perf_counter() - began
+
+    up_results = await asyncio.gather(*(fetch_up(size) for size in cfg.upload_sizes_bytes))
+
+    up_samples: list[tuple[int, float]] = []
+    for size, duration in up_results:
+        up_samples.append((size, duration))
+
     return SpeedResult(
         method="cloudflare",
         download_mbps=throughput_from_samples(down_samples),
