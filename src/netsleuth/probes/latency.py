@@ -47,7 +47,7 @@ async def tcp_connect_rtt(
         _reader, writer = await asyncio.wait_for(
             asyncio.open_connection(host, port, local_addr=local_addr), timeout=timeout
         )
-    except (TimeoutError, OSError):
+    except TimeoutError, OSError:
         return None
     writer.close()
     try:
@@ -62,22 +62,32 @@ async def _resolve(host: str) -> str | None:
         loop = asyncio.get_running_loop()
         res = await loop.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
         return res[0][4][0]
-    except (OSError, IndexError):
+    except OSError, IndexError:
         return None
 
 
 async def _icmp_samples(
-    host: str, count: int, interval: float, timeout: float, backend: str, source_ip: str | None = None
+    host: str,
+    count: int,
+    interval: float,
+    timeout: float,
+    backend: str,
+    source_ip: str | None = None,
 ) -> list[float | None]:
     if backend == "icmp_win":
         from netsleuth.probes.icmp_win import ping_samples_win
 
-        return await asyncio.to_thread(ping_samples_win, host, count, interval, timeout, source_ip)
+        return await ping_samples_win(host, count, interval, timeout, source_ip)
     from icmplib import async_ping
 
     privileged = backend == "icmp_raw"
     host_result = await async_ping(
-        host, count=count, interval=interval, timeout=timeout, privileged=privileged, source=source_ip
+        host,
+        count=count,
+        interval=interval,
+        timeout=timeout,
+        privileged=privileged,
+        source=source_ip,
     )
     samples: list[float | None] = list(host_result.rtts)
     samples.extend([None] * (count - len(samples)))
@@ -96,11 +106,15 @@ async def ping_host(
 ) -> PingResult:
     if semaphore is not None:
         async with semaphore:
-            return await ping_host(host, label, count, interval, timeout, backend, source_ip)
+            return await ping_host(
+                host, label, count, interval, timeout, backend, source_ip
+            )
     resolved = await _resolve(host)
     if backend in ("icmp_win", "icmp_dgram", "icmp_raw"):
         try:
-            samples = await _icmp_samples(host, count, interval, timeout, backend, source_ip)
+            samples = await _icmp_samples(
+                host, count, interval, timeout, backend, source_ip
+            )
             return summarize_ping(label, host, resolved, backend, samples)
         except Exception:
             backend = "tcp"
@@ -108,7 +122,9 @@ async def ping_host(
     for index in range(count):
         if index:
             await asyncio.sleep(interval)
-        samples.append(await tcp_connect_rtt(host, timeout=timeout, source_ip=source_ip))
+        samples.append(
+            await tcp_connect_rtt(host, timeout=timeout, source_ip=source_ip)
+        )
     return summarize_ping(label, host, resolved, "tcp", samples)
 
 
@@ -125,7 +141,9 @@ async def ping_fanout(
     return list(
         await asyncio.gather(
             *(
-                ping_host(host, label, count, interval, timeout, backend, source_ip, semaphore)
+                ping_host(
+                    host, label, count, interval, timeout, backend, source_ip, semaphore
+                )
                 for label, host in hosts
             )
         )

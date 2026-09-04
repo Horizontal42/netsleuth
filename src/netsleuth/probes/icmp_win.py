@@ -48,9 +48,12 @@ def parse_echo_reply(buffer: bytes, pointer_size: int = 8) -> IcmpReply:
     ttl = buffer[ttl_offset]
     if status in (IP_REQ_TIMED_OUT,) or (a, b, c, d) == (0, 0, 0, 0):
         return IcmpReply(address=None, status=status, rtt_ms=None, ttl=ttl)
-    return IcmpReply(address=f"{a}.{b}.{c}.{d}", status=status, rtt_ms=float(rtt), ttl=ttl)
+    return IcmpReply(
+        address=f"{a}.{b}.{c}.{d}", status=status, rtt_ms=float(rtt), ttl=ttl
+    )
 
 
+import asyncio
 import ctypes
 import platform
 import socket
@@ -139,7 +142,11 @@ def echo_once(
     iphlpapi, handle = _handle()
     try:
         options = _IpOptionInformation(
-            Ttl=ttl, Tos=0, Flags=IP_FLAG_DF if df else 0, OptionsSize=0, OptionsData=None
+            Ttl=ttl,
+            Tos=0,
+            Flags=IP_FLAG_DF if df else 0,
+            OptionsSize=0,
+            OptionsData=None,
         )
         buffer = ctypes.create_string_buffer(_REPLY_BUFFER_SIZE)
         address = struct.unpack("<I", socket.inet_aton(dest))[0]
@@ -180,7 +187,7 @@ def echo_once(
         iphlpapi.IcmpCloseHandle(handle)
 
 
-def ping_samples_win(
+async def ping_samples_win(
     host: str, count: int, interval: float, timeout: float, source_ip: str | None = None
 ) -> list[float | None]:
     dest = socket.gethostbyname(host)
@@ -188,8 +195,10 @@ def ping_samples_win(
     samples: list[float | None] = []
     for index in range(count):
         if index:
-            time.sleep(interval)
-        reply = echo_once(dest, ttl=128, timeout_ms=timeout_ms, source_ip=source_ip)
+            await asyncio.sleep(interval)
+        reply = await asyncio.to_thread(
+            echo_once, dest, ttl=128, timeout_ms=timeout_ms, source_ip=source_ip
+        )
         samples.append(reply.rtt_ms if classify_status(reply.status) == "ok" else None)
     return samples
 
@@ -207,12 +216,16 @@ def trace_hops_win(
     # into 30 minutes of blocking IcmpSendEcho2 calls.
     address = socket.gethostbyname(dest)
     hops: list[tuple[int, IcmpReply]] = []
-    per_hop_timeout_ms = max(1, min(timeout_ms // max(max_hops, 1), _MAX_HOP_TIMEOUT_MS))
+    per_hop_timeout_ms = max(
+        1, min(timeout_ms // max(max_hops, 1), _MAX_HOP_TIMEOUT_MS)
+    )
     deadline = time.monotonic() + timeout_ms / 1000.0
     for ttl in range(1, max_hops + 1):
         if time.monotonic() >= deadline:
             break
-        reply = echo_once(address, ttl=ttl, timeout_ms=per_hop_timeout_ms, source_ip=source_ip)
+        reply = echo_once(
+            address, ttl=ttl, timeout_ms=per_hop_timeout_ms, source_ip=source_ip
+        )
         hops.append((ttl, reply))
         if classify_status(reply.status) == "ok":
             break
