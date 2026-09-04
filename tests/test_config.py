@@ -337,3 +337,29 @@ def test_prefix_bench_max_prefixes_is_capped_so_it_cannot_scan_a_whole_as(tmp_pa
     path.write_text("prefix_bench:\n  max_prefixes: 1000\n", encoding="utf-8")
     with pytest.raises(ValidationError, match="256"):
         load_settings(config_path=path, env_file=tmp_path / "nope.env")
+
+
+def test_settings_customise_sources_order():
+    from unittest.mock import MagicMock
+    from pydantic_settings import PydanticBaseSettingsSource, YamlConfigSettingsSource
+    from netsleuth.config import Settings
+
+    init_settings = MagicMock(spec=PydanticBaseSettingsSource)
+    env_settings = MagicMock(spec=PydanticBaseSettingsSource)
+    dotenv_settings = MagicMock(spec=PydanticBaseSettingsSource)
+    file_secret_settings = MagicMock(spec=PydanticBaseSettingsSource)
+
+    sources = Settings.settings_customise_sources(
+        Settings,
+        init_settings=init_settings,
+        env_settings=env_settings,
+        dotenv_settings=dotenv_settings,
+        file_secret_settings=file_secret_settings,
+    )
+
+    assert len(sources) == 5
+    assert sources[0] is init_settings
+    assert sources[1] is env_settings
+    assert sources[2] is dotenv_settings
+    assert isinstance(sources[3], YamlConfigSettingsSource)
+    assert sources[4] is file_secret_settings
