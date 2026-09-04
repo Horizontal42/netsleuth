@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import json
 import platform
 import shutil
@@ -17,13 +16,14 @@ _T = TypeVar("_T")
 
 
 def _run_in_daemon_thread(func: Callable[..., _T], *args: object) -> asyncio.Future[_T]:
+    from concurrent.futures import Future
     # asyncio.to_thread()/loop.run_in_executor(None, ...) queue work onto the
     # ThreadPoolExecutor-backed default executor, whose worker threads are non-daemon
     # and get joined by concurrent.futures' atexit handler. If the underlying call
     # (a blocking WinAPI IcmpSendEcho2) ever outlives its own timeout budget, that
     # join blocks process exit indefinitely. A raw daemon thread is never tracked
     # by that handler, so it can never hold the process open.
-    result: concurrent.futures.Future = concurrent.futures.Future()
+    result: Future = Future()
 
     def _target() -> None:
         if not result.set_running_or_notify_cancel():
