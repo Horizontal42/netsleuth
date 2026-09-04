@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import urlsplit
 
 import httpx
@@ -28,8 +29,33 @@ def classify_portal_response(
         if redirect_host and redirect_host != requested_host:
             return "portal", f"redirected to a different host ({redirect_host})"
     if status == 200 and body:
-        return "portal", f"200 with a non-empty body instead of the expected {expected_status}"
+        return (
+            "portal",
+            f"200 with a non-empty body instead of the expected {expected_status}",
+        )
     return "suspect", f"unexpected status {status}"
+
+
+async def _check_url(
+    client: httpx.AsyncClient,
+    url: str,
+    expected_status: int,
+    timeout: float,
+) -> PortalCheck:
+    try:
+        response = await client.get(url, follow_redirects=False, timeout=timeout)
+        verdict, evidence = classify_portal_response(
+            url,
+            response.status_code,
+            response.text,
+            response.headers.get("location"),
+            expected_status,
+        )
+        return PortalCheck(
+            url=url, status=response.status_code, verdict=verdict, evidence=evidence
+        )
+    except httpx.HTTPError as exc:
+        return PortalCheck(url=url, status=None, verdict="error", evidence=str(exc))
 
 
 async def check_captive_portal(
@@ -39,18 +65,8 @@ async def check_captive_portal(
     expected_status: int = 204,
     timeout: float,
 ) -> CaptivePortal:
-    checks: list[PortalCheck] = []
-    for url in urls:
-        try:
-            response = await client.get(url, follow_redirects=False, timeout=timeout)
-            verdict, evidence = classify_portal_response(
-                url, response.status_code, response.text, response.headers.get("location"), expected_status
-            )
-        except httpx.HTTPError as exc:
-            verdict, evidence = "error", str(exc)
-            checks.append(PortalCheck(url=url, status=None, verdict=verdict, evidence=evidence))
-            continue
-        checks.append(PortalCheck(url=url, status=response.status_code, verdict=verdict, evidence=evidence))
+    coroutines = [_check_url(client, url, expected_status, timeout) for url in urls]
+    checks = list(await asyncio.gather(*coroutines))
 
     portal_checks = [c for c in checks if c.verdict == "portal"]
     if portal_checks:
