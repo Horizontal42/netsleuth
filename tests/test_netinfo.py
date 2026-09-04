@@ -334,3 +334,10 @@ def test_collect_local_net_no_network(mock_resolvers, mock_gw, mock_stats, mock_
     assert result.default_gateway_v6 is None
     assert result.is_dual_stack is False
     assert result.cgnat is False
+
+@patch("netsleuth.netinfo.platform.system", return_value="Windows")
+def test_is_elevated_windows_exception(mock_system):
+    from netsleuth.netinfo import _is_elevated
+    with patch("netsleuth.netinfo.ctypes.windll", create=True) as mock_windll:
+        mock_windll.shell32.IsUserAnAdmin.side_effect = Exception("Some error")
+        assert _is_elevated() is False
