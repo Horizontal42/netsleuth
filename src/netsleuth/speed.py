@@ -124,6 +124,9 @@ async def tier_ookla(
     iface_name: str | None = None,
     ipv4: str | None = None,
 ) -> SpeedResult:
+    if server and server.startswith("-"):
+        raise ValueError("Invalid server argument: cannot start with '-'")
+
     args = [binary, "--format=json", "--accept-license", "--accept-gdpr"]
     args += ookla_interface_args(iface_name, ipv4)
     if server:

@@ -287,6 +287,15 @@ async def test_tier_ookla_success_parses_json():
         assert result.idle_rtt_ms == 15.5
 
 
+
+
+async def test_tier_ookla_server_argument_injection():
+    with pytest.raises(
+        ValueError, match="Invalid server argument: cannot start with '-'"
+    ):
+        await tier_ookla("speedtest", "--hacked", 10.0)
+
+
 async def test_tier_ookla_server_args():
     mock_proc = AsyncMock()
     mock_payload = {}
