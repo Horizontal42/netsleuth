@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import date, datetime
 from enum import Enum
+from functools import singledispatch
 from pathlib import Path
 from typing import Any
 
@@ -552,25 +553,59 @@ class PmtuResult:
             raise ValueError(f"unknown PmtuResult verdict: {self.verdict!r}")
 
 
+@singledispatch
 def to_jsonable(obj: Any) -> Any:
-    if obj is None or isinstance(obj, (str, bool, int)):
-        return obj
-    if isinstance(obj, float):
-        return obj if math.isfinite(obj) else None
     if is_dataclass(obj) and not isinstance(obj, type):
         return {f.name: to_jsonable(getattr(obj, f.name)) for f in fields(obj)}
-    if isinstance(obj, dict):
-        return {str(k): to_jsonable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [to_jsonable(v) for v in obj]
-    if isinstance(obj, (set, frozenset)):
-        return sorted(to_jsonable(v) for v in obj)
-    if isinstance(obj, Enum):
-        return to_jsonable(obj.value)
-    if isinstance(obj, (datetime, date)):
-        return obj.isoformat()
-    if isinstance(obj, Path):
-        return str(obj)
-    if isinstance(obj, bytes):
-        return obj.decode("utf-8", "replace")
     return str(obj)
+
+
+@to_jsonable.register(type(None))
+@to_jsonable.register(str)
+@to_jsonable.register(bool)
+@to_jsonable.register(int)
+def _(obj: Any) -> Any:
+    return obj
+
+
+@to_jsonable.register(float)
+def _(obj: float) -> Any:
+    return obj if math.isfinite(obj) else None
+
+
+@to_jsonable.register(dict)
+def _(obj: dict[Any, Any]) -> Any:
+    return {str(k): to_jsonable(v) for k, v in obj.items()}
+
+
+@to_jsonable.register(list)
+@to_jsonable.register(tuple)
+def _(obj: list[Any] | tuple[Any, ...]) -> Any:
+    return [to_jsonable(v) for v in obj]
+
+
+@to_jsonable.register(set)
+@to_jsonable.register(frozenset)
+def _(obj: set[Any] | frozenset[Any]) -> Any:
+    return sorted(to_jsonable(v) for v in obj)
+
+
+@to_jsonable.register(Enum)
+def _(obj: Enum) -> Any:
+    return to_jsonable(obj.value)
+
+
+@to_jsonable.register(datetime)
+@to_jsonable.register(date)
+def _(obj: datetime | date) -> Any:
+    return obj.isoformat()
+
+
+@to_jsonable.register(Path)
+def _(obj: Path) -> Any:
+    return str(obj)
+
+
+@to_jsonable.register(bytes)
+def _(obj: bytes) -> Any:
+    return obj.decode("utf-8", "replace")
