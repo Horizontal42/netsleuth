@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -116,6 +117,56 @@ def test_session_filename_marks_it_as_a_watch_artifact():
     session = WatchSession(started_at="2026-08-08T19:12:00Z", asn="AS64500")
     assert session.filename() == "watch_AS64500_19-12-00Z.json"
     assert WatchSession(started_at="2026-08-08T19:12:00Z").filename().startswith("watch_unknown_")
+
+
+@patch("netsleuth.watch.utc_now_iso")
+def test_watch_session_to_report_includes_all_metadata(mock_utc_now_iso):
+    mock_utc_now_iso.return_value = "2026-08-08T19:20:00Z"
+    session = WatchSession(
+        started_at="2026-08-08T19:12:00Z",
+        asn="AS64500",
+        interval_seconds=60,
+        speedtest_every_n_cycles=10,
+        interface="eth0",
+        bind_ipv4="192.168.1.100",
+    )
+    session.alerts_fired = 2
+
+    report = session.to_report()
+
+    assert report["schema_version"] == WATCH_SCHEMA_VERSION
+    assert report["kind"] == "watch"
+    assert report["meta"] == {
+        "started_at": "2026-08-08T19:12:00Z",
+        "finished_at": "2026-08-08T19:20:00Z",
+        "asn": "AS64500",
+        "interval_seconds": 60,
+        "speedtest_every_n_cycles": 10,
+        "cycle_count": 0,
+        "interface": "eth0",
+        "bind_ipv4": "192.168.1.100",
+        "alerts_fired": 2,
+    }
+    assert report["cycles"] == []
+
+
+@patch("netsleuth.watch.utc_now_iso")
+def test_watch_session_to_report_serializes_cycles_to_jsonable(mock_utc_now_iso):
+    mock_utc_now_iso.return_value = "2026-08-08T19:20:00Z"
+    session = WatchSession(started_at="2026-08-08T19:12:00Z")
+
+    cycle_data = summarize_cycle(1, "2026-08-08T19:15:00Z", [ping("cloudflare-dns", 12.4)], None)
+    session.add(cycle_data)
+
+    report = session.to_report()
+
+    assert report["meta"]["cycle_count"] == 1
+    assert len(report["cycles"]) == 1
+
+    first_cycle = report["cycles"][0]
+    assert first_cycle["cycle"] == 1
+    assert first_cycle["at"] == "2026-08-08T19:15:00Z"
+    assert first_cycle["status"] == "ok"
 
 
 def test_a_session_writes_exactly_one_artifact_holding_every_cycle(tmp_path: Path):
