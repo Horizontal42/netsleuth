@@ -410,6 +410,25 @@ async def test_refresh_netsets_skips_list_on_http_error_if_no_cache_exists(httpx
     assert not (cache_dir / "firehol_level2.netset").exists()
 
 
+async def test_refresh_netsets_read_and_parse(tmp_path, providers):
+    cache_dir = tmp_path / "firehol"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    path = cache_dir / "firehol_level1.netset"
+    path.write_text("10.0.0.0/8\n", encoding="utf-8")
+
+    # Restrict to only the provider we prepared
+    providers.firehol_netsets = ["http://example.com/firehol_level1.netset"]
+
+    with patch("pathlib.Path.read_text", autospec=True) as mock_read:
+        mock_read.return_value = "192.168.0.0/16\n"
+        async with httpx.AsyncClient() as client:
+            index = await refresh_netsets(client, providers, tmp_path)
+
+    mock_read.assert_called_once_with(path, encoding="utf-8")
+    assert index.hits("192.168.1.1") == ["firehol_level1"]
+
+
 def test_summarize_dnsbl_empty():
     hits, blocked = summarize_dnsbl([])
     assert hits == []
