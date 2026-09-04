@@ -4,6 +4,8 @@ import socket
 import ssl
 from datetime import UTC, datetime
 
+import pytest
+
 from netsleuth.probes.tls_rtt import (
     cert_name,
     cpu_bound_ratio,
@@ -63,7 +65,8 @@ def test_tls_context_verifies_by_default():
 
 
 def test_tls_context_disables_verification_when_asked():
-    ctx = tls_context(verify=False)
+    with pytest.warns(RuntimeWarning, match="TLS certificate verification is disabled"):
+        ctx = tls_context(verify=False)
     assert ctx.check_hostname is False
     assert ctx.verify_mode == ssl.CERT_NONE
 
@@ -83,7 +86,10 @@ def test_fingerprint_verdict_unpinned_when_host_has_no_pin():
 
 
 def test_fingerprint_verdict_mismatch_when_actual_is_none():
-    assert fingerprint_verdict("example.com", None, {"example.com": "aabbccdd"}) == "mismatch"
+    assert (
+        fingerprint_verdict("example.com", None, {"example.com": "aabbccdd"})
+        == "mismatch"
+    )
 
 
 def test_cert_name_flattens_the_rdn_sequence():

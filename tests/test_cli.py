@@ -1,5 +1,4 @@
-import os
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from unittest.mock import MagicMock, patch
 
 from netsleuth.cli import _dedupe, _os_timezone, parse_target
