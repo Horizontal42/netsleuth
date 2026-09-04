@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
 
 from netsleuth.models import PingResult
-from netsleuth.probes.latency import summarize_ping, tcp_connect_rtt, _resolve, _icmp_samples
+from netsleuth.probes.latency import (
+    summarize_ping,
+    tcp_connect_rtt,
+    _resolve,
+    _icmp_samples,
+)
 
 
 def test_summarize_ping_calculates_correct_stats():
@@ -68,6 +73,7 @@ async def test_tcp_connect_rtt_oserror(mock_open_conn):
     rtt = await tcp_connect_rtt("host.com")
     assert rtt is None
 
+
 @pytest.mark.asyncio
 async def test_resolve_success():
     # Mock loop.getaddrinfo via asyncio.get_running_loop
@@ -75,9 +81,7 @@ async def test_resolve_success():
     with patch.object(loop, "getaddrinfo", new_callable=AsyncMock) as mock_getaddrinfo:
         # getaddrinfo returns list of tuples: (family, type, proto, canonname, sockaddr)
         # sockaddr is (address, port) for IPv4
-        mock_getaddrinfo.return_value = [
-            (2, 1, 6, '', ('1.2.3.4', 0))
-        ]
+        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("1.2.3.4", 0))]
         ip = await _resolve("host.com")
         assert ip == "1.2.3.4"
 
@@ -92,17 +96,12 @@ async def test_resolve_failure():
 
 
 @pytest.mark.asyncio
-@patch("netsleuth.probes.latency.asyncio.to_thread", new_callable=AsyncMock)
-async def test_icmp_samples_win(mock_to_thread):
-    mock_to_thread.return_value = [10.0, 15.0]
+@patch("netsleuth.probes.icmp_win.ping_samples_win", new_callable=AsyncMock)
+async def test_icmp_samples_win(mock_ping_samples_win):
+    mock_ping_samples_win.return_value = [10.0, 15.0]
     samples = await _icmp_samples("host.com", 2, 0.5, 2.0, "icmp_win", source_ip=None)
     assert samples == [10.0, 15.0]
-    mock_to_thread.assert_called_once()
-    # The first argument should be the ping_samples_win function
-    func_arg = mock_to_thread.call_args[0][0]
-    assert func_arg.__name__ == "ping_samples_win"
-    # The remaining arguments
-    assert mock_to_thread.call_args[0][1:] == ("host.com", 2, 0.5, 2.0, None)
+    mock_ping_samples_win.assert_called_once_with("host.com", 2, 0.5, 2.0, None)
 
 
 @pytest.mark.asyncio
@@ -133,7 +132,12 @@ async def test_icmp_samples_unix_dgram_padded():
         # Should be padded with Nones to length 3
         assert samples == [10.0, None, None]
         mock_async_ping.assert_called_once_with(
-            "host.com", count=3, interval=0.5, timeout=2.0, privileged=False, source=None
+            "host.com",
+            count=3,
+            interval=0.5,
+            timeout=2.0,
+            privileged=False,
+            source=None,
         )
 
 
@@ -160,7 +164,9 @@ async def test_ping_host_icmp_success(mock_icmp_samples, mock_resolve):
 @patch("netsleuth.probes.latency._resolve", new_callable=AsyncMock)
 @patch("netsleuth.probes.latency._icmp_samples", new_callable=AsyncMock)
 @patch("netsleuth.probes.latency.tcp_connect_rtt", new_callable=AsyncMock)
-async def test_ping_host_icmp_exception_fallback(mock_tcp_connect, mock_icmp_samples, mock_resolve):
+async def test_ping_host_icmp_exception_fallback(
+    mock_tcp_connect, mock_icmp_samples, mock_resolve
+):
     mock_resolve.return_value = "1.2.3.4"
     mock_icmp_samples.side_effect = Exception("ICMP failed")
     mock_tcp_connect.side_effect = [15.0, 16.0]
@@ -190,7 +196,9 @@ async def test_ping_host_tcp_direct(mock_tcp_connect, mock_resolve):
 async def test_ping_host_semaphore():
     semaphore = asyncio.Semaphore(1)
 
-    with patch("netsleuth.probes.latency.ping_host", new_callable=AsyncMock) as mock_ping_host:
+    with patch(
+        "netsleuth.probes.latency.ping_host", new_callable=AsyncMock
+    ) as mock_ping_host:
         mock_ping_host.return_value = MagicMock()
 
         # When called with a semaphore, ping_host calls itself without the semaphore inside the block
