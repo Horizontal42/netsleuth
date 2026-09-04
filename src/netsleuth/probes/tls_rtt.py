@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import ssl
 import time
+import warnings
 from datetime import UTC, datetime
 
 from netsleuth.models import TlsResult
@@ -19,7 +20,9 @@ def split_timings(
     return tcp_rtt_ms, handshake_ms, ttfb_ms
 
 
-def cpu_bound_ratio(tls_handshake_ms: float | None, tcp_rtt_ms: float | None) -> float | None:
+def cpu_bound_ratio(
+    tls_handshake_ms: float | None, tcp_rtt_ms: float | None
+) -> float | None:
     if tls_handshake_ms is None or not tcp_rtt_ms:
         return None
     return tls_handshake_ms / tcp_rtt_ms
@@ -28,13 +31,20 @@ def cpu_bound_ratio(tls_handshake_ms: float | None, tcp_rtt_ms: float | None) ->
 def tls_context(verify: bool = True) -> ssl.SSLContext:
     ctx = ssl.create_default_context()
     if not verify:
+        warnings.warn(
+            "TLS certificate verification is disabled. This connection is insecure.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
     ctx.set_alpn_protocols(["h2", "http/1.1"])
     return ctx
 
 
-def fingerprint_verdict(host: str, actual_sha256: str | None, pins: dict[str, str]) -> str:
+def fingerprint_verdict(
+    host: str, actual_sha256: str | None, pins: dict[str, str]
+) -> str:
     pin = pins.get(host)
     if not pin:
         return "unpinned"
@@ -76,7 +86,9 @@ async def measure_tls(
     result = TlsResult(label=label, host=host, port=port)
     pins = pins or {}
     try:
-        tcp_rtt_ms = await tcp_connect_rtt(host, port=port, timeout=timeout, source_ip=source_ip)
+        tcp_rtt_ms = await tcp_connect_rtt(
+            host, port=port, timeout=timeout, source_ip=source_ip
+        )
         result.tcp_rtt_ms = tcp_rtt_ms
 
         local_addr = (source_ip, 0) if source_ip else None
@@ -84,7 +96,11 @@ async def measure_tls(
         async def _connect(do_verify: bool):
             return await asyncio.wait_for(
                 asyncio.open_connection(
-                    host, port, ssl=tls_context(verify=do_verify), server_hostname=host, local_addr=local_addr
+                    host,
+                    port,
+                    ssl=tls_context(verify=do_verify),
+                    server_hostname=host,
+                    local_addr=local_addr,
                 ),
                 timeout=timeout,
             )
@@ -124,7 +140,9 @@ async def measure_tls(
                 result.cert_not_after = parsed.get("notAfter")
                 result.cert_days_remaining = days_remaining(result.cert_not_after)
 
-        request = f"HEAD / HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n".encode()
+        request = (
+            f"HEAD / HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n".encode()
+        )
         began_ttfb = time.perf_counter()
         writer.write(request)
         await writer.drain()
@@ -137,7 +155,9 @@ async def measure_tls(
         except OSError:
             pass
 
-        _tcp_rtt_ms, handshake_ms, ttfb_ms = split_timings(tcp_rtt_ms, tls_total_ms, ttfb_ms)
+        _tcp_rtt_ms, handshake_ms, ttfb_ms = split_timings(
+            tcp_rtt_ms, tls_total_ms, ttfb_ms
+        )
         result.tls_handshake_ms = handshake_ms
         result.ttfb_ms = ttfb_ms
     except (OSError, TimeoutError, ssl.SSLError) as exc:
@@ -160,7 +180,15 @@ async def tls_fanout(
     async def _bounded(label: str, host: str) -> TlsResult:
         async with semaphore:
             return await measure_tls(
-                label, host, port=port, timeout=timeout, source_ip=source_ip, verify=verify, pins=pins
+                label,
+                host,
+                port=port,
+                timeout=timeout,
+                source_ip=source_ip,
+                verify=verify,
+                pins=pins,
             )
 
-    return list(await asyncio.gather(*(_bounded(label, host) for label, host in targets)))
+    return list(
+        await asyncio.gather(*(_bounded(label, host) for label, host in targets))
+    )
