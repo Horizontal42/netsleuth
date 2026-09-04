@@ -245,6 +245,20 @@ async def test_cascade_records_exception_class_name_when_no_message_provided():
     assert result.tier_attempts[0].reason == "Exception"
 
 
+async def test_cascade_catches_base_exception():
+    class MyBaseException(BaseException):
+        pass
+
+    async def bad() -> SpeedResult:
+        raise MyBaseException("base error")
+
+    result = await run_speed_cascade([("bad", bad)])
+    assert result.method == "none"
+    assert len(result.tier_attempts) == 1
+    assert result.tier_attempts[0].ok is False
+    assert result.tier_attempts[0].reason == "base error"
+
+
 async def test_cascade_never_swallows_cancellation():
     import asyncio
 
