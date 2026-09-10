@@ -287,6 +287,17 @@ class TraceConfig:
     max_hops: int = 30
 
 
+@dataclass(frozen=True)
+class TraceCommandOpts:
+    backend: str
+    binary: str
+    target: str
+    max_hops: int
+    cycles: int
+    os_name: str
+    source_ip: str | None = None
+
+
 @dataclass
 class TraceHop:
     ttl: int
