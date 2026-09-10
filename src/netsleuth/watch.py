@@ -99,7 +99,9 @@ class WatchSession:
         self.cycles.append(summary)
 
     def history(self, label: str) -> list[float | None]:
-        return [(cycle["hosts"].get(label) or {}).get("avg_ms") for cycle in self.cycles]
+        return [
+            (cycle["hosts"].get(label) or {}).get("avg_ms") for cycle in self.cycles
+        ]
 
     def labels(self) -> list[str]:
         seen: list[str] = []
@@ -137,7 +139,9 @@ def write_session(session: WatchSession, logs_dir: Path) -> Path:
 
 
 def render_dashboard(session: WatchSession) -> Table:
-    table = Table(title=f"netsleuth --watch · {session.asn or 'unknown ASN'} · cycle {len(session.cycles)}")
+    table = Table(
+        title=f"netsleuth --watch · {session.asn or 'unknown ASN'} · cycle {len(session.cycles)}"
+    )
     for column in ("Host", "Avg ms", "Jitter", "Loss", "Trend"):
         table.add_column(column)
     latest = session.cycles[-1]["hosts"] if session.cycles else {}
@@ -153,7 +157,9 @@ def render_dashboard(session: WatchSession) -> Table:
     caption_parts: list[str] = []
     if session.cycles:
         last = session.cycles[-1]
-        caption_parts.append(f"verdict: {last.get('status', '?')} ({last.get('score', '?')}/100)")
+        caption_parts.append(
+            f"verdict: {last.get('status', '?')} ({last.get('score', '?')}/100)"
+        )
     speed = next((c["speed"] for c in reversed(session.cycles) if c["speed"]), None)
     if speed:
         caption_parts.append(
@@ -163,7 +169,6 @@ def render_dashboard(session: WatchSession) -> Table:
     if caption_parts:
         table.caption = " · ".join(caption_parts)
     return table
-
 
 
 async def _measure_cycle(
@@ -186,7 +191,10 @@ async def _measure_cycle(
         source_ip=bind.ipv4 if bind else None,
     )
     speed = None
-    if is_speedtest_cycle(cycle, session.speedtest_every_n_cycles) and not options.quick:
+    if (
+        is_speedtest_cycle(cycle, session.speedtest_every_n_cycles)
+        and not options.quick
+    ):
         result = await run_module(
             "speed",
             _speed_section(client, settings, options, None),
@@ -199,7 +207,6 @@ async def _measure_cycle(
 async def _maybe_fire_webhook(
     client: httpx.AsyncClient,
     webhook_url: str | None,
-    fire_on: set[str],
     settings: Settings,
     session: WatchSession,
     cycle_summary: dict[str, Any],
@@ -215,8 +222,7 @@ async def _maybe_fire_webhook(
         current_status,
         last_fired_at,
         time.perf_counter(),
-        settings.watch.webhook_min_interval_seconds,
-        fire_on,
+        settings.watch,
     ):
         payload = build_payload(
             {"asn": session.asn, "interface": session.interface},
@@ -224,10 +230,13 @@ async def _maybe_fire_webhook(
             previous_status,
             current_status,
         )
-        if await post_webhook(client, webhook_url, payload, settings.timeouts.http_seconds):
+        if await post_webhook(
+            client, webhook_url, payload, settings.timeouts.http_seconds
+        ):
             session.alerts_fired += 1
             return time.perf_counter()
     return last_fired_at
+
 
 async def run_watch(settings: Settings, options) -> Path:
     # Imported here, not at module import time: cli imports watch lazily for --watch,
@@ -247,14 +256,15 @@ async def run_watch(settings: Settings, options) -> Path:
     if options.extra_host:
         hosts.append(("target-host", options.extra_host))
     console = Console()
-    console.print(f"netsleuth {__version__} · watching every {session.interval_seconds}s · Ctrl-C to stop")
+    console.print(
+        f"netsleuth {__version__} · watching every {session.interval_seconds}s · Ctrl-C to stop"
+    )
 
     webhook_url = options.webhook or settings.watch.webhook_url
-    fire_on = set(settings.watch.webhook_on)
     if webhook_url:
         console.print(
             f"[yellow]--watch will POST your ASN and finding titles to {webhook_url} "
-            f"on a verdict transition into {sorted(fire_on)}.[/yellow]"
+            f"on a verdict transition into {sorted(set(settings.watch.webhook_on))}.[/yellow]"
         )
     previous_status: str | None = None
     last_fired_at: float | None = None
@@ -269,27 +279,49 @@ async def run_watch(settings: Settings, options) -> Path:
         try:
             geo, _cf, _flags, _raw = await gather_identity(client, settings.providers)
             session.asn = geo.asn
-        except (httpx.HTTPError, OSError):
+        except httpx.HTTPError, OSError:
             session.asn = None
 
         cycle = 1
         try:
-            with Live(render_dashboard(session), console=console, refresh_per_second=settings.watch.dashboard_refresh_hz) as live:
+            with Live(
+                render_dashboard(session),
+                console=console,
+                refresh_per_second=settings.watch.dashboard_refresh_hz,
+            ) as live:
                 while True:
                     began = time.perf_counter()
                     pings, speed = await _measure_cycle(
-                        client, settings, options, session, cycle, hosts, caps, bind, _speed_section
+                        client,
+                        settings,
+                        options,
+                        session,
+                        cycle,
+                        hosts,
+                        caps,
+                        bind,
+                        _speed_section,
                     )
-                    cycle_summary = summarize_cycle(cycle, utc_now_iso(), pings, speed, settings.thresholds)
+                    cycle_summary = summarize_cycle(
+                        cycle, utc_now_iso(), pings, speed, settings.thresholds
+                    )
                     session.add(cycle_summary)
                     last_fired_at = await _maybe_fire_webhook(
-                        client, webhook_url, fire_on, settings, session, cycle_summary, previous_status, last_fired_at
+                        client,
+                        webhook_url,
+                        settings,
+                        session,
+                        cycle_summary,
+                        previous_status,
+                        last_fired_at,
                     )
                     previous_status = cycle_summary["status"]
                     live.update(render_dashboard(session))
-                    await asyncio.sleep(next_delay(began, time.perf_counter(), session.interval_seconds))
+                    await asyncio.sleep(
+                        next_delay(began, time.perf_counter(), session.interval_seconds)
+                    )
                     cycle += 1
-        except (KeyboardInterrupt, asyncio.CancelledError):
+        except KeyboardInterrupt, asyncio.CancelledError:
             pass
 
     path = write_session(session, Path(settings.output.logs_dir))
