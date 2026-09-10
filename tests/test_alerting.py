@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import httpx
+from unittest.mock import AsyncMock, patch
 
 from netsleuth.alerting import build_payload, post_webhook, should_fire
 from netsleuth.exporter import dump_json
@@ -67,3 +68,11 @@ async def test_post_webhook_returns_false_and_never_raises_on_failure(httpx_mock
     async with httpx.AsyncClient() as client:
         ok = await post_webhook(client, "https://example.com/hook", {"a": 1}, timeout=5.0)
     assert ok is False
+
+
+async def test_post_webhook_returns_false_on_oserror():
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.side_effect = OSError("Network unreachable")
+        async with httpx.AsyncClient() as client:
+            ok = await post_webhook(client, "https://example.com/hook", {"a": 1}, timeout=5.0)
+        assert ok is False
