@@ -334,3 +334,18 @@ def test_collect_local_net_no_network(mock_resolvers, mock_gw, mock_stats, mock_
     assert result.default_gateway_v6 is None
     assert result.is_dual_stack is False
     assert result.cgnat is False
+
+
+@patch("netsleuth.netinfo.subprocess.run")
+@patch("builtins.open")
+def test_resolvers_unix_resolv_conf_oserror(mock_open, mock_run):
+    from netsleuth.netinfo import _resolvers_unix
+
+    mock_open.side_effect = OSError("No such file or directory")
+
+    mock_scutil = mock_run.return_value
+    mock_scutil.stdout = ""
+
+    result = _resolvers_unix()
+
+    assert result == {}
