@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import struct
+from dataclasses import dataclass
 from typing import NamedTuple
 
 IP_SUCCESS = 0
@@ -20,6 +21,16 @@ class IcmpReply(NamedTuple):
     status: int
     rtt_ms: float | None
     ttl: int
+
+
+@dataclass
+class IcmpRequest:
+    dest: str
+    ttl: int
+    timeout_ms: int
+    payload: bytes = b"netsleuth"
+    source_ip: str | None = None
+    df: bool = False
 
 
 def classify_status(status: int) -> str:
@@ -128,23 +139,16 @@ def _handle():
     return iphlpapi, handle
 
 
-def echo_once(
-    dest: str,
-    ttl: int,
-    timeout_ms: int,
-    payload: bytes = b"netsleuth",
-    source_ip: str | None = None,
-    df: bool = False,
-) -> IcmpReply:
+def echo_once(req: IcmpRequest) -> IcmpReply:
     iphlpapi, handle = _handle()
     try:
         options = _IpOptionInformation(
-            Ttl=ttl, Tos=0, Flags=IP_FLAG_DF if df else 0, OptionsSize=0, OptionsData=None
+            Ttl=req.ttl, Tos=0, Flags=IP_FLAG_DF if req.df else 0, OptionsSize=0, OptionsData=None
         )
         buffer = ctypes.create_string_buffer(_REPLY_BUFFER_SIZE)
-        address = struct.unpack("<I", socket.inet_aton(dest))[0]
-        if source_ip:
-            source = struct.unpack("<I", socket.inet_aton(source_ip))[0]
+        address = struct.unpack("<I", socket.inet_aton(req.dest))[0]
+        if req.source_ip:
+            source = struct.unpack("<I", socket.inet_aton(req.source_ip))[0]
             count = iphlpapi.IcmpSendEcho2Ex(
                 handle,
                 None,
@@ -152,12 +156,12 @@ def echo_once(
                 None,
                 ctypes.c_uint32(source),
                 ctypes.c_uint32(address),
-                payload,
-                ctypes.c_ushort(len(payload)),
+                req.payload,
+                ctypes.c_ushort(len(req.payload)),
                 ctypes.byref(options),
                 buffer,
                 ctypes.c_uint32(_REPLY_BUFFER_SIZE),
-                ctypes.c_uint32(timeout_ms),
+                ctypes.c_uint32(req.timeout_ms),
             )
         else:
             count = iphlpapi.IcmpSendEcho2(
@@ -166,12 +170,12 @@ def echo_once(
                 None,
                 None,
                 ctypes.c_uint32(address),
-                payload,
-                ctypes.c_ushort(len(payload)),
+                req.payload,
+                ctypes.c_ushort(len(req.payload)),
                 ctypes.byref(options),
                 buffer,
                 ctypes.c_uint32(_REPLY_BUFFER_SIZE),
-                ctypes.c_uint32(timeout_ms),
+                ctypes.c_uint32(req.timeout_ms),
             )
         if count == 0:
             return IcmpReply(address=None, status=IP_REQ_TIMED_OUT, rtt_ms=None, ttl=0)
@@ -189,7 +193,9 @@ def ping_samples_win(
     for index in range(count):
         if index:
             time.sleep(interval)
-        reply = echo_once(dest, ttl=128, timeout_ms=timeout_ms, source_ip=source_ip)
+        reply = echo_once(
+            IcmpRequest(dest=dest, ttl=128, timeout_ms=timeout_ms, source_ip=source_ip)
+        )
         samples.append(reply.rtt_ms if classify_status(reply.status) == "ok" else None)
     return samples
 
@@ -212,7 +218,9 @@ def trace_hops_win(
     for ttl in range(1, max_hops + 1):
         if time.monotonic() >= deadline:
             break
-        reply = echo_once(address, ttl=ttl, timeout_ms=per_hop_timeout_ms, source_ip=source_ip)
+        reply = echo_once(
+            IcmpRequest(dest=address, ttl=ttl, timeout_ms=per_hop_timeout_ms, source_ip=source_ip)
+        )
         hops.append((ttl, reply))
         if classify_status(reply.status) == "ok":
             break
