@@ -147,16 +147,26 @@ async def tier_ookla(
 
 
 async def tier_cloudflare(client: httpx.AsyncClient, cfg: Speedtest, timeout: float) -> SpeedResult:
-    down_samples: list[tuple[int, float]] = []
     cfl4: CfL4Stats | None = None
-    for size in cfg.download_sizes_bytes:
-        began = time.perf_counter()
-        response = await client.get(
+
+    down_tasks = [
+        client.get(
             f"{cfg.cloudflare_base_url}/__down", params={"bytes": size}, timeout=timeout
         )
+        for size in cfg.download_sizes_bytes
+    ]
+    down_began = time.perf_counter()
+    down_responses = await asyncio.gather(*down_tasks)
+    down_elapsed = time.perf_counter() - down_began
+
+    down_bytes = 0
+    for response in down_responses:
         response.raise_for_status()
-        down_samples.append((len(response.content), time.perf_counter() - began))
+        down_bytes += len(response.content)
         cfl4 = parse_server_timing_cfl4(response.headers.get("server-timing", "")) or cfl4
+
+    down_samples: list[tuple[int, float]] = [(down_bytes, down_elapsed)] if down_bytes > 0 else []
+
     up_samples: list[tuple[int, float]] = []
     for size in cfg.upload_sizes_bytes:
         payload = b"\x00" * size
