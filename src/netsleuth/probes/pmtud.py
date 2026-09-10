@@ -69,13 +69,22 @@ def supports_df() -> tuple[bool, str]:
 async def _probe_windows(
     resolved_ip: str, size: int, timeout: float, source_ip: str | None
 ) -> tuple[bool, bool]:
-    from netsleuth.probes.icmp_win import classify_status, echo_once
+    from netsleuth.probes.icmp_win import IcmpRequest, classify_status, echo_once
 
     payload = b"\x00" * max(0, size - _IPV4_ICMP_OVERHEAD)
     timeout_ms = int(timeout * 1000)
 
     def _run():
-        return echo_once(resolved_ip, ttl=64, timeout_ms=timeout_ms, payload=payload, source_ip=source_ip, df=True)
+        return echo_once(
+            IcmpRequest(
+                dest=resolved_ip,
+                ttl=64,
+                timeout_ms=timeout_ms,
+                payload=payload,
+                source_ip=source_ip,
+                df=True,
+            )
+        )
 
     reply = await asyncio.to_thread(_run)
     kind = classify_status(reply.status)
