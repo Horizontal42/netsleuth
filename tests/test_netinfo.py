@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from netsleuth.models import Capabilities
 from netsleuth.netinfo import (
+    _is_elevated,
     choose_latency_backend,
     choose_trace_backend,
     degradation_note,
@@ -334,3 +335,45 @@ def test_collect_local_net_no_network(mock_resolvers, mock_gw, mock_stats, mock_
     assert result.default_gateway_v6 is None
     assert result.is_dual_stack is False
     assert result.cgnat is False
+
+@patch("netsleuth.netinfo.platform.system")
+@patch("netsleuth.netinfo.ctypes.windll", create=True)
+def test_is_elevated_windows_admin(mock_windll, mock_system):
+    mock_system.return_value = "Windows"
+    mock_windll.shell32.IsUserAnAdmin.return_value = 1
+    assert _is_elevated() is True
+
+@patch("netsleuth.netinfo.platform.system")
+@patch("netsleuth.netinfo.ctypes.windll", create=True)
+def test_is_elevated_windows_not_admin(mock_windll, mock_system):
+    mock_system.return_value = "Windows"
+    mock_windll.shell32.IsUserAnAdmin.return_value = 0
+    assert _is_elevated() is False
+
+@patch("netsleuth.netinfo.platform.system")
+@patch("netsleuth.netinfo.ctypes.windll", create=True)
+def test_is_elevated_windows_exception(mock_windll, mock_system):
+    mock_system.return_value = "Windows"
+    mock_windll.shell32.IsUserAnAdmin.side_effect = Exception("Test")
+    assert _is_elevated() is False
+
+@patch("netsleuth.netinfo.platform.system")
+@patch("netsleuth.netinfo.os")
+def test_is_elevated_unix_root(mock_os, mock_system):
+    mock_system.return_value = "Linux"
+    mock_os.geteuid.return_value = 0
+    assert _is_elevated() is True
+
+@patch("netsleuth.netinfo.platform.system")
+@patch("netsleuth.netinfo.os")
+def test_is_elevated_unix_not_root(mock_os, mock_system):
+    mock_system.return_value = "Linux"
+    mock_os.geteuid.return_value = 1000
+    assert _is_elevated() is False
+
+@patch("netsleuth.netinfo.platform.system")
+@patch("netsleuth.netinfo.os")
+def test_is_elevated_unix_no_geteuid(mock_os, mock_system):
+    mock_system.return_value = "Linux"
+    del mock_os.geteuid
+    assert _is_elevated() is False
