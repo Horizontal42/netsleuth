@@ -201,7 +201,8 @@ def _resolvers_windows() -> dict[str, list[str]]:
 def _resolvers_unix() -> dict[str, list[str]]:
     adapters: dict[str, list[str]] = {}
     try:
-        text = open("/etc/resolv.conf", encoding="utf-8", errors="replace").read()
+        with open("/etc/resolv.conf", encoding="utf-8", errors="replace") as f:
+            text = f.read()
     except OSError:
         text = ""
     servers = [line.split()[1] for line in text.splitlines() if line.startswith("nameserver") and len(line.split()) > 1]
