@@ -111,7 +111,6 @@ def test_degradation_note_on_windows_mentions_the_api_rather_than_sysctl():
 
 import pytest
 
-from unittest.mock import patch
 
 from netsleuth.netinfo import iface_for_ip, is_tunnel_iface, mtu_anomaly, primary_interface_ip
 
@@ -244,7 +243,6 @@ class MockStats:
 
 from unittest.mock import patch
 from netsleuth.netinfo import collect_local_net
-from netsleuth.models import LocalNet
 
 @patch("netsleuth.netinfo.primary_interface_ip")
 @patch("netsleuth.netinfo.psutil.net_if_addrs")

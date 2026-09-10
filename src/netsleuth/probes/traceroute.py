@@ -9,7 +9,7 @@ import threading
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
-from netsleuth.models import Capabilities, TraceConfig, TraceHop, TraceResult
+from netsleuth.models import Capabilities, TraceCommandOpts, TraceConfig, TraceHop, TraceResult
 from netsleuth.probes.icmp_win import IcmpReply, classify_status
 from netsleuth.traceparse import build_trace_result, finalize_hop
 
@@ -63,30 +63,22 @@ def filter_trace_tiers(order: list[str], os_name: str, forced_v4: bool) -> tuple
     return [t for t in order if t != "system_traceroute"], ["system_traceroute"]
 
 
-def trace_argv(
-    backend: str,
-    binary: str,
-    target: str,
-    max_hops: int,
-    cycles: int,
-    os_name: str,
-    source_ip: str | None = None,
-) -> list[str]:
-    if backend == "mtr_json":
-        args = [binary, "--json", "--report-cycles", str(cycles), "--max-ttl", str(max_hops)]
-        if source_ip:
-            args += ["--address", source_ip]
-        args.append(target)
+def trace_argv(opts: TraceCommandOpts) -> list[str]:
+    if opts.backend == "mtr_json":
+        args = [opts.binary, "--json", "--report-cycles", str(opts.cycles), "--max-ttl", str(opts.max_hops)]
+        if opts.source_ip:
+            args += ["--address", opts.source_ip]
+        args.append(opts.target)
         return args
-    if backend == "system_traceroute":
-        if os_name == "Windows":
-            return [binary, "-h", str(max_hops), "-w", "2", target]
-        args = [binary, "-m", str(max_hops), "-w", "2"]
-        if source_ip:
-            args += ["-s", source_ip]
-        args.append(target)
+    if opts.backend == "system_traceroute":
+        if opts.os_name == "Windows":
+            return [opts.binary, "-h", str(opts.max_hops), "-w", "2", opts.target]
+        args = [opts.binary, "-m", str(opts.max_hops), "-w", "2"]
+        if opts.source_ip:
+            args += ["-s", opts.source_ip]
+        args.append(opts.target)
         return args
-    raise ValueError(f"unsupported backend for trace_argv: {backend!r}")
+    raise ValueError(f"unsupported backend for trace_argv: {opts.backend!r}")
 
 
 async def run_cascade(tiers: list[tuple[str, Callable[[], Awaitable[TraceResult]]]]) -> TraceResult:
@@ -139,9 +131,16 @@ def _console_encoding() -> str:
 async def _tier_mtr(
     target: str, binary: str, cycles: int, max_hops: int, timeout: float, source_ip: str | None = None
 ) -> TraceResult:
-    text = await _run(
-        trace_argv("mtr_json", binary, target, max_hops, cycles, platform.system(), source_ip), timeout
+    opts = TraceCommandOpts(
+        backend="mtr_json",
+        binary=binary,
+        target=target,
+        max_hops=max_hops,
+        cycles=cycles,
+        os_name=platform.system(),
+        source_ip=source_ip,
     )
+    text = await _run(trace_argv(opts), timeout)
     payload = json.loads(text)
     report = payload.get("report") or {}
     hops = []
@@ -212,7 +211,16 @@ async def _tier_system(
     target: str, binary: str, max_hops: int, timeout: float, source_ip: str | None = None
 ) -> TraceResult:
     os_name = platform.system()
-    args = trace_argv("system_traceroute", binary, target, max_hops, 1, os_name, source_ip)
+    opts = TraceCommandOpts(
+        backend="system_traceroute",
+        binary=binary,
+        target=target,
+        max_hops=max_hops,
+        cycles=1,
+        os_name=os_name,
+        source_ip=source_ip,
+    )
+    args = trace_argv(opts)
     text = await _run(args, timeout)
     config = TraceConfig(target=target, resolved_ip=None, max_hops=max_hops)
     return build_trace_result(text, os_name, config)

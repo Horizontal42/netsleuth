@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from netsleuth.models import Capabilities, TraceHop, TraceResult
+from netsleuth.models import Capabilities, TraceCommandOpts, TraceHop, TraceResult
 from netsleuth.probes.icmp_win import (
     IP_REQ_TIMED_OUT,
     IP_SUCCESS,
@@ -245,7 +245,8 @@ def test_filter_trace_tiers_is_a_noop_when_system_traceroute_is_absent():
 
 
 def test_trace_argv_mtr_adds_address_flag_when_source_given():
-    args = trace_argv("mtr_json", "/usr/bin/mtr", "1.1.1.1", max_hops=30, cycles=10, os_name="Linux", source_ip="192.168.1.34")
+    opts = TraceCommandOpts("mtr_json", "/usr/bin/mtr", "1.1.1.1", max_hops=30, cycles=10, os_name="Linux", source_ip="192.168.1.34")
+    args = trace_argv(opts)
     assert args == [
         "/usr/bin/mtr", "--json", "--report-cycles", "10", "--max-ttl", "30",
         "--address", "192.168.1.34", "1.1.1.1",
@@ -253,22 +254,25 @@ def test_trace_argv_mtr_adds_address_flag_when_source_given():
 
 
 def test_trace_argv_mtr_omits_address_flag_without_a_source():
-    args = trace_argv("mtr_json", "/usr/bin/mtr", "1.1.1.1", max_hops=30, cycles=10, os_name="Linux")
+    opts = TraceCommandOpts("mtr_json", "/usr/bin/mtr", "1.1.1.1", max_hops=30, cycles=10, os_name="Linux")
+    args = trace_argv(opts)
     assert "--address" not in args
 
 
 def test_trace_argv_unix_traceroute_adds_source_flag():
-    args = trace_argv(
+    opts = TraceCommandOpts(
         "system_traceroute", "/usr/bin/traceroute", "1.1.1.1", max_hops=30, cycles=1,
         os_name="Linux", source_ip="192.168.1.34",
     )
+    args = trace_argv(opts)
     assert args == ["/usr/bin/traceroute", "-m", "30", "-w", "2", "-s", "192.168.1.34", "1.1.1.1"]
 
 
 def test_trace_argv_windows_tracert_never_gets_a_source_flag():
-    args = trace_argv(
+    opts = TraceCommandOpts(
         "system_traceroute", "tracert", "1.1.1.1", max_hops=30, cycles=1,
         os_name="Windows", source_ip="192.168.1.34",
     )
+    args = trace_argv(opts)
     assert args == ["tracert", "-h", "30", "-w", "2", "1.1.1.1"]
     assert "-s" not in args and "-S" not in args
