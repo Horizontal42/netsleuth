@@ -14,7 +14,7 @@ from netsleuth.models import SpeedResult
 from netsleuth.speed import NDT7_CONSENT_NOTICE, run_speed_cascade
 from netsleuth.speed import tier_ookla
 from netsleuth.config import BufferbloatBands
-from netsleuth.speed import measure_with_bufferbloat, probe_while
+from netsleuth.speed import BufferbloatMeasureConfig, measure_with_bufferbloat, probe_while
 import httpx
 from pytest_httpx import HTTPXMock
 from netsleuth.config import Speedtest
@@ -371,12 +371,14 @@ async def test_measure_with_bufferbloat_fills_in_both_directions_and_the_grade()
 
     result = await measure_with_bufferbloat(
         SpeedResult(method="cloudflare", download_mbps=300.0, upload_mbps=40.0),
-        idle_rtt_ms=12.0,
-        bands=BufferbloatBands(),
-        run_download=run_download,
-        run_upload=run_upload,
-        probe=probe,
-        interval=0.05,
+        config=BufferbloatMeasureConfig(
+            idle_rtt_ms=12.0,
+            bands=BufferbloatBands(),
+            run_download=run_download,
+            run_upload=run_upload,
+            probe=probe,
+            interval=0.05,
+        ),
     )
     assert result.idle_rtt_ms == 12.0
     assert result.loaded_rtt_down_ms is not None
@@ -396,12 +398,14 @@ async def test_measure_with_bufferbloat_without_an_idle_baseline_grades_unknown(
 
     result = await measure_with_bufferbloat(
         SpeedResult(method="cloudflare", download_mbps=300.0),
-        idle_rtt_ms=None,
-        bands=BufferbloatBands(),
-        run_download=work,
-        run_upload=work,
-        probe=probe,
-        interval=0.02,
+        config=BufferbloatMeasureConfig(
+            idle_rtt_ms=None,
+            bands=BufferbloatBands(),
+            run_download=work,
+            run_upload=work,
+            probe=probe,
+            interval=0.02,
+        ),
     )
     assert result.bufferbloat_down_ms is None
     assert result.bufferbloat_grade == "?"

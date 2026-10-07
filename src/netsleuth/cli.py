@@ -516,6 +516,7 @@ async def _speed_section(client, settings: Settings, options: Options, idle_rtt_
     import shutil
 
     from netsleuth.speed import (
+        BufferbloatMeasureConfig,
         measure_with_bufferbloat,
         run_speed_cascade,
         tier_cloudflare,
@@ -559,12 +560,14 @@ async def _speed_section(client, settings: Settings, options: Options, idle_rtt_
 
     result = await measure_with_bufferbloat(
         result,
-        idle_rtt_ms=idle_rtt_ms if result.idle_rtt_ms is None else result.idle_rtt_ms,
-        bands=settings.thresholds.bufferbloat_ms,
-        run_download=_saturate_down,
-        run_upload=_saturate_up,
-        probe=_probe,
-        interval=cfg.bufferbloat_probe_interval_seconds,
+        config=BufferbloatMeasureConfig(
+            idle_rtt_ms=idle_rtt_ms if result.idle_rtt_ms is None else result.idle_rtt_ms,
+            bands=settings.thresholds.bufferbloat_ms,
+            run_download=_saturate_down,
+            run_upload=_saturate_up,
+            probe=_probe,
+            interval=cfg.bufferbloat_probe_interval_seconds,
+        ),
     )
     return ModuleResult(name="speed", status="ok", data=result)
 
