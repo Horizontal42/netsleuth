@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
+from datetime import date, datetime
+from enum import Enum
+from pathlib import Path
 
 import pytest
 
@@ -373,3 +377,45 @@ def test_prefix_benchmark_nests_prefix_probes_and_ranks():
     out = to_jsonable(bench)
     assert out["results"][0]["avg_ms"] == 15.0
     assert out["best"] == "203.0.113.0/24"
+
+
+class DummyEnum(Enum):
+    A = "a"
+    B = 2
+
+
+@dataclass
+class InnerData:
+    x: int
+    y: str
+
+
+@dataclass
+class OuterData:
+    inner: InnerData
+    z: bool
+
+
+class CustomObj:
+    def __str__(self):
+        return "custom_str"
+
+
+@pytest.mark.parametrize(
+    "input_val, expected_val",
+    [
+        (OuterData(inner=InnerData(x=1, y="2"), z=True), {"inner": {"x": 1, "y": "2"}, "z": True}),
+        (DummyEnum.A, "a"),
+        (DummyEnum.B, 2),
+        (datetime(2023, 1, 1, 12, 0, 0), "2023-01-01T12:00:00"),
+        (date(2023, 1, 1), "2023-01-01"),
+        (Path("/path/to/file.txt"), "/path/to/file.txt"),
+        (b"bytes", "bytes"),
+        (b"\xff\xfe", "\ufffd\ufffd"),  # test invalid utf-8 replace
+        ({1, 2, 3}, [1, 2, 3]),
+        (frozenset([3, 1, 2]), [1, 2, 3]),
+        (CustomObj(), "custom_str"),
+    ],
+)
+def test_to_jsonable_handles_additional_types(input_val, expected_val):
+    assert to_jsonable(input_val) == expected_val
