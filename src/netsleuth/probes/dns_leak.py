@@ -82,8 +82,12 @@ def build_dns_leak(results: list[AdapterLeakResult], ecs_leaked: bool) -> DnsLea
         parts.append("No adapter resolves DNS outside the egress ASN.")
         parts_ru.append("Ни один адаптер не резолвит DNS за пределами egress ASN.")
     if ecs_leaked:
-        parts.append("The resolver forwards your EDNS Client Subnet, exposing your network to authoritative servers.")
-        parts_ru.append("Резолвер пересылает ваш EDNS Client Subnet, раскрывая вашу сеть авторитативным серверам.")
+        parts.append(
+            "The resolver forwards your EDNS Client Subnet, exposing your network to authoritative servers."
+        )
+        parts_ru.append(
+            "Резолвер пересылает ваш EDNS Client Subnet, раскрывая вашу сеть авторитативным серверам."
+        )
     parts.append(_LEAK_NOTE)
     parts_ru.append(_LEAK_NOTE_RU)
     return DnsLeak(
@@ -121,7 +125,9 @@ def _resolver_for(server: str, timeout: float) -> dns.asyncresolver.Resolver:
     return resolver
 
 
-async def echo_probe(resolver_ip: str, timeout: float) -> tuple[str | None, dict[str, str]]:
+async def echo_probe(
+    resolver_ip: str, timeout: float
+) -> tuple[str | None, dict[str, str]]:
     resolver = _resolver_for(resolver_ip, timeout)
     myaddr, akahelp = await asyncio.gather(
         _txt(resolver, MYADDR_NAME), _txt(resolver, AKAHELP_NAME)
@@ -145,22 +151,46 @@ async def asn_for_ip(ip: str, zone: str, timeout: float) -> str | None:
     return None
 
 
+async def _probe_adapter(
+    adapter: str,
+    resolvers: list[str],
+    cymru_zone: str,
+    egress_asn: str | None,
+    timeout: float,
+) -> tuple[AdapterLeakResult, bool]:
+    try:
+        echoed_ip, akahelp = await echo_probe(resolvers[0], timeout)
+    except dns.exception.DNSException:
+        echoed_ip, akahelp = None, {}
+    leaked = detect_ecs_leak(akahelp)
+    echoed_asn = await asn_for_ip(echoed_ip, cymru_zone, timeout) if echoed_ip else None
+    result = build_adapter_result(adapter, resolvers, echoed_ip, echoed_asn, egress_asn)
+    return result, leaked
+
+
 async def collect_dns_leak(
     local: LocalNet,
     egress_asn: str | None,
     cymru_zone: str,
     timeout: float,
 ) -> DnsLeak:
-    results: list[AdapterLeakResult] = []
-    ecs_leaked = False
+    tasks = []
     for adapter, resolvers in local.dns_servers_per_adapter.items():
         if not resolvers:
             continue
-        try:
-            echoed_ip, akahelp = await echo_probe(resolvers[0], timeout)
-        except dns.exception.DNSException:
-            echoed_ip, akahelp = None, {}
-        ecs_leaked = ecs_leaked or detect_ecs_leak(akahelp)
-        echoed_asn = await asn_for_ip(echoed_ip, cymru_zone, timeout) if echoed_ip else None
-        results.append(build_adapter_result(adapter, resolvers, echoed_ip, echoed_asn, egress_asn))
+        tasks.append(
+            _probe_adapter(adapter, resolvers, cymru_zone, egress_asn, timeout)
+        )
+
+    if not tasks:
+        return build_dns_leak([], False)
+
+    task_results = await asyncio.gather(*tasks)
+
+    results: list[AdapterLeakResult] = []
+    ecs_leaked = False
+    for result, leaked in task_results:
+        results.append(result)
+        ecs_leaked = ecs_leaked or leaked
+
     return build_dns_leak(results, ecs_leaked)
