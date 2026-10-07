@@ -47,6 +47,51 @@ def test_throughput_of_a_single_sample_is_that_sample():
     assert throughput_from_samples([(12500000, 1.0)]) == pytest.approx(100.0)
 
 
+def test_parse_server_timing_cfl4():
+    # Happy path
+    header = 'cfL4;desc="?rtt=12000&min_rtt=10000&rtt_var=2000&delivery_rate=5000000&cwnd=100&unsent_bytes=0&recv_bytes=1000"'
+    stats = parse_server_timing_cfl4(header)
+    assert stats is not None
+    assert stats.rtt_ms == 12.0
+    assert stats.min_rtt_ms == 10.0
+    assert stats.rtt_var_ms == 2.0
+    assert stats.delivery_rate_bps == 5000000
+    assert stats.cwnd == 100
+    assert stats.unsent_bytes == 0
+    assert stats.recv_bytes == 1000
+
+    # Partial fields
+    header = 'cfL4;desc="?rtt=12000&min_rtt=10000"'
+    stats = parse_server_timing_cfl4(header)
+    assert stats is not None
+    assert stats.rtt_ms == 12.0
+    assert stats.min_rtt_ms == 10.0
+    assert stats.rtt_var_ms is None
+    assert stats.delivery_rate_bps is None
+    assert stats.cwnd is None
+    assert stats.unsent_bytes is None
+    assert stats.recv_bytes is None
+
+    # Invalid values
+    header = 'cfL4;desc="?rtt=invalid&min_rtt=10000"'
+    stats = parse_server_timing_cfl4(header)
+    assert stats is not None
+    assert stats.rtt_ms is None
+    assert stats.min_rtt_ms == 10.0
+    assert stats.rtt_var_ms is None
+
+    # Edge cases - invalid headers
+    assert parse_server_timing_cfl4(None) is None  # type: ignore[arg-type]
+    assert parse_server_timing_cfl4("") is None
+    assert parse_server_timing_cfl4("cfL4;") is None
+    assert parse_server_timing_cfl4("something else entirely") is None
+
+    # Edge cases - valid headers but no query
+    stats = parse_server_timing_cfl4('cfL4;desc="?"')
+    assert stats is not None
+    assert stats.rtt_ms is None
+
+
 def test_throughput_of_no_samples_is_zero():
     assert throughput_from_samples([]) == 0.0
 
