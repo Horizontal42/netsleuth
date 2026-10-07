@@ -50,6 +50,7 @@ from netsleuth.interpret import (
 from netsleuth.ip_geo import dual_stack_mismatch, gather_identity
 from netsleuth.metrics import collect_metrics, render_csv, render_prometheus
 from netsleuth.models import (
+    Capabilities,
     BindTarget,
     CaptivePortal,
     Finding,
@@ -621,48 +622,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         asn = geo.asn if options.target_kind != "asn" else options.target_value
 
         # Phase 2 — bgp || reputation || dns_leak || dns_advanced || path_diversity
-        bgp_result, rep_result, dns_result, dns_advanced_result, path_diversity_result = await gather_modules(
-            run_module("bgp", _bgp_section(client, settings, asn, raw), timeout=timeouts.module_seconds),
-            run_module(
-                "reputation", _reputation_section(client, settings, options, geo, raw), timeout=timeouts.module_seconds
-            ),
-            run_module(
-                "dns_leak",
-                collect_dns_leak(local, asn, settings.providers.cymru_origin_zone, timeouts.dns_seconds),
-                timeout=timeouts.module_seconds,
-            ),
-            run_module("dns_advanced", _dns_advanced_section(client, settings, options), timeout=timeouts.module_seconds),
-            run_module(
-                "path_diversity",
-                _path_diversity_section(client, settings, options, geo.country_code),
-                timeout=timeouts.module_seconds,
-            ),
-        )
-        modules["bgp"], modules["reputation"] = bgp_result, rep_result
-        modules["dns_advanced"], modules["path_diversity"] = dns_advanced_result, path_diversity_result
-        ctx = VpnContext(
-            local=local,
-            geo=geo,
-            cf=bundle.get("cf_trace"),
-            dns_leak=dns_result.data,
-            pdb_info_type=getattr(bgp_result.data, "pdb_info_type", None),
-            os_timezone=_os_timezone(),
-            provider_flags=flags,
-        )
-        signals = gather_vpn_signals(ctx)
-        modules["vpn_assessment"] = ModuleResult(
-            name="vpn_assessment",
-            status="ok" if dns_result.status == "ok" else "partial",
-            data=assess_vpn(
-                signals,
-                settings.thresholds.vpn_confidence,
-                tunnel_iface=local.iface_name if is_tunnel_iface(local.iface_name or "") else None,
-                dns_leak=dns_result.data,
-            ),
-            errors=dns_result.errors,
-            started_at=dns_result.started_at,
-            duration_ms=dns_result.duration_ms,
-        )
+        await _run_phase_2(modules, client, settings, options, local, geo, bundle, asn, raw, timeouts, flags)
 
         # Phase 3 — latency || traceroute, both bounded
         hosts = [(h.label, h.host) for h in settings.probing.reference_hosts]
@@ -710,42 +670,8 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         modules["latency"].data = (modules["latency"].data or []) + (v6_result.data or [])
         modules["latency"].warnings += v6_result.warnings
 
-        # Phase 3b — prefix benchmark and DPI check, opt-in and exclusive: each is a
-        # single-target/self-scoped probe that should not share the wire with the
-        # reference-host latency fanout above.
-        modules["prefix_benchmark"] = await run_module(
-            "prefix_benchmark",
-            _prefix_bench_section(caps, settings, options, bgp_result.data),
-            timeout=timeouts.subprocess_seconds,
-        )
-        modules["dpi_check"] = await run_module(
-            "dpi_check", _dpi_section(settings, options), timeout=timeouts.module_seconds
-        )
-        modules["ecmp"] = await run_module(
-            "ecmp", _ecmp_section(caps, settings, options, cycles), timeout=timeouts.subprocess_seconds
-        )
-        modules["pmtud"] = await run_module(
-            "pmtud", _pmtud_section(settings, options, local.iface_mtu), timeout=timeouts.subprocess_seconds
-        )
-        modules["quic"] = await run_module(
-            "quic", _quic_section(settings, options), timeout=timeouts.module_seconds
-        )
-
-        # Phase 3c — per-hop ASN/AS-name/country enrichment. Mutates the trace hops
-        # in place; a lookup failure must never downgrade the trace itself, so only
-        # its warnings (not its status) get folded into modules["path"].
-        enrich_result = await run_module(
-            "path_enrich",
-            enrich_hops(
-                modules["path"].data or [],
-                origin_zone=settings.providers.cymru_origin_zone,
-                origin6_zone=settings.providers.cymru_origin6_zone,
-                asn_zone=settings.providers.cymru_asn_zone,
-                timeout=timeouts.dns_seconds,
-            ),
-            timeout=timeouts.module_seconds,
-        )
-        modules["path"].warnings.extend(enrich_result.warnings)
+        # Phase 3b & 3c
+        await _run_phase_3bc(modules, caps, settings, options, local, timeouts, cycles)
 
         # Phase 4 — speed, exclusive: nothing else is in flight at this point.
         pings = modules["latency"].data or []
@@ -763,6 +689,127 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
             )
 
     # Phase 5 — interpret
+    findings = _interpret_findings(modules, settings, local, geo, bundle)
+
+    # Phase 6 — export
+    return _export_report(
+        modules, findings, raw, settings, options, started_at, caps, local, asn
+    )
+
+
+
+
+async def _run_phase_3bc(
+    modules: dict[str, ModuleResult],
+    caps: Capabilities,
+    settings: Settings,
+    options: Options,
+    local: LocalNet,
+    timeouts: Any,
+    cycles: int,
+) -> None:
+    # Phase 3b — prefix benchmark and DPI check, opt-in and exclusive: each is a
+    # single-target/self-scoped probe that should not share the wire with the
+    # reference-host latency fanout above.
+    modules["prefix_benchmark"] = await run_module(
+        "prefix_benchmark",
+        _prefix_bench_section(caps, settings, options, modules.get("bgp", ModuleResult(name="", status="")).data),
+        timeout=timeouts.subprocess_seconds,
+    )
+    modules["dpi_check"] = await run_module(
+        "dpi_check", _dpi_section(settings, options), timeout=timeouts.module_seconds
+    )
+    modules["ecmp"] = await run_module(
+        "ecmp", _ecmp_section(caps, settings, options, cycles), timeout=timeouts.subprocess_seconds
+    )
+    modules["pmtud"] = await run_module(
+        "pmtud", _pmtud_section(settings, options, local.iface_mtu), timeout=timeouts.subprocess_seconds
+    )
+    modules["quic"] = await run_module(
+        "quic", _quic_section(settings, options), timeout=timeouts.module_seconds
+    )
+
+    # Phase 3c — per-hop ASN/AS-name/country enrichment. Mutates the trace hops
+    # in place; a lookup failure must never downgrade the trace itself, so only
+    # its warnings (not its status) get folded into modules["path"].
+    enrich_result = await run_module(
+        "path_enrich",
+        enrich_hops(
+            modules["path"].data or [],
+            origin_zone=settings.providers.cymru_origin_zone,
+            origin6_zone=settings.providers.cymru_origin6_zone,
+            asn_zone=settings.providers.cymru_asn_zone,
+            timeout=timeouts.dns_seconds,
+        ),
+        timeout=timeouts.module_seconds,
+    )
+    modules["path"].warnings.extend(enrich_result.warnings)
+
+
+async def _run_phase_2(
+    modules: dict[str, ModuleResult],
+    client: httpx.AsyncClient,
+    settings: Settings,
+    options: Options,
+    local: LocalNet,
+    geo: IpGeo,
+    bundle: dict,
+    asn: str | None,
+    raw: dict[str, Any],
+    timeouts: Any,
+    flags: dict,
+) -> None:
+    bgp_result, rep_result, dns_result, dns_advanced_result, path_diversity_result = await gather_modules(
+        run_module("bgp", _bgp_section(client, settings, asn, raw), timeout=timeouts.module_seconds),
+        run_module(
+            "reputation", _reputation_section(client, settings, options, geo, raw), timeout=timeouts.module_seconds
+        ),
+        run_module(
+            "dns_leak",
+            collect_dns_leak(local, asn, settings.providers.cymru_origin_zone, timeouts.dns_seconds),
+            timeout=timeouts.module_seconds,
+        ),
+        run_module("dns_advanced", _dns_advanced_section(client, settings, options), timeout=timeouts.module_seconds),
+        run_module(
+            "path_diversity",
+            _path_diversity_section(client, settings, options, geo.country_code),
+            timeout=timeouts.module_seconds,
+        ),
+    )
+    modules["bgp"], modules["reputation"] = bgp_result, rep_result
+    modules["dns_advanced"], modules["path_diversity"] = dns_advanced_result, path_diversity_result
+    ctx = VpnContext(
+        local=local,
+        geo=geo,
+        cf=bundle.get("cf_trace"),
+        dns_leak=dns_result.data,
+        pdb_info_type=getattr(bgp_result.data, "pdb_info_type", None),
+        os_timezone=_os_timezone(),
+        provider_flags=flags,
+    )
+    signals = gather_vpn_signals(ctx)
+    modules["vpn_assessment"] = ModuleResult(
+        name="vpn_assessment",
+        status="ok" if dns_result.status == "ok" else "partial",
+        data=assess_vpn(
+            signals,
+            settings.thresholds.vpn_confidence,
+            tunnel_iface=local.iface_name if is_tunnel_iface(local.iface_name or "") else None,
+            dns_leak=dns_result.data,
+        ),
+        errors=dns_result.errors,
+        started_at=dns_result.started_at,
+        duration_ms=dns_result.duration_ms,
+    )
+
+
+def _interpret_findings(
+    modules: dict[str, ModuleResult],
+    settings: Settings,
+    local: LocalNet,
+    geo: IpGeo,
+    bundle: dict,
+) -> list[Finding]:
     speed = modules["speed"].data or SpeedResult()
     l7_findings: list[Finding] = list(tls_findings(modules["tls"].data or [], settings.thresholds))
     if modules["prefix_benchmark"].data is not None:
@@ -776,8 +823,8 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
     if modules["quic"].data is not None:
         l7_findings += quic_findings(modules["quic"].data, settings.thresholds)
     traces = modules["path"].data or []
-    findings = _dedupe(
-        latency_findings(pings, settings.thresholds)
+    return _dedupe(
+        latency_findings(modules["latency"].data or [], settings.thresholds)
         + [f for trace in traces for f in path_findings(trace, local, settings.thresholds)]
         + [f for trace in traces for f in path_asn_findings(trace, geo.country_code)]
         + speed_findings(speed, settings.thresholds.bufferbloat_ms, geo.country)
@@ -787,10 +834,21 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
         + captive_portal_findings(modules["captive_portal"].data or CaptivePortal())
         + [f for report in (modules["ecmp"].data or []) for f in ecmp_findings(report)]
         + [f for result in (modules["pmtud"].data or []) for f in pmtud_findings(result)]
-        + dual_family_findings(pings)
+        + dual_family_findings(modules["latency"].data or [])
     )
 
-    # Phase 6 — export
+
+def _export_report(
+    modules: dict[str, ModuleResult],
+    findings: list[Finding],
+    raw: dict[str, Any],
+    settings: Settings,
+    options: Options,
+    started_at: str,
+    caps: Capabilities,
+    local: LocalNet,
+    asn: str | None,
+) -> tuple[dict, list[Path]]:
     meta = {
         "run_id": uuid.uuid4().hex[:12],
         "started_at": started_at,
@@ -829,9 +887,9 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
             "dropped_backends": dropped,
         }
     report = build_report(meta, modules, findings, raw)
-    asn = meta.get("target") or egress_asn(report)
-    md_name = report_filename(asn, started_at, "md")
-    ru_md_name = report_filename(asn, started_at, "ru.md")
+    actual_asn = meta.get("target") or egress_asn(report)
+    md_name = report_filename(actual_asn, started_at, "md")
+    ru_md_name = report_filename(actual_asn, started_at, "ru.md")
     sibling_for_md, sibling_for_ru = format_siblings(options.formats, md_name, ru_md_name)
     artifacts: dict[str, str] = {}
     if "md" in options.formats:
@@ -850,7 +908,7 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
     if settings.history.auto_diff:
         if "json" in options.formats:
             try:
-                key = report.get("meta", {}).get("target") or asn
+                key = report.get("meta", {}).get("target") or actual_asn
                 previous = history.find_previous(settings.output.logs_dir, key or "unknown", limit=1) if key else []
                 if previous:
                     previous_report = load_report(previous[0])
@@ -865,7 +923,6 @@ async def diagnose(settings: Settings, options: Options) -> tuple[dict, list[Pat
 
     paths = write_report(report, artifacts, Path(settings.output.logs_dir))
     return report, paths
-
 
 def _check_ndt7_consent(settings: Settings) -> bool:
     consent_marker = Path(settings.output.cache_dir) / "ndt7_consent"
@@ -882,6 +939,81 @@ def _check_ndt7_consent(settings: Settings) -> bool:
         return True
 
     return False
+
+
+
+def _build_options(
+    target: str | None,
+    kind: str | None,
+    value: str | None,
+    quick: bool,
+    full: bool,
+    target_host: str | None,
+    speedtest_server: str | None,
+    dnsbl: bool,
+    ndt7: bool,
+    tcp_trace: bool,
+    tls: bool,
+    dns_advanced: bool,
+    path_diversity: bool,
+    prefix_bench: bool,
+    ecmp: bool,
+    pmtud: bool,
+    quic: bool,
+    ipv6: bool | None,
+    my_server: str | None,
+    formats: frozenset[str],
+    webhook: str | None,
+) -> Options:
+    return Options(
+        mode="target" if target else "auto",
+        target_kind=kind,
+        target_value=value,
+        quick=quick and not full,
+        full=full,
+        extra_host=target_host,
+        speedtest_server=speedtest_server,
+        dnsbl=dnsbl,
+        ndt7=ndt7,
+        tcp_trace=tcp_trace,
+        tls=tls or full,
+        dns_advanced=dns_advanced or full,
+        path_diversity=path_diversity or full,
+        prefix_bench=prefix_bench,
+        ecmp=ecmp,
+        pmtud=pmtud,
+        quic=quic,
+        ipv6=ipv6,
+        dpi_target=my_server,
+        formats=formats,
+        webhook=webhook,
+    )
+
+
+
+def _setup_interface(interface: str, options: Options) -> None:
+    addrs_by_iface = {
+        name: [(a.family, a.address.split("%")[0]) for a in addrs]
+        for name, addrs in psutil.net_if_addrs().items()
+    }
+    up_by_iface = {name: stats.isup for name, stats in psutil.net_if_stats().items()}
+    bind = resolve_bind_target(interface, addrs_by_iface, up_by_iface)
+    if bind.error:
+        raise typer.BadParameter(bind.error, param_hint="--interface")
+    options.interface = interface
+    options.bind = bind
+    if bind.ipv4:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.bind((bind.ipv4, 0))
+            probe.connect(("1.1.1.1", 53))
+        except OSError:
+            console.print(
+                f"[yellow]--interface {bind.iface_name}: no route to the internet from this "
+                "address yet — continuing, this run may show every module as unreachable.[/yellow]"
+            )
+        finally:
+            probe.close()
 
 
 @app.command()
@@ -999,52 +1131,31 @@ def run(
         )
     kind, value = parse_target(target) if target else (None, None)
     formats = parse_formats(format_, ru=ru, json_flag=json_flag, default=frozenset(settings.output.formats))
-    options = Options(
-        mode="target" if target else "auto",
-        target_kind=kind,
-        target_value=value,
-        quick=quick and not full,
+    options = _build_options(
+        target=target,
+        kind=kind,
+        value=value,
+        quick=quick,
         full=full,
-        extra_host=target_host,
+        target_host=target_host,
         speedtest_server=speedtest_server,
         dnsbl=dnsbl,
         ndt7=ndt7,
         tcp_trace=tcp_trace,
-        tls=tls or full,
-        dns_advanced=dns_advanced or full,
-        path_diversity=path_diversity or full,
+        tls=tls,
+        dns_advanced=dns_advanced,
+        path_diversity=path_diversity,
         prefix_bench=prefix_bench,
         ecmp=ecmp,
         pmtud=pmtud,
         quic=quic,
         ipv6=ipv6,
-        dpi_target=my_server,
+        my_server=my_server,
         formats=formats,
         webhook=webhook,
     )
     if interface:
-        addrs_by_iface = {
-            name: [(a.family, a.address.split("%")[0]) for a in addrs]
-            for name, addrs in psutil.net_if_addrs().items()
-        }
-        up_by_iface = {name: stats.isup for name, stats in psutil.net_if_stats().items()}
-        bind = resolve_bind_target(interface, addrs_by_iface, up_by_iface)
-        if bind.error:
-            raise typer.BadParameter(bind.error, param_hint="--interface")
-        options.interface = interface
-        options.bind = bind
-        if bind.ipv4:
-            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            try:
-                probe.bind((bind.ipv4, 0))
-                probe.connect(("1.1.1.1", 53))
-            except OSError:
-                console.print(
-                    f"[yellow]--interface {bind.iface_name}: no route to the internet from this "
-                    "address yet — continuing, this run may show every module as unreachable.[/yellow]"
-                )
-            finally:
-                probe.close()
+        _setup_interface(interface, options)
     if ndt7:
         options.ndt7 = _check_ndt7_consent(settings)
     if tcp_trace:
