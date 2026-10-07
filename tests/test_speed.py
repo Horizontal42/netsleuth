@@ -460,10 +460,10 @@ async def test_tier_cloudflare_http_error(httpx_mock: HTTPXMock):
 
 
 async def test_tier_fastcom_happy_path(httpx_mock):
-    config = Speedtest()
+    config = Speedtest(fastcom_api_token="test_dummy_token")
     api_url = config.fastcom_api_url
     httpx_mock.add_response(
-        url=f"{api_url}?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=3",
+        url=f"{api_url}?https=true&token=test_dummy_token&urlCount=3",
         json={
             "targets": [
                 {
@@ -495,10 +495,10 @@ async def test_tier_fastcom_happy_path(httpx_mock):
 
 
 async def test_tier_fastcom_no_targets(httpx_mock):
-    config = Speedtest()
+    config = Speedtest(fastcom_api_token="test_dummy_token")
     api_url = config.fastcom_api_url
     httpx_mock.add_response(
-        url=f"{api_url}?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=3",
+        url=f"{api_url}?https=true&token=test_dummy_token&urlCount=3",
         json={"targets": []},
     )
     async with httpx.AsyncClient() as client:
@@ -510,10 +510,10 @@ async def test_tier_fastcom_no_targets(httpx_mock):
 
 
 async def test_tier_fastcom_missing_urls(httpx_mock):
-    config = Speedtest()
+    config = Speedtest(fastcom_api_token="test_dummy_token")
     api_url = config.fastcom_api_url
     httpx_mock.add_response(
-        url=f"{api_url}?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=3",
+        url=f"{api_url}?https=true&token=test_dummy_token&urlCount=3",
         json={
             "targets": [
                 {"location": {"country": "US"}},
@@ -537,10 +537,10 @@ async def test_tier_fastcom_missing_urls(httpx_mock):
 
 
 async def test_tier_fastcom_api_error(httpx_mock):
-    config = Speedtest()
+    config = Speedtest(fastcom_api_token="test_dummy_token")
     api_url = config.fastcom_api_url
     httpx_mock.add_response(
-        url=f"{api_url}?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=3",
+        url=f"{api_url}?https=true&token=test_dummy_token&urlCount=3",
         status_code=500,
     )
     async with httpx.AsyncClient() as client:
@@ -550,10 +550,10 @@ async def test_tier_fastcom_api_error(httpx_mock):
 
 
 async def test_tier_fastcom_download_error(httpx_mock):
-    config = Speedtest()
+    config = Speedtest(fastcom_api_token="test_dummy_token")
     api_url = config.fastcom_api_url
     httpx_mock.add_response(
-        url=f"{api_url}?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=3",
+        url=f"{api_url}?https=true&token=test_dummy_token&urlCount=3",
         json={
             "targets": [
                 {
