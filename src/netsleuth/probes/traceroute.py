@@ -7,6 +7,7 @@ import platform
 import shutil
 import threading
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import TypeVar
 
 from netsleuth.models import Capabilities, TraceConfig, TraceHop, TraceResult
@@ -14,6 +15,17 @@ from netsleuth.probes.icmp_win import IcmpReply, classify_status
 from netsleuth.traceparse import build_trace_result, finalize_hop
 
 _T = TypeVar("_T")
+
+
+@dataclass(frozen=True)
+class TracerouteOptions:
+    caps: Capabilities
+    max_hops: int
+    cycles: int
+    timeout: float
+    semaphore: asyncio.Semaphore | None = None
+    tcp_trace: bool = False
+    source_ip: str | None = None
 
 
 def _run_in_daemon_thread(func: Callable[..., _T], *args: object) -> asyncio.Future[_T]:
@@ -256,29 +268,23 @@ async def _tier_tcp_trace(
 
 async def traceroute(
     target: str,
-    caps: Capabilities,
-    max_hops: int,
-    cycles: int,
-    timeout: float,
-    semaphore: asyncio.Semaphore | None = None,
-    tcp_trace: bool = False,
-    source_ip: str | None = None,
+    options: TracerouteOptions,
 ) -> TraceResult:
     builders = {
-        "tcp_trace": lambda: _tier_tcp_trace(target, max_hops, timeout, source_ip=source_ip),
+        "tcp_trace": lambda: _tier_tcp_trace(target, options.max_hops, options.timeout, source_ip=options.source_ip),
         "mtr_json": lambda: _tier_mtr(
-            target, caps.mtr_binary or shutil.which("mtr") or "mtr", cycles, max_hops, timeout, source_ip
+            target, options.caps.mtr_binary or shutil.which("mtr") or "mtr", options.cycles, options.max_hops, options.timeout, options.source_ip
         ),
-        "icmp_win": lambda: _tier_icmp_win(target, max_hops, timeout, source_ip),
-        "icmplib": lambda: _tier_icmplib(target, max_hops, timeout, source_ip=source_ip),
+        "icmp_win": lambda: _tier_icmp_win(target, options.max_hops, options.timeout, options.source_ip),
+        "icmplib": lambda: _tier_icmplib(target, options.max_hops, options.timeout, source_ip=options.source_ip),
         "system_traceroute": lambda: _tier_system(
-            target, caps.traceroute_binary or "traceroute", max_hops, timeout, source_ip
+            target, options.caps.traceroute_binary or "traceroute", options.max_hops, options.timeout, options.source_ip
         ),
     }
-    order = tier_order(caps, tcp_trace)
-    order, _dropped = filter_trace_tiers(order, caps.os_name, forced_v4=bool(source_ip))
+    order = tier_order(options.caps, options.tcp_trace)
+    order, _dropped = filter_trace_tiers(order, options.caps.os_name, forced_v4=bool(options.source_ip))
     tiers = [(name, builders[name]) for name in order]
-    if semaphore is None:
+    if options.semaphore is None:
         return await run_cascade(tiers)
-    async with semaphore:
+    async with options.semaphore:
         return await run_cascade(tiers)
