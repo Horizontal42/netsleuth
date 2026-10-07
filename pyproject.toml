@@ -32,6 +32,7 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "pytest-httpx>=0.30",
+    "websockets>=17.0.1",
 ]
 
 [build-system]

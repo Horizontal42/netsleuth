@@ -356,6 +356,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-httpx" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -380,6 +381,7 @@ dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.23" },
     { name = "pytest-httpx", specifier = ">=0.30" },
+    { name = "websockets", specifier = ">=17.0.1" },
 ]
 
 [[package]]

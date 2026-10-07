@@ -13,7 +13,10 @@ URL = "http://cp.cloudflare.com/generate_204"
 
 
 def test_classify_204_with_empty_body_is_clean():
-    assert classify_portal_response(URL, 204, "", None) == ("clean", "204 with an empty body, as expected")
+    assert classify_portal_response(URL, 204, "", None) == (
+        "clean",
+        "204 with an empty body, as expected",
+    )
 
 
 def test_classify_204_with_a_body_is_suspect():
@@ -27,13 +30,17 @@ def test_classify_200_with_a_body_is_portal():
 
 
 def test_classify_302_to_the_same_host_is_still_a_redirect_status_portal():
-    verdict, evidence = classify_portal_response(URL, 302, "", "http://cp.cloudflare.com/login")
+    verdict, evidence = classify_portal_response(
+        URL, 302, "", "http://cp.cloudflare.com/login"
+    )
     assert verdict == "portal"
     assert "302" in evidence
 
 
 def test_classify_302_to_a_different_host_is_portal():
-    verdict, evidence = classify_portal_response(URL, 302, "", "http://portal.example.net/login")
+    verdict, evidence = classify_portal_response(
+        URL, 302, "", "http://portal.example.net/login"
+    )
     assert verdict == "portal"
 
 
@@ -50,7 +57,11 @@ def test_classify_no_response_is_error():
 
 
 async def test_check_captive_portal_detects_a_redirect(httpx_mock):
-    httpx_mock.add_response(url=URL, status_code=302, headers={"location": "http://portal.example.net/login"})
+    httpx_mock.add_response(
+        url=URL,
+        status_code=302,
+        headers={"location": "http://portal.example.net/login"},
+    )
     async with httpx.AsyncClient() as client:
         result = await check_captive_portal(client, [URL], timeout=5.0)
     assert result.detected is True
@@ -74,19 +85,41 @@ async def test_check_captive_portal_all_ambiguous_is_suspect(httpx_mock):
     assert result.verdict == "suspect"
 
 
-def test_captive_portal_findings_fires_crit_when_detected():
-    cp = CaptivePortal(detected=True, verdict="portal", portal_url=URL, note="redirected", note_ru="редирект")
+def test_captive_portal_findings_detected():
+    cp = CaptivePortal(
+        detected=True,
+        verdict="portal",
+        portal_url=URL,
+        note="redirected",
+        note_ru="редирект",
+    )
     findings = captive_portal_findings(cp)
-    assert [f.id for f in findings] == ["net.captive_portal"]
-    assert findings[0].severity == "crit"
-
-
-def test_captive_portal_findings_fires_warn_when_suspect():
-    cp = CaptivePortal(detected=False, verdict="suspect", note="ambiguous", note_ru="неоднозначно")
-    findings = captive_portal_findings(cp)
-    assert [f.id for f in findings] == ["net.captive_portal_suspect"]
+    assert [f.id for f in findings] == ["captive_portal.detected"]
     assert findings[0].severity == "warn"
+    assert findings[0].title == "Captive portal interception detected"
+    assert findings[0].detail == "redirected"
+    assert findings[0].metric == "detected"
+    assert findings[0].value is True
+    assert findings[0].title_ru == "Обнаружен перехват captive portal (hotspot)"
+    assert findings[0].detail_ru == "редирект"
 
 
 def test_captive_portal_findings_silent_when_clean():
     assert captive_portal_findings(CaptivePortal(detected=False, verdict="clean")) == []
+
+
+def test_captive_portal_findings_fallback_to_english_detail():
+    cp = CaptivePortal(
+        detected=True, verdict="portal", portal_url=URL, note="test fallback"
+    )
+    findings = captive_portal_findings(cp)
+    assert findings[0].detail_ru == "Сеть перехватывает веб-трафик."
+
+
+def test_captive_portal_findings_fallback_to_default():
+    cp = CaptivePortal(
+        detected=True, verdict="portal", portal_url=URL, note="", note_ru=""
+    )
+    findings = captive_portal_findings(cp)
+    assert findings[0].detail == "Network is intercepting web traffic."
+    assert findings[0].detail_ru == "Сеть перехватывает веб-трафик."

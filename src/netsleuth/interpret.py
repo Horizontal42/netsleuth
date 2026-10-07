@@ -284,35 +284,23 @@ def path_findings(trace: TraceResult, local: LocalNet | None = None, t: Threshol
 
 
 def captive_portal_findings(cp: CaptivePortal) -> list[Finding]:
+    findings: list[Finding] = []
     if cp.detected:
-        return [
+        findings.append(
             Finding(
-                id="net.captive_portal",
-                severity="crit",
-                title="Behind a captive portal",
-                detail=cp.note,
-                metric="portal_url",
-                value=cp.portal_url,
-                advice="Every measurement below was taken from behind the portal. Sign in through a browser, then rerun.",
-                title_ru="За captive portal",
-                detail_ru=cp.note_ru or cp.note,
-                advice_ru="Все измерения ниже сделаны из-за captive portal. Авторизуйтесь через браузер и перезапустите.",
-            )
-        ]
-    if cp.verdict == "suspect":
-        return [
-            Finding(
-                id="net.captive_portal_suspect",
+                id="captive_portal.detected",
                 severity="warn",
-                title="Captive portal check was inconclusive",
-                detail=cp.note,
-                advice="No check returned a clean expected response, but none looked like a portal redirect either; treat other findings with a grain of salt.",
-                title_ru="Проверка captive portal неоднозначна",
-                detail_ru=cp.note_ru or cp.note,
-                advice_ru="Ни одна проверка не вернула чистый ожидаемый ответ, но и на редирект портала не похоже; к остальным находкам стоит относиться с осторожностью.",
+                title="Captive portal interception detected",
+                detail=cp.note or "Network is intercepting web traffic.",
+                metric="detected",
+                value=cp.detected,
+                advice="You must log in or accept terms on the portal before full internet access is granted.",
+                title_ru="Обнаружен перехват captive portal (hotspot)",
+                detail_ru=cp.note_ru or "Сеть перехватывает веб-трафик.",
+                advice_ru="Для доступа в интернет нужно авторизоваться или принять условия на странице портала.",
             )
-        ]
-    return []
+        )
+    return findings
 
 
 def cgnat_findings(local: LocalNet, traces: list[TraceResult]) -> list[Finding]:
