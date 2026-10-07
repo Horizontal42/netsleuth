@@ -196,3 +196,32 @@ def test_render_dashboard_with_speed_results():
     table = render_dashboard(session)
 
     assert "last speedtest: 284.3 / 41.7 Mbps via cloudflare · bufferbloat B" in table.caption
+
+
+def test_watch_session_to_report():
+    session = WatchSession(
+        started_at="2026-08-08T19:12:00Z",
+        asn="AS12345",
+        interval_seconds=60,
+        speedtest_every_n_cycles=10,
+        interface="eth0",
+        bind_ipv4="1.2.3.4",
+        alerts_fired=2,
+    )
+    session.add(summarize_cycle(1, "2026-08-08T19:12:00Z", [ping("cloudflare-dns", 12.4)], None))
+
+    report = session.to_report()
+
+    assert report["schema_version"] == WATCH_SCHEMA_VERSION
+    assert report["kind"] == "watch"
+    assert report["meta"]["started_at"] == "2026-08-08T19:12:00Z"
+    assert "finished_at" in report["meta"]
+    assert report["meta"]["asn"] == "AS12345"
+    assert report["meta"]["interval_seconds"] == 60
+    assert report["meta"]["speedtest_every_n_cycles"] == 10
+    assert report["meta"]["cycle_count"] == 1
+    assert report["meta"]["interface"] == "eth0"
+    assert report["meta"]["bind_ipv4"] == "1.2.3.4"
+    assert report["meta"]["alerts_fired"] == 2
+    assert len(report["cycles"]) == 1
+    assert report["cycles"][0]["cycle"] == 1
