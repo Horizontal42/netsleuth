@@ -60,6 +60,23 @@ def test_parse_netset_strips_comments_and_blank_lines(fixtures_dir):
     ]
 
 
+def test_parse_netset_handles_mixed_content_inline():
+    text = """
+    # This is a comment
+
+    192.168.1.0/24
+
+    10.0.0.1
+    # Another comment
+    2001:db8::/32
+    """
+    assert parse_netset(text) == [
+        "192.168.1.0/24",
+        "10.0.0.1",
+        "2001:db8::/32"
+    ]
+
+
 def test_reverse_ip_raises_value_error_for_ipv6():
     with pytest.raises(ValueError, match="classic DNSBL zones accept IPv4 only"):
         reverse_ip("2001:db8::1")
