@@ -3,6 +3,7 @@ from __future__ import annotations
 import socket
 
 from netsleuth.iface import (
+    _match_iface_name,
     available_interfaces_hint,
     resolve_bind_target,
     usable_addresses,
@@ -15,6 +16,30 @@ def addrs(**kw) -> dict[str, list[tuple[int, str]]]:
 
 def up(**kw) -> dict[str, bool]:
     return kw
+
+
+def test_match_iface_name_exact():
+    assert _match_iface_name("eth0", ["eth0", "eth1"]) == "eth0"
+
+
+def test_match_iface_name_case_insensitive_exact():
+    assert _match_iface_name("ETH0", ["eth0", "eth1"]) == "eth0"
+
+
+def test_match_iface_name_case_insensitive_exact_multiple():
+    assert _match_iface_name("EtH0", ["eth0", "ETH0"]) == ["eth0", "ETH0"]
+
+
+def test_match_iface_name_substring():
+    assert _match_iface_name("eth", ["my-eth0-iface", "wlan0"]) == "my-eth0-iface"
+
+
+def test_match_iface_name_substring_multiple():
+    assert _match_iface_name("eth", ["eth0", "eth1"]) == ["eth0", "eth1"]
+
+
+def test_match_iface_name_no_match():
+    assert _match_iface_name("eth", ["wlan0", "lo"]) == []
 
 
 def test_usable_addresses_picks_first_non_loopback_v4_and_v6():
