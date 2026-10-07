@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from netsleuth.metrics import Metric, collect_metrics, render_csv, render_prometheus
+from netsleuth.metrics import Metric, _add, collect_metrics, render_csv, render_prometheus
 
 
 def _report(**overrides) -> dict:
@@ -84,3 +84,15 @@ def test_render_csv_has_a_header_row_and_quotes_a_comma_in_a_label():
     lines = text.strip().splitlines()
     assert lines[0] == "metric,labels,value"
     assert '"target=a, b"' in lines[1]
+
+
+def test_add_ignores_uncastable_values():
+    metrics: list[Metric] = []
+
+    # Uncastable string raises ValueError
+    _add(metrics, "test_metric", "abc")
+    assert len(metrics) == 0
+
+    # Incompatible type like dict raises TypeError
+    _add(metrics, "test_metric", {"some": "dict"})
+    assert len(metrics) == 0
