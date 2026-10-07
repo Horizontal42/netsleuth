@@ -55,6 +55,19 @@ def test_build_payload_shape_and_json_serializable():
     dump_json(payload)  # must not raise
 
 
+def test_build_payload_missing_keys_serializable():
+    payload = build_payload({}, {}, None, "ok")
+    assert payload["tool"] == "netsleuth"
+    assert payload["asn"] is None
+    assert payload["at"] is None
+    assert payload["previous"] is None
+    assert payload["current"] == "ok"
+    assert payload["score"] is None
+    assert payload["findings"] == []
+    assert payload["host"] is None
+    dump_json(payload)  # must not raise
+
+
 async def test_post_webhook_returns_true_on_success(httpx_mock):
     httpx_mock.add_response(url="https://example.com/hook", status_code=200)
     async with httpx.AsyncClient() as client:
