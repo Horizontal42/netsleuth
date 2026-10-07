@@ -112,6 +112,25 @@ def test_session_history_returns_the_series_for_one_host_with_gaps_preserved():
     assert session.history("absent-host") == [None, None, None]
 
 
+def test_session_labels_returns_unique_hosts_in_order_of_appearance():
+    session = WatchSession(started_at="2026-08-08T19:12:00Z", asn="AS64500")
+
+    # Empty session
+    assert session.labels() == []
+
+    # One cycle, multiple hosts
+    session.add(summarize_cycle(1, "t1", [ping("cloudflare-dns", 12.0), ping("google-dns", 10.0)], None))
+    assert session.labels() == ["cloudflare-dns", "google-dns"]
+
+    # Another cycle, new host and overlapping host
+    session.add(summarize_cycle(2, "t2", [ping("google-dns", 11.0), ping("quad9-dns", 15.0)], None))
+    assert session.labels() == ["cloudflare-dns", "google-dns", "quad9-dns"]
+
+    # Another cycle, only overlapping hosts
+    session.add(summarize_cycle(3, "t3", [ping("quad9-dns", 15.0), ping("cloudflare-dns", 12.0)], None))
+    assert session.labels() == ["cloudflare-dns", "google-dns", "quad9-dns"]
+
+
 def test_session_filename_marks_it_as_a_watch_artifact():
     session = WatchSession(started_at="2026-08-08T19:12:00Z", asn="AS64500")
     assert session.filename() == "watch_AS64500_19-12-00Z.json"
