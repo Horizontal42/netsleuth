@@ -231,6 +231,39 @@ Network Destination        Netmask          Gateway       Interface  Metric
 def test_windows_default_gateway_returns_none_when_no_default_route_exists():
     assert _parse_windows_default_gateway("Active Routes:\nNone\n", socket.AF_INET) is None
 
+
+@patch("netsleuth.netinfo.platform.system", return_value="Linux")
+@patch("netsleuth.netinfo.subprocess.run")
+def test_linux_default_gateway_ipv4_success(mock_run, mock_sys):
+    from netsleuth.netinfo import _default_gateway
+    mock_run.return_value.stdout = "default via 192.168.1.1 dev eth0 proto dhcp metric 100\n"
+    assert _default_gateway(socket.AF_INET) == "192.168.1.1"
+
+
+@patch("netsleuth.netinfo.platform.system", return_value="Linux")
+@patch("netsleuth.netinfo.subprocess.run")
+def test_linux_default_gateway_ipv6_success(mock_run, mock_sys):
+    from netsleuth.netinfo import _default_gateway
+    mock_run.return_value.stdout = "default via fe80::1 dev eth0 proto ra metric 1024 expires 1785sec\n"
+    assert _default_gateway(socket.AF_INET6) == "fe80::1"
+
+
+@patch("netsleuth.netinfo.platform.system", return_value="Linux")
+@patch("netsleuth.netinfo.subprocess.run")
+def test_linux_default_gateway_returns_none_when_no_route(mock_run, mock_sys):
+    from netsleuth.netinfo import _default_gateway
+    mock_run.return_value.stdout = ""
+    assert _default_gateway(socket.AF_INET) is None
+
+
+@patch("netsleuth.netinfo.platform.system", return_value="Linux")
+@patch("netsleuth.netinfo.subprocess.run")
+def test_linux_default_gateway_returns_none_on_oserror(mock_run, mock_sys):
+    from netsleuth.netinfo import _default_gateway
+    mock_run.side_effect = OSError("No ip command found")
+    assert _default_gateway(socket.AF_INET) is None
+
+
 from dataclasses import dataclass
 
 @dataclass
