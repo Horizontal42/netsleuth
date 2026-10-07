@@ -71,7 +71,7 @@ from netsleuth.probes.dns_leak import collect_dns_leak
 from netsleuth.probes.hop_asn import enrich_hops
 from netsleuth.probes.latency import ping_fanout, tcp_connect_rtt
 from netsleuth.probes.nat64 import detect_nat64
-from netsleuth.probes.traceroute import filter_trace_tiers, tier_order, traceroute
+from netsleuth.probes.traceroute import TracerouteOptions, filter_trace_tiers, tier_order, traceroute
 from netsleuth.speed import NDT7_CONSENT_NOTICE
 
 if sys.platform == "win32":
@@ -476,13 +476,15 @@ async def _ecmp_section(caps, settings: Settings, options: Options, cycles: int)
             *(
                 traceroute(
                     host,
-                    caps,
-                    max_hops=settings.probing.max_hops,
-                    cycles=cycles,
-                    timeout=settings.timeouts.subprocess_seconds,
-                    semaphore=semaphore,
-                    tcp_trace=options.tcp_trace,
-                    source_ip=options.bind.ipv4 if options.bind else None,
+                    TracerouteOptions(
+                        caps=caps,
+                        max_hops=settings.probing.max_hops,
+                        cycles=cycles,
+                        timeout=settings.timeouts.subprocess_seconds,
+                        semaphore=semaphore,
+                        tcp_trace=options.tcp_trace,
+                        source_ip=options.bind.ipv4 if options.bind else None,
+                    )
                 )
                 for _ in range(cfg.runs)
             )
@@ -498,13 +500,15 @@ async def _traces(hosts, caps, settings: Settings, cycles: int, options: Options
             *(
                 traceroute(
                     host,
-                    caps,
-                    max_hops=settings.probing.max_hops,
-                    cycles=cycles,
-                    timeout=settings.timeouts.subprocess_seconds,
-                    semaphore=semaphore,
-                    tcp_trace=options.tcp_trace,
-                    source_ip=options.bind.ipv4 if options.bind else None,
+                    TracerouteOptions(
+                        caps=caps,
+                        max_hops=settings.probing.max_hops,
+                        cycles=cycles,
+                        timeout=settings.timeouts.subprocess_seconds,
+                        semaphore=semaphore,
+                        tcp_trace=options.tcp_trace,
+                        source_ip=options.bind.ipv4 if options.bind else None,
+                    )
                 )
                 for _label, host in hosts
             )
