@@ -334,3 +334,26 @@ def test_collect_local_net_no_network(mock_resolvers, mock_gw, mock_stats, mock_
     assert result.default_gateway_v6 is None
     assert result.is_dual_stack is False
     assert result.cgnat is False
+
+
+from netsleuth.netinfo import _looks_like_ip
+
+@pytest.mark.parametrize(
+    ("token", "expected"),
+    [
+        ("192.168.1.1", True),
+        ("8.8.8.8", True),
+        ("255.255.255.255", True),
+        ("0.0.0.0", True),
+        ("2001:db8::1", True),
+        ("::1", True),
+        ("fe80::1ff:fe23:4567:890a", True),
+        ("not_an_ip", False),
+        ("256.256.256.256", False),
+        ("192.168.1", False),
+        ("2001:db8:::1", False),
+        ("", False),
+    ]
+)
+def test_looks_like_ip(token, expected):
+    assert _looks_like_ip(token) is expected
