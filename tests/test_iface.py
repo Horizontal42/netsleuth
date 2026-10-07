@@ -61,6 +61,16 @@ def test_resolve_bind_target_by_exact_name():
     assert result.error is None
 
 
+def test_resolve_bind_target_by_unmapped_ip_is_an_error():
+    result = resolve_bind_target(
+        "10.255.255.255",
+        addrs(Ethernet=[(socket.AF_INET, "192.168.3.72")]),
+        up(Ethernet=True),
+    )
+    assert result.error is not None
+    assert result.error == "no adapter has the address '10.255.255.255'"
+
+
 def test_resolve_bind_target_by_ip_finds_owning_adapter():
     result = resolve_bind_target(
         "192.168.3.72",
