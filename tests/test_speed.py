@@ -4,6 +4,8 @@ import json
 from unittest.mock import AsyncMock, patch
 import pytest
 from netsleuth.speed import (
+    _as_int,
+    _us_to_ms,
     bufferbloat_delta,
     mbps,
     ookla_interface_args,
@@ -21,6 +23,34 @@ from netsleuth.config import Speedtest
 from netsleuth.speed import tier_cloudflare
 from netsleuth.speed import tier_fastcom
 from netsleuth.speed import tier_ndt7
+
+
+def test_as_int_happy_path():
+    assert _as_int("123") == 123
+    assert _as_int("-45") == -45
+    assert _as_int("0") == 0
+
+
+def test_as_int_error_path():
+    assert _as_int("not-a-number") is None
+    assert _as_int("12.34") is None
+    assert _as_int("") is None
+    assert _as_int(None) is None
+
+
+def test_us_to_ms_happy_path():
+    assert _us_to_ms("1000") == 1.0
+    assert _us_to_ms("1500") == 1.5
+    assert _us_to_ms("123456") == 123.456
+    assert _us_to_ms("-1000") == -1.0
+    assert _us_to_ms("0") == 0.0
+
+
+def test_us_to_ms_error_path():
+    assert _us_to_ms("not-a-number") is None
+    assert _us_to_ms("12.34") is None
+    assert _us_to_ms("") is None
+    assert _us_to_ms(None) is None
 
 
 def test_mbps_converts_bytes_and_seconds():
