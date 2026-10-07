@@ -45,9 +45,8 @@ def test_parse_cf_ray_trailing_dash_empty_suffix():
 
 
 def test_colo_location_known_code():
-    city, country = colo_location("DME")
-    assert country == "RU"
-    assert city
+    assert colo_location("LHR") == ("London", "GB")
+    assert colo_location("dme") == ("Moscow", "RU")
 
 
 def test_colo_location_unknown_code():
@@ -56,6 +55,7 @@ def test_colo_location_unknown_code():
 
 def test_colo_location_none():
     assert colo_location(None) == (None, None)
+    assert colo_location("") == (None, None)
 
 
 def test_detect_international_loop_true_when_edge_diverges():
