@@ -61,6 +61,7 @@ def bufferbloat_delta(idle_rtt_ms: float | None, loaded_rtts_ms: list[float]) ->
 import asyncio
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 from netsleuth.models import SpeedResult, TierAttempt
 
@@ -241,6 +242,16 @@ from netsleuth.interpret import grade_bufferbloat
 from netsleuth.stats import rtt_stats
 
 
+@dataclass(frozen=True)
+class BufferbloatMeasureConfig:
+    idle_rtt_ms: float | None
+    bands: BufferbloatBands
+    run_download: Callable[[], Awaitable[None]]
+    run_upload: Callable[[], Awaitable[None]]
+    probe: Callable[[], Awaitable[float | None]]
+    interval: float
+
+
 async def probe_while(
     coro: Awaitable[None],
     probe: Callable[[], Awaitable[float | None]],
@@ -259,25 +270,20 @@ async def probe_while(
 
 async def measure_with_bufferbloat(
     result: SpeedResult,
-    idle_rtt_ms: float | None,
-    bands: BufferbloatBands,
-    run_download: Callable[[], Awaitable[None]],
-    run_upload: Callable[[], Awaitable[None]],
-    probe: Callable[[], Awaitable[float | None]],
-    interval: float,
+    config: BufferbloatMeasureConfig,
 ) -> SpeedResult:
     # This is the one place a measurement is allowed to overlap another: the
     # whole point is to see what latency does while the link is saturated.
-    down_samples = await probe_while(run_download(), probe, interval)
-    up_samples = await probe_while(run_upload(), probe, interval)
-    result.idle_rtt_ms = idle_rtt_ms
+    down_samples = await probe_while(config.run_download(), config.probe, config.interval)
+    up_samples = await probe_while(config.run_upload(), config.probe, config.interval)
+    result.idle_rtt_ms = config.idle_rtt_ms
     result.loaded_rtt_down_ms = rtt_stats(list(down_samples)).avg_ms
     result.loaded_rtt_up_ms = rtt_stats(list(up_samples)).avg_ms
-    result.bufferbloat_down_ms = bufferbloat_delta(idle_rtt_ms, down_samples)
-    result.bufferbloat_up_ms = bufferbloat_delta(idle_rtt_ms, up_samples)
+    result.bufferbloat_down_ms = bufferbloat_delta(config.idle_rtt_ms, down_samples)
+    result.bufferbloat_up_ms = bufferbloat_delta(config.idle_rtt_ms, up_samples)
     worst_delta = max(
         [d for d in (result.bufferbloat_down_ms, result.bufferbloat_up_ms) if d is not None],
         default=None,
     )
-    result.bufferbloat_grade = grade_bufferbloat(worst_delta, bands)
+    result.bufferbloat_grade = grade_bufferbloat(worst_delta, config.bands)
     return result
